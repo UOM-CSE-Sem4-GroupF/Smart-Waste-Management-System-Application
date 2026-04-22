@@ -57,6 +57,7 @@ function HorizBar({ label, value, color, max = 100 }: { label: string; value: nu
 
 export default function AnalyticsView({ analytics, zones }: Props) {
   const { weeklyCollections, fillRateByZone, alertsByType, totalCollectionsThisMonth, avgFillOnCollection, fuelSavedLitres, co2SavedKg } = analytics;
+  const zoneMap = Object.fromEntries(zones.map(z => [z.id, z]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -99,12 +100,12 @@ export default function AnalyticsView({ analytics, zones }: Props) {
           AVERAGE FILL RATE BY ZONE
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 32px' }}>
-          {fillRateByZone.map((z, i) => {
-            const zone = zones[i];
+          {fillRateByZone.map(z => {
+            const zone = zoneMap[z.zone];
             return (
               <HorizBar
                 key={z.zone}
-                label={z.zone}
+                label={zone?.name ?? z.zone}
                 value={z.avg}
                 color={zone?.color ?? 'var(--accent)'}
               />

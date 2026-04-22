@@ -49,6 +49,7 @@ export interface Zone {
   name: string;
   color: string;
   binCount: number;
+  avgFill?: number;
 }
 
 export interface AnalyticsData {
