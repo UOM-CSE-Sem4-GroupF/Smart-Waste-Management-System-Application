@@ -10,6 +10,9 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3001
+      KAFKA_BROKER: ${KAFKA_BROKER:-localhost:9092}
+      KAFKA_USER: ${KAFKA_USER:-}
+      KAFKA_PASS: ${KAFKA_PASS:-}
     expose:
       - "3001"
     networks:

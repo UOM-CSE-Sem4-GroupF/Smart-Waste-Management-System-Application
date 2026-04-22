@@ -7,6 +7,7 @@ import alertsRoutes       from './routes/alerts';
 import pickupRoutesPlugin from './routes/pickup-routes';
 import analyticsRoutes    from './routes/analytics';
 import zonesRoutes        from './routes/zones';
+import { startKafkaConsumer } from './kafka/consumer';
 
 async function start() {
   const app = Fastify({ logger: true });
@@ -32,6 +33,16 @@ async function start() {
     app.log.error(err);
     process.exit(1);
   }
+
+  // Start Kafka consumer after server is up — non-fatal if broker unreachable
+  const log = {
+    info:  (s: string) => app.log.info(s),
+    warn:  (s: string) => app.log.warn(s),
+    error: (s: string) => app.log.error(s),
+  };
+  startKafkaConsumer(log).catch(err => {
+    app.log.warn(`Kafka consumer failed to start: ${err.message} — running without live data`);
+  });
 }
 
 start();
