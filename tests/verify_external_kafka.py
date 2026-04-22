@@ -1,14 +1,13 @@
-import os
-from kafka import KafkaConsumer
-import json
-import logging
-import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- CONFIGURATION ---
-KAFKA_BROKER = "a4a1f7d85b2974282881bef8432350e7-ef5d86e442d3945a.elb.eu-north-1.amazonaws.com:9094"
-KAFKA_USER = "user1"
-KAFKA_PASS = "swms-kafka-dev-2026"
-TOPIC = "waste.bin.telemetry"
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+KAFKA_USER = os.getenv("KAFKA_USER")
+KAFKA_PASS = os.getenv("KAFKA_PASS")
+TOPIC = os.getenv("KAFKA_TOPIC", "waste.bin.telemetry")
 GROUP_ID = f"verify-external-{int(time.time())}"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

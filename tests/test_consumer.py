@@ -1,15 +1,11 @@
-"""
-Direct host test - run this with Python directly (NOT in Docker).
-Requires: pip install kafka-python
-"""
-import json
-import uuid
-from kafka import KafkaConsumer
+from dotenv import load_dotenv
 
-BROKER = "a4a1f7d85b2974282881bef8432350e7-ef5d86e442d3945a.elb.eu-north-1.amazonaws.com:9094"
-USER = "user1"
-PASS = "Ajkv0XR2Io"
-TOPIC = "waste.bin.telemetry"
+load_dotenv()
+
+BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+USER = os.getenv("KAFKA_USER")
+PASS = os.getenv("KAFKA_PASS")
+TOPIC = os.getenv("KAFKA_TOPIC", "waste.bin.telemetry")
 GROUP = f"test-{uuid.uuid4().hex[:6]}"
 
 print(f"Connecting to {BROKER} as group '{GROUP}'...")

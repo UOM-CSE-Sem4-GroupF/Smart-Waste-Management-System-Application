@@ -12,7 +12,7 @@ logger = logging.getLogger("swms-diagnostic")
 # Load environment variables
 load_dotenv()
 
-BROKER = os.getenv("KAFKA_BROKER", "host.docker.internal:9092")
+BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 USER = os.getenv("KAFKA_USER")
 PASS = os.getenv("KAFKA_PASS")
 TOPIC = os.getenv("KAFKA_TOPIC", "waste.bin.telemetry")
