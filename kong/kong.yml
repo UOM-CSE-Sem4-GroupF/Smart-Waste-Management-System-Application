@@ -1,0 +1,72 @@
+# Kong declarative config (DB-less mode)
+# Upstream: Fastify backend at port 3001
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: garabadge-api
+    url: http://backend:3001
+    connect_timeout: 5000
+    read_timeout: 10000
+    write_timeout: 10000
+
+    routes:
+      - name: bins
+        paths: ["/v1/bins"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: alerts-read-all
+        paths: ["/v1/alerts/read-all"]
+        methods: ["PATCH"]
+        strip_path: false
+
+      - name: alerts
+        paths: ["/v1/alerts"]
+        methods: ["GET", "PATCH"]
+        strip_path: false
+
+      - name: alerts-by-id
+        paths: ["/v1/alerts/(?<id>[^/]+)/read$"]
+        methods: ["PATCH"]
+        strip_path: false
+
+      - name: pickup-routes
+        paths: ["/v1/pickup-routes"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: analytics
+        paths: ["/v1/analytics"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: zones
+        paths: ["/v1/zones"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: health
+        paths: ["/health"]
+        methods: ["GET"]
+        strip_path: false
+
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "PATCH", "OPTIONS"]
+          headers: ["Accept", "Content-Type", "Authorization", "X-Api-Key"]
+          max_age: 3600
+
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+
+      # Uncomment to require an API key:
+      # - name: key-auth
+      #   config:
+      #     key_names: ["X-Api-Key"]
+      #     hide_credentials: true
