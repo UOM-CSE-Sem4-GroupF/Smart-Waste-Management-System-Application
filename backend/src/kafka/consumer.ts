@@ -1,4 +1,6 @@
-import { Kafka, logLevel, PartitionAssigners } from 'kafkajs';
+import { spawn } from 'child_process';
+import { createInterface } from 'readline';
+import path from 'path';
 import {
   upsertBin, setBinStatus, addAlert,
   upsertRoute, setRouteStatus,
@@ -6,65 +8,59 @@ import {
   type BinStatus, type AlertSev, type WasteType, type RouteStatus,
 } from '../data/store';
 
-const BROKER = process.env.KAFKA_BROKER ?? 'localhost:9092';
-const USER   = process.env.KAFKA_USER;
-const PASS   = process.env.KAFKA_PASS;
+const BRIDGE = path.join(__dirname, 'bridge.py');
 
-const TOPICS = [
-  'waste.bin.telemetry',
-  'waste.bin.processed',
-  'waste.bin.status.changed',
-  'waste.collection.jobs',
-  'waste.routes.optimized',
-  'waste.job.completed',
-  'waste.zone.statistics',
-];
+type Log = { info: (s: string) => void; warn: (s: string) => void; error: (s: string) => void };
 
-function makeSasl() {
-  if (!USER || !PASS) return undefined;
-  return { mechanism: 'scram-sha-256' as const, username: USER, password: PASS };
-}
+export function startKafkaConsumer(log: Log): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('python3', [BRIDGE], {
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-export async function startKafkaConsumer(log: { info: (s: string) => void; warn: (s: string) => void; error: (s: string) => void }) {
-  const sasl = makeSasl();
-  const kafka = new Kafka({
-    clientId: 'garabadge-backend',
-    brokers: [BROKER],
-    ssl: false,
-    sasl,
-    logLevel: logLevel.WARN,
-    retry: { retries: 5, initialRetryTime: 2000 },
-  });
+    const rl = createInterface({ input: proc.stdout! });
 
-  const consumer = kafka.consumer({
-    groupId: 'garabadge-backend-group',
-    partitionAssigners: [PartitionAssigners.roundRobin],
-  });
+    rl.on('line', (line) => {
+      let msg: Record<string, unknown>;
+      try { msg = JSON.parse(line); } catch { return; }
 
-  await consumer.connect();
-  log.info(`Kafka connected to ${BROKER}`);
-
-  await consumer.subscribe({ topics: TOPICS, fromBeginning: false });
-
-  await consumer.run({
-    eachMessage: async ({ topic, message }) => {
-      if (!message.value) return;
-      let payload: Record<string, unknown>;
-      try {
-        payload = JSON.parse(message.value.toString());
-      } catch {
-        log.warn(`Kafka: unparseable message on ${topic}`);
+      if (msg.status === 'ready') {
+        log.info('Kafka bridge ready — consuming 7 topics via direct partition assignment');
+        resolve();
         return;
       }
+      if (msg.status === 'error') {
+        log.error(`Kafka bridge error: ${msg.error}`);
+        reject(new Error(String(msg.error)));
+        return;
+      }
+
+      const topic   = String(msg.topic ?? '');
+      const payload = msg.payload as Record<string, unknown>;
+      if (!topic || !payload) return;
+
       try {
         handle(topic, payload, log);
       } catch (e) {
         log.error(`Kafka handler error on ${topic}: ${e}`);
       }
-    },
-  });
+    });
 
-  return consumer;
+    proc.stderr!.on('data', (d: Buffer) => {
+      const line = d.toString().trim();
+      if (line) log.warn(`Kafka bridge: ${line}`);
+    });
+
+    proc.on('close', (code) => {
+      log.warn(`Kafka bridge exited (code ${code}) — restarting in 5 s`);
+      setTimeout(() => startKafkaConsumer(log).catch(() => {}), 5000);
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
+    });
+  });
 }
 
 // ── Topic handlers ───────────────────────────────────────────────────────────
@@ -77,7 +73,6 @@ function handle(
   switch (topic) {
 
     case 'waste.bin.telemetry': {
-      // Envelope: { bin_id, payload: { bin_id, fill_level_pct, battery_pct, latitude, longitude, waste_type, timestamp } }
       const inner = (msg.payload ?? msg) as Record<string, unknown>;
       const id = str(inner.bin_id ?? msg.bin_id);
       if (!id) { log.warn('telemetry: missing bin_id'); return; }
@@ -95,7 +90,6 @@ function handle(
     }
 
     case 'waste.bin.processed': {
-      // Flink-processed telemetry — same shape, richer fields
       const id = str(msg.bin_id);
       if (!id) return;
       upsertBin({
@@ -111,7 +105,6 @@ function handle(
     }
 
     case 'waste.bin.status.changed': {
-      // { bin_id, old_status, new_status, reason, timestamp }
       const id     = str(msg.bin_id);
       const status = str(msg.new_status) as BinStatus;
       if (!id || !status) return;
@@ -119,13 +112,12 @@ function handle(
       const sev: AlertSev = status === 'critical' ? 'critical'
                           : status === 'warning'  ? 'warning'
                           : 'info';
-      const reason = str(msg.reason) || `Status changed to ${status}`;
-      addAlert(sev, id, reason, msg.timestamp ? num(msg.timestamp) * 1000 : undefined);
+      addAlert(sev, id, str(msg.reason) || `Status changed to ${status}`,
+               msg.timestamp ? num(msg.timestamp) * 1000 : undefined);
       break;
     }
 
     case 'waste.collection.jobs': {
-      // { job_id, route_id?, label?, driver, vehicle, stops:[{bin_id,order,eta}], distance_km, duration_min, status }
       const id = str(msg.route_id ?? msg.job_id);
       if (!id) return;
       const rawStops = (msg.stops as Array<Record<string, unknown>> | undefined) ?? [];
@@ -147,7 +139,6 @@ function handle(
     }
 
     case 'waste.routes.optimized': {
-      // { route_id, stops:[{bin_id,order,eta}], distance_km, duration_min }
       const id = str(msg.route_id);
       if (!id) return;
       const rawStops = (msg.stops as Array<Record<string, unknown>> | undefined) ?? [];
@@ -165,7 +156,6 @@ function handle(
     }
 
     case 'waste.job.completed': {
-      // { job_id, route_id?, completed_at }
       const id = str(msg.route_id ?? msg.job_id);
       if (!id) return;
       setRouteStatus(id, 'complete');
@@ -173,7 +163,6 @@ function handle(
     }
 
     case 'waste.zone.statistics': {
-      // { zone_id, bin_count, avg_fill_pct, active_alerts, ... }
       const id = str(msg.zone_id ?? msg.zone);
       if (!id) return;
       upsertZone({
@@ -186,8 +175,6 @@ function handle(
     }
   }
 }
-
-// ── Tiny coercers ────────────────────────────────────────────────────────────
 
 function num(v: unknown): number { return typeof v === 'number' ? v : Number(v ?? 0); }
 function str(v: unknown): string { return typeof v === 'string' ? v : String(v ?? ''); }
