@@ -4,7 +4,7 @@ import path from 'path';
 import {
   upsertBin, setBinStatus, addAlert,
   upsertRoute, setRouteStatus,
-  upsertZone,
+  upsertZone, upsertVehicle,
   type BinStatus, type AlertSev, type WasteType, type RouteStatus,
 } from '../data/store';
 
@@ -170,6 +170,22 @@ function handle(
         name:     str(msg.zone_name ?? msg.name) || undefined,
         binCount: num(msg.bin_count ?? msg.binCount),
         avgFill:  num(msg.avg_fill_pct ?? msg.avgFill),
+      });
+      break;
+    }
+
+    case 'waste.vehicle.location': {
+      // { vehicle_id, latitude, longitude, heading, speed_kmh, route_id, timestamp }
+      const id = str(msg.vehicle_id ?? msg.vehicleId);
+      if (!id) return;
+      upsertVehicle({
+        id,
+        lat:        num(msg.latitude  ?? msg.lat),
+        lng:        num(msg.longitude ?? msg.lng),
+        heading:    num(msg.heading),
+        speed:      num(msg.speed_kmh ?? msg.speed),
+        routeId:    str(msg.route_id  ?? msg.routeId) || undefined,
+        lastUpdate: msg.timestamp ? num(msg.timestamp) * 1000 : Date.now(),
       });
       break;
     }

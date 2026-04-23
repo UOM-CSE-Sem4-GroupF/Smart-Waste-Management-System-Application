@@ -44,6 +44,16 @@ export interface Route {
   status: 'pending' | 'active' | 'complete';
 }
 
+export interface Vehicle {
+  id: string;
+  lat: number;
+  lng: number;
+  heading: number;
+  speed: number;
+  routeId?: string;
+  lastUpdate: number;
+}
+
 export interface Zone {
   id: string;
   name: string;

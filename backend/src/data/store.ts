@@ -1,3 +1,5 @@
+import { EventEmitter } from 'events';
+
 export type BinStatus   = 'ok' | 'warning' | 'critical';
 export type AlertSev    = 'info' | 'warning' | 'critical';
 export type WasteType   = 'general' | 'recycling' | 'organic' | 'hazardous';
@@ -24,10 +26,24 @@ export interface PickupRoute {
 
 export interface Zone { id: string; name: string; color: string; binCount: number; avgFill?: number }
 
+export interface Vehicle {
+  id: string;
+  lat: number;
+  lng: number;
+  heading: number;    // 0–360 degrees
+  speed: number;      // km/h
+  routeId?: string;
+  lastUpdate: number; // epoch ms
+}
+
 export const bins: Bin[]                 = [];
 export const alerts: Alert[]             = [];
 export const pickupRoutes: PickupRoute[] = [];
 export const zones: Zone[]               = [];
+export const vehicles: Vehicle[]         = [];
+
+// Pub/sub so index.ts can forward mutations to Socket.IO without a circular dep
+export const storeEvents = new EventEmitter();
 
 // ── Bin mutations ────────────────────────────────────────────────────────────
 
@@ -48,14 +64,16 @@ export function upsertBin(patch: Partial<Bin> & { id: string }) {
       offline: patch.offline ?? false,
       lastPing: patch.lastPing ?? Date.now(),
     });
+    storeEvents.emit('bin:update', bins[bins.length - 1]);
   } else {
     bins[idx] = { ...bins[idx], ...patch };
+    storeEvents.emit('bin:update', bins[idx]);
   }
 }
 
 export function setBinStatus(binId: string, status: BinStatus) {
   const bin = bins.find(b => b.id === binId);
-  if (bin) bin.status = status;
+  if (bin) { bin.status = status; storeEvents.emit('bin:update', bin); }
 }
 
 // ── Alert mutations ──────────────────────────────────────────────────────────
@@ -95,6 +113,27 @@ export function upsertRoute(patch: Partial<PickupRoute> & { id: string }) {
 export function setRouteStatus(routeId: string, status: RouteStatus) {
   const route = pickupRoutes.find(r => r.id === routeId);
   if (route) route.status = status;
+}
+
+// ── Vehicle mutations ────────────────────────────────────────────────────────
+
+export function upsertVehicle(patch: Partial<Vehicle> & { id: string }) {
+  const idx = vehicles.findIndex(v => v.id === patch.id);
+  if (idx === -1) {
+    vehicles.push({
+      id: patch.id,
+      lat: patch.lat ?? 0,
+      lng: patch.lng ?? 0,
+      heading: patch.heading ?? 0,
+      speed: patch.speed ?? 0,
+      routeId: patch.routeId,
+      lastUpdate: patch.lastUpdate ?? Date.now(),
+    });
+    storeEvents.emit('vehicle:position', vehicles[vehicles.length - 1]);
+  } else {
+    vehicles[idx] = { ...vehicles[idx], ...patch };
+    storeEvents.emit('vehicle:position', vehicles[idx]);
+  }
 }
 
 // ── Zone mutations ───────────────────────────────────────────────────────────

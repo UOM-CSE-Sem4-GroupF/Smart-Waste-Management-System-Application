@@ -25,6 +25,7 @@ TOPICS = [
     "waste.routes.optimized",
     "waste.job.completed",
     "waste.zone.statistics",
+    "waste.vehicle.location",
 ]
 
 try:
