@@ -34,7 +34,7 @@ services:
       notification:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,7 +54,7 @@ services:
     networks:
       - garabadge
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -74,7 +74,7 @@ services:
     networks:
       - garabadge
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -94,7 +94,7 @@ services:
     networks:
       - garabadge
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3004/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -116,7 +116,7 @@ services:
     networks:
       - garabadge
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3099/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3099/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -130,7 +130,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
     expose:
       - "3000"
     networks:
