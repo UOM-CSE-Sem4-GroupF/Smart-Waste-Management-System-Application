@@ -1,57 +1,197 @@
-# Kong declarative config (DB-less mode)
-# Upstream: Fastify backend at port 3001
-
 _format_version: "3.0"
 _transform: true
 
+# ── Upstreams ──────────────────────────────────────────────────────────────────
+# F3 services are addressed by their Docker Compose service names.
+# /internal/* paths are intentionally absent — they are cluster-only
+# and must never be exposed through the gateway.
+
 services:
-  - name: garabadge-api
-    url: http://backend:3001
+
+  # ── F3: Collection Workflow Orchestrator ───────────────────────────────────
+  - name: f3-orchestrator
+    url: http://orchestrator:3001
     connect_timeout: 5000
-    read_timeout: 10000
-    write_timeout: 10000
-
+    read_timeout:    30000
+    write_timeout:   10000
     routes:
-      - name: bins
-        paths: ["/v1/bins"]
-        methods: ["GET"]
+      - name:       collection-jobs-list
+        paths:      ["/api/v1/collection-jobs"]
+        methods:    ["GET", "POST", "OPTIONS"]
+        strip_path: false
+      - name:       collection-jobs-detail
+        paths:      ["~/api/v1/collection-jobs/(?<id>[^/]+)$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       collection-jobs-accept
+        paths:      ["~/api/v1/collection-jobs/(?<id>[^/]+)/accept$"]
+        methods:    ["POST", "OPTIONS"]
+        strip_path: false
+      - name:       collection-jobs-cancel
+        paths:      ["~/api/v1/collection-jobs/(?<id>[^/]+)/cancel$"]
+        methods:    ["POST", "OPTIONS"]
+        strip_path: false
+      - name:       collection-jobs-complete
+        paths:      ["~/api/v1/collection-jobs/(?<id>[^/]+)/complete$"]
+        methods:    ["POST", "OPTIONS"]
+        strip_path: false
+      - name:       orchestrator-health
+        paths:      ["/api/v1/orchestrator/health"]
+        methods:    ["GET"]
+        strip_path: true
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "POST", "OPTIONS"]
+          headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
+  # ── F3: Bin Status Service ─────────────────────────────────────────────────
+  - name: f3-bin-status
+    url: http://bin-status:3002
+    connect_timeout: 5000
+    read_timeout:    10000
+    write_timeout:   10000
+    routes:
+      - name:       bins-list
+        paths:      ["/api/v1/bins"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       bins-detail
+        paths:      ["~/api/v1/bins/(?<id>[^/]+)$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       bins-history
+        paths:      ["~/api/v1/bins/(?<id>[^/]+)/history$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       zones-list
+        paths:      ["/api/v1/zones"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       zones-summary
+        paths:      ["~/api/v1/zones/(?<id>[^/]+)/summary$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "OPTIONS"]
+          headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
+  # ── F3: Scheduler Service ──────────────────────────────────────────────────
+  - name: f3-scheduler
+    url: http://scheduler:3003
+    connect_timeout: 5000
+    read_timeout:    10000
+    write_timeout:   10000
+    routes:
+      - name:       vehicles-list
+        paths:      ["/api/v1/vehicles"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       vehicles-active
+        paths:      ["/api/v1/vehicles/active"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       vehicles-detail
+        paths:      ["~/api/v1/vehicles/(?<id>[^/]+)$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       drivers-list
+        paths:      ["/api/v1/drivers"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       drivers-available
+        paths:      ["/api/v1/drivers/available"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       drivers-detail
+        paths:      ["~/api/v1/drivers/(?<id>[^/]+)$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+      - name:       collections-bin-collected
+        paths:      ["~/api/v1/collections/(?<job_id>[^/]+)/bins/(?<bin_id>[^/]+)/collected$"]
+        methods:    ["POST", "OPTIONS"]
+        strip_path: false
+      - name:       collections-bin-skip
+        paths:      ["~/api/v1/collections/(?<job_id>[^/]+)/bins/(?<bin_id>[^/]+)/skip$"]
+        methods:    ["POST", "OPTIONS"]
+        strip_path: false
+      - name:       job-progress
+        paths:      ["~/api/v1/jobs/(?<job_id>[^/]+)/progress$"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "POST", "OPTIONS"]
+          headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+
+  # ── F3: Notification Service (WebSocket / Socket.IO) ──────────────────────
+  - name: f3-notification
+    url: http://notification:3004
+    connect_timeout: 5000
+    read_timeout:    86400000   # 24h — long-lived WebSocket connections
+    write_timeout:   10000
+    routes:
+      - name:       websocket
+        paths:      ["/ws", "/socket.io"]
+        methods:    ["GET", "POST", "OPTIONS"]
         strip_path: false
 
-      - name: alerts-read-all
-        paths: ["/v1/alerts/read-all"]
-        methods: ["PATCH"]
+  # ── Legacy dashboard backend (monolith — v1 routes) ───────────────────────
+  - name: garabadge-legacy
+    url: http://backend:3099
+    connect_timeout: 5000
+    read_timeout:    10000
+    write_timeout:   10000
+    routes:
+      - name:       legacy-bins
+        paths:      ["/v1/bins"]
+        methods:    ["GET"]
         strip_path: false
-
-      - name: alerts
-        paths: ["/v1/alerts"]
-        methods: ["GET", "PATCH"]
+      - name:       legacy-alerts
+        paths:      ["/v1/alerts"]
+        methods:    ["GET", "PATCH"]
         strip_path: false
-
-      - name: alerts-by-id
-        paths: ["/v1/alerts/(?<id>[^/]+)/read$"]
-        methods: ["PATCH"]
+      - name:       legacy-alerts-read-all
+        paths:      ["/v1/alerts/read-all"]
+        methods:    ["PATCH"]
         strip_path: false
-
-      - name: pickup-routes
-        paths: ["/v1/pickup-routes"]
-        methods: ["GET"]
+      - name:       legacy-pickup-routes
+        paths:      ["/v1/pickup-routes"]
+        methods:    ["GET"]
         strip_path: false
-
-      - name: analytics
-        paths: ["/v1/analytics"]
-        methods: ["GET"]
+      - name:       legacy-analytics
+        paths:      ["/v1/analytics"]
+        methods:    ["GET"]
         strip_path: false
-
-      - name: zones
-        paths: ["/v1/zones"]
-        methods: ["GET"]
+      - name:       legacy-zones
+        paths:      ["/v1/zones"]
+        methods:    ["GET"]
         strip_path: false
-
-      - name: health
-        paths: ["/health"]
-        methods: ["GET"]
+      - name:       health
+        paths:      ["/health"]
+        methods:    ["GET"]
         strip_path: false
-
     plugins:
       - name: cors
         config:
@@ -59,14 +199,15 @@ services:
           methods: ["GET", "PATCH", "OPTIONS"]
           headers: ["Accept", "Content-Type", "Authorization", "X-Api-Key"]
           max_age: 3600
-
       - name: rate-limiting
         config:
           minute: 120
           policy: local
 
-      # Uncomment to require an API key:
-      # - name: key-auth
-      #   config:
-      #     key_names: ["X-Api-Key"]
-      #     hide_credentials: true
+  # ── Next.js frontend ───────────────────────────────────────────────────────
+  - name: nextjs-ui
+    url: http://nextjs:3000
+    routes:
+      - name:       ui
+        paths:      ["/"]
+        strip_path: false
