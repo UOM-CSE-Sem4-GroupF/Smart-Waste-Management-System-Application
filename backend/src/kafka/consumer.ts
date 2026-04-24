@@ -73,18 +73,19 @@ function handle(
   switch (topic) {
 
     case 'waste.bin.telemetry': {
+      // Envelope: { version, source_service, timestamp, payload: { bin_id, fill_level_pct, battery_level_pct, ... } }
       const inner = (msg.payload ?? msg) as Record<string, unknown>;
       const id = str(inner.bin_id ?? msg.bin_id);
       if (!id) { log.warn('telemetry: missing bin_id'); return; }
       upsertBin({
         id,
         fill:     num(inner.fill_level_pct),
-        battery:  num(inner.battery_pct ?? inner.battery),
+        battery:  num(inner.battery_level_pct ?? inner.battery_pct ?? inner.battery),
         lat:      num(inner.latitude  ?? inner.lat),
         lng:      num(inner.longitude ?? inner.lng),
         type:     (str(inner.waste_type) as WasteType) || undefined,
         offline:  false,
-        lastPing: inner.timestamp ? num(inner.timestamp) * 1000 : Date.now(),
+        lastPing: inner.timestamp ? new Date(str(inner.timestamp)).getTime() : (msg.timestamp ? num(msg.timestamp) : Date.now()),
       });
       break;
     }
