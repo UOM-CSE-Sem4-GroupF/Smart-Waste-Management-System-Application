@@ -179,11 +179,18 @@ export default function Dashboard() {
   useEffect(() => {
     const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket'] });
 
-    socket.on('bin:update', (bin: Bin) => {
-      setBins(prev => {
-        const idx = prev.findIndex(b => b.id === bin.id);
-        return idx === -1 ? [...prev, bin] : prev.map((b, i) => i === idx ? bin : b);
-      });
+    // Join dashboard room so server emits reach this client
+    socket.on('connect', () => socket.emit('join', ['dashboard-all']));
+
+    socket.on('bin:update', (raw: Record<string, unknown>) => {
+      const bin_id = String(raw.bin_id ?? '');
+      if (!bin_id) return;
+      const fill         = Number(raw.fill_level_pct ?? 0);
+      const urgency      = String(raw.urgency_status ?? 'normal');
+      const status       = (urgency === 'critical' ? 'critical' : urgency === 'normal' ? 'ok' : 'warning') as BinStatus;
+      const lastPing     = Date.parse(String(raw.timestamp ?? new Date().toISOString()));
+      // Only patch mutable fields; preserve lat/lng loaded from REST (telemetry has no location)
+      setBins(prev => prev.map(b => b.id === bin_id ? { ...b, fill, status, lastPing } : b));
     });
 
     socket.on('vehicle:position', (vehicle: Vehicle) => {
