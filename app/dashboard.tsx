@@ -34,7 +34,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 type F3BinState = {
   bin_id: string; fill_level_pct: number; urgency_status: string;
   waste_category: string; volume_litres: number; zone_id: string;
-  lat: number; lng: number; last_reading_at: string;
+  lat: number; lng: number; battery_pct: number; last_reading_at: string;
 };
 type F3Vehicle = {
   vehicle_id: string; lat: number; lng: number; heading: number;
@@ -66,7 +66,7 @@ function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
     capacity: b.volume_litres,
     type:     (WASTE_TYPE_MAP[b.waste_category] ?? 'general') as WasteType,
     status:   (b.urgency_status === 'critical' ? 'critical' : b.urgency_status === 'normal' ? 'ok' : 'warning') as BinStatus,
-    battery:  80,
+    battery:  b.battery_pct ?? 100,
     offline:  false,
     lastPing: Date.parse(b.last_reading_at),
   }));
@@ -131,7 +131,7 @@ export default function Dashboard() {
   const [bins, setBins]             = useState<Bin[]>([]);
   const [alerts, setAlerts]         = useState<Alert[]>([]);
   const [routes, setRoutes]         = useState<Route[]>([]);
-  const [analytics, setAnalytics]   = useState<AnalyticsData>(EMPTY_ANALYTICS);
+  const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
   const [zones, setZones]           = useState<Zone[]>([]);
   const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
   const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
@@ -189,8 +189,12 @@ export default function Dashboard() {
       const urgency      = String(raw.urgency_status ?? 'normal');
       const status       = (urgency === 'critical' ? 'critical' : urgency === 'normal' ? 'ok' : 'warning') as BinStatus;
       const lastPing     = Date.parse(String(raw.timestamp ?? new Date().toISOString()));
+      const battery      = raw.battery_pct !== undefined ? Number(raw.battery_pct) : undefined;
       // Only patch mutable fields; preserve lat/lng loaded from REST (telemetry has no location)
-      setBins(prev => prev.map(b => b.id === bin_id ? { ...b, fill, status, lastPing } : b));
+      setBins(prev => prev.map(b => b.id === bin_id ? {
+        ...b, fill, status, lastPing,
+        ...(battery !== undefined ? { battery } : {}),
+      } : b));
     });
 
     socket.on('vehicle:position', (vehicle: Vehicle) => {

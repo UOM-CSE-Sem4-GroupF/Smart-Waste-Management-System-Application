@@ -21,7 +21,7 @@ const TYPE_LABEL: Record<WasteType, string> = {
 
 const TYPE_COLOR: Record<WasteType, string> = {
   general:   '#8494A8',
-  recycling: '#60A5FA',
+  recycling: '#4a9bfc',
   organic:   '#34D399',
   hazardous: '#FBBF24',
 };
