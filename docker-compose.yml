@@ -97,26 +97,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Legacy monolith backend (dashboard data / live map) ────────────────────
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: garabadge-backend
-    restart: unless-stopped
-    environment:
-      <<: *kafka-env
-      PORT: 3099
-    expose:
-      - "3099"
-    networks:
-      - garabadge
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3099/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # ── Next.js dashboard ──────────────────────────────────────────────────────
   nextjs:
     build:
@@ -151,8 +131,6 @@ services:
     volumes:
       - ./kong/kong.yml:/kong/kong.yml:ro
     depends_on:
-      backend:
-        condition: service_healthy
       orchestrator:
         condition: service_healthy
       bin-status:
