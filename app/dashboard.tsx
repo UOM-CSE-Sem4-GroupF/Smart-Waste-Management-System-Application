@@ -10,7 +10,7 @@ import BinsView from '@/components/views/BinsView';
 import RoutesView from '@/components/views/RoutesView';
 import AlertsView from '@/components/views/AlertsView';
 import AnalyticsView from '@/components/views/AnalyticsView';
-import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId } from '@/lib/types';
+import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId, BinStatus, WasteType } from '@/lib/types';
 
 const VIEW_TITLES: Record<ViewId, string> = {
   map:       'Live Map',
@@ -21,12 +21,95 @@ const VIEW_TITLES: Record<ViewId, string> = {
 };
 
 const POLL_MS  = 10000;
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}/v1${path}`, init);
+  const res = await fetch(`${API_BASE}/api/v1${path}`, init);
   if (!res.ok) throw new Error(`${res.status} ${path}`);
   return res.json();
+}
+
+// ── F3 → legacy shape adapters ───────────────────────────────────────────────
+
+type F3BinState = {
+  bin_id: string; fill_level_pct: number; urgency_status: string;
+  waste_category: string; volume_litres: number; zone_id: string;
+  lat: number; lng: number; last_reading_at: string;
+};
+type F3Vehicle = {
+  vehicle_id: string; lat: number; lng: number; heading: number;
+  speed_kmh: number; current_job_id?: string; last_update: string;
+};
+type F3Zone = {
+  zone_id: string; bin_count: number; avg_fill_pct: number;
+};
+type F3Job = {
+  job_id: string; state: string; zone_id: string; waste_category: string;
+  bin_ids: string[]; driver_id?: string; vehicle_id?: string;
+};
+
+const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
+const WASTE_TYPE_MAP: Record<string, string> = {
+  general: 'general', food_waste: 'organic', paper: 'recycling',
+  glass: 'recycling', plastic: 'recycling', e_waste: 'hazardous',
+};
+
+function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(b => ({
+    id:       b.bin_id,
+    label:    b.bin_id,
+    zone:     b.zone_id,
+    lat:      b.lat,
+    lng:      b.lng,
+    fill:     b.fill_level_pct,
+    capacity: b.volume_litres,
+    type:     (WASTE_TYPE_MAP[b.waste_category] ?? 'general') as WasteType,
+    status:   (b.urgency_status === 'critical' ? 'critical' : b.urgency_status === 'normal' ? 'ok' : 'warning') as BinStatus,
+    battery:  80,
+    offline:  false,
+    lastPing: Date.parse(b.last_reading_at),
+  }));
+}
+
+function adaptZones(raw: { data?: F3Zone[] } | F3Zone[]): Zone[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map((z, i) => ({
+    id:       z.zone_id,
+    name:     z.zone_id,
+    color:    ZONE_COLORS[i % ZONE_COLORS.length],
+    binCount: z.bin_count,
+    avgFill:  z.avg_fill_pct,
+  }));
+}
+
+function adaptVehicles(raw: { data?: F3Vehicle[] } | F3Vehicle[]): Vehicle[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(v => ({
+    id:         v.vehicle_id,
+    lat:        v.lat,
+    lng:        v.lng,
+    heading:    v.heading,
+    speed:      v.speed_kmh,
+    routeId:    v.current_job_id,
+    lastUpdate: Date.parse(v.last_update),
+  }));
+}
+
+function adaptRoutes(raw: { data?: F3Job[] } | F3Job[]): Route[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(j => ({
+    id:          j.job_id,
+    label:       `${j.waste_category} – ${j.zone_id}`,
+    driver:      j.driver_id ?? '—',
+    vehicle:     j.vehicle_id ?? '—',
+    stops:       j.bin_ids.map((binId, order) => ({ binId, order, eta: '—' })),
+    distanceKm:  0,
+    durationMin: 0,
+    status:      (['COMPLETED','CLOSED'].includes(j.state) ? 'complete'
+                 : ['COLLECTING','IN_TRANSIT','ARRIVED','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
+                 : 'pending') as Route['status'],
+  }));
 }
 
 const EMPTY_ANALYTICS: AnalyticsData = {
@@ -55,25 +138,34 @@ export default function Dashboard() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAll = useCallback(async () => {
-    try {
-      const [b, a, r, an, z, v] = await Promise.all([
-        apiFetch<Bin[]>('/bins'),
-        apiFetch<Alert[]>('/alerts'),
-        apiFetch<Route[]>('/pickup-routes'),
-        apiFetch<AnalyticsData>('/analytics'),
-        apiFetch<Zone[]>('/zones'),
-        apiFetch<Vehicle[]>('/vehicles/active'),
-      ]);
-      setBins(b);
-      setAlerts(a);
-      setRoutes(r);
-      setAnalytics(an);
-      setZones(z);
-      setVehicles(v);
-      setConnStatus('live');
-    } catch {
-      setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
+    const [binsRes, jobsRes, zonesRes, vehiclesRes] = await Promise.allSettled([
+      apiFetch<unknown>('/bins'),
+      apiFetch<unknown>('/collection-jobs'),
+      apiFetch<unknown>('/zones'),
+      apiFetch<unknown>('/vehicles/active'),
+    ]);
+
+    let anyOk = false;
+
+    if (binsRes.status === 'fulfilled') {
+      setBins(adaptBins(binsRes.value as Parameters<typeof adaptBins>[0]));
+      anyOk = true;
     }
+    if (jobsRes.status === 'fulfilled') {
+      setRoutes(adaptRoutes(jobsRes.value as Parameters<typeof adaptRoutes>[0]));
+      anyOk = true;
+    }
+    if (zonesRes.status === 'fulfilled') {
+      setZones(adaptZones(zonesRes.value as Parameters<typeof adaptZones>[0]));
+      anyOk = true;
+    }
+    if (vehiclesRes.status === 'fulfilled') {
+      setVehicles(adaptVehicles(vehiclesRes.value as Parameters<typeof adaptVehicles>[0]));
+      anyOk = true;
+    }
+
+    if (anyOk) setConnStatus('live');
+    else setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
   }, []);
 
   // Polling (slower — Socket.IO handles real-time)
