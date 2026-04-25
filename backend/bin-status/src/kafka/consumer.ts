@@ -9,7 +9,6 @@ function buildKafka() {
   const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
   const user    = process.env.KAFKA_USER;
   const pass    = process.env.KAFKA_PASS;
-
   return new Kafka({
     clientId:  'bin-status-service',
     brokers,

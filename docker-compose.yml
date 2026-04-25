@@ -22,6 +22,8 @@ services:
       NOTIFICATION_URL: http://notification:3004
     expose:
       - "3001"
+    extra_hosts:
+      - "controller.internal:13.50.152.18"
     networks:
       - garabadge
     depends_on:
@@ -49,6 +51,8 @@ services:
       PORT: 3002
     expose:
       - "3002"
+    extra_hosts:
+      - "controller.internal:13.50.152.18"
     networks:
       - garabadge
     healthcheck:
@@ -69,6 +73,8 @@ services:
       PORT: 3003
     expose:
       - "3003"
+    extra_hosts:
+      - "controller.internal:13.50.152.18"
     networks:
       - garabadge
     healthcheck:
@@ -89,6 +95,8 @@ services:
       PORT: 3004
     expose:
       - "3004"
+    extra_hosts:
+      - "controller.internal:13.50.152.18"
     networks:
       - garabadge
     healthcheck:
@@ -96,6 +104,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Telemetry bridge (Python, no consumer group — bypasses KRaft controller) ──
+  telemetry-bridge:
+    build:
+      context: ./telemetry-bridge
+      dockerfile: Dockerfile
+    container_name: f3-telemetry-bridge
+    restart: unless-stopped
+    environment:
+      <<: *kafka-env
+      BIN_STATUS_URL:   http://bin-status:3002
+      NOTIFICATION_URL: http://notification:3004
+    extra_hosts:
+      - "controller.internal:13.50.152.18"
+    depends_on:
+      bin-status:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    networks:
+      - garabadge
 
   # ── Next.js dashboard ──────────────────────────────────────────────────────
   nextjs:

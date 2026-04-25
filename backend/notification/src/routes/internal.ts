@@ -40,6 +40,25 @@ export default async function internalRoutes(app: FastifyInstance) {
     return { delivered: true, ts };
   });
 
+  // Called by telemetry-bridge: push a bin telemetry update to the dashboard
+  app.post<{ Body: Record<string, unknown> }>('/internal/notify/bin-update', async (req) => {
+    const payload = req.body;
+    const ts      = new Date().toISOString();
+    const urgency = Number(payload.urgency_score ?? payload.fill_level_pct ?? 0);
+
+    emitToRoom('dashboard-all', 'bin:update', { ...payload, timestamp: ts });
+    if (urgency >= 80) {
+      emitToRoom('dashboard-all', 'alert:urgent', {
+        bin_id:         payload.bin_id,
+        urgency_score:  urgency,
+        fill_level_pct: payload.fill_level_pct,
+        zone_id:        payload.zone_id,
+        timestamp:      ts,
+      });
+    }
+    return { delivered: true, ts };
+  });
+
   // Called by orchestrator: alert supervisors that a job needs manual intervention
   app.post<{ Body: JobEscalatedBody }>('/internal/notify/job-escalated', async (req) => {
     const { job_id, zone_id, reason } = req.body;
