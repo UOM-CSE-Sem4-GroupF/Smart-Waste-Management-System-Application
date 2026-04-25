@@ -1,12 +1,14 @@
 import { Driver, Vehicle, JobProgress, BinProgressEntry } from './types';
 
-export const drivers = new Map<string, Driver>([
+const SEED_DRIVERS: [string, Driver][] = [
   ['DRV-001', { driver_id: 'DRV-001', name: 'Amal Perera',      zone_id: 'Zone-1', shift_start: '06:00', shift_end: '14:00', available: true }],
   ['DRV-002', { driver_id: 'DRV-002', name: 'Nimal Silva',       zone_id: 'Zone-2', shift_start: '06:00', shift_end: '14:00', available: true }],
   ['DRV-003', { driver_id: 'DRV-003', name: 'Kamal Fernando',    zone_id: 'Zone-3', shift_start: '14:00', shift_end: '22:00', available: true }],
   ['DRV-004', { driver_id: 'DRV-004', name: 'Sunil Jayawardena', zone_id: 'Zone-1', shift_start: '14:00', shift_end: '22:00', available: true }],
   ['DRV-005', { driver_id: 'DRV-005', name: 'Roshan Bandara',    zone_id: 'Zone-2', shift_start: '22:00', shift_end: '06:00', available: true }],
-]);
+];
+
+export const drivers = new Map<string, Driver>(SEED_DRIVERS);
 
 export const vehicles = new Map<string, Vehicle>([
   ['LORRY-01', { vehicle_id: 'LORRY-01', name: 'Lorry 01', max_cargo_kg: 5000, waste_categories: ['general', 'paper', 'plastic'],  available: true, lat: 6.9271, lng: 79.8612, heading: 0, speed_kmh: 0, last_update: new Date().toISOString() }],
@@ -16,6 +18,13 @@ export const vehicles = new Map<string, Vehicle>([
 ]);
 
 export const jobProgress = new Map<string, JobProgress>();
+
+export function resetStore(): void {
+  drivers.clear();
+  SEED_DRIVERS.forEach(([k, v]) => drivers.set(k, { ...v }));
+  vehicles.forEach(v => { v.available = true; delete v.current_job_id; });
+  jobProgress.clear();
+}
 
 export function findAvailableDriver(zone_id: string, exclude_ids: string[] = []): Driver | undefined {
   // Prefer same-zone driver first

@@ -42,6 +42,7 @@ export function recordStep(job: CollectionJob, step: string, success: boolean, d
 }
 
 export function getJob(id: string): CollectionJob | undefined { return jobs.get(id); }
+export function clearAll(): void                              { jobs.clear(); }
 
 export function getAllJobs(filters: { state?: string; page?: number; limit?: number } = {}): { data: CollectionJob[]; total: number } {
   let list = [...jobs.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));

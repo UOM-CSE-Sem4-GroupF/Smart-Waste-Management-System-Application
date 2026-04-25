@@ -28,7 +28,7 @@ function buildKafka() {
   });
 }
 
-function handle(topic: string, payload: Record<string, unknown>, timestamp: string): void {
+export function handle(topic: string, payload: Record<string, unknown>, timestamp: string): void {
   switch (topic) {
     case 'waste.bin.processed': {
       const urgency_score = Number(payload.urgency_score ?? 0);

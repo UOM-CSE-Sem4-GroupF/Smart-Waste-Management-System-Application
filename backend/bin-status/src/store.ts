@@ -1,4 +1,4 @@
-import { BinState, WasteCategory, UrgencyStatus, AVG_KG_PER_LITRE, CollectionStatus } from './types';
+import { BinState, WasteCategory, AVG_KG_PER_LITRE } from './types';
 
 const bins    = new Map<string, BinState>();
 const history = new Map<string, BinState[]>();
@@ -49,3 +49,4 @@ export function getBin(id: string): BinState | undefined        { return bins.ge
 export function getAllBins(): BinState[]                         { return [...bins.values()]; }
 export function getBinHistory(id: string): BinState[]           { return history.get(id) ?? []; }
 export function getBinsByZone(zoneId: string): BinState[]       { return [...bins.values()].filter(b => b.zone_id === zoneId); }
+export function clearAll(): void                                 { bins.clear(); history.clear(); }
