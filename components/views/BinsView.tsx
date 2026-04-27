@@ -13,17 +13,21 @@ const STATUS_COLOR: Record<BinStatus, string> = {
 };
 
 const TYPE_LABEL: Record<WasteType, string> = {
-  general:   'General',
-  recycling: 'Recycling',
-  organic:   'Organic',
-  hazardous: 'Hazardous',
+  food_waste: 'Food Waste',
+  paper:      'Paper',
+  glass:      'Glass',
+  plastic:    'Plastic',
+  general:    'General',
+  e_waste:    'E-Waste',
 };
 
 const TYPE_COLOR: Record<WasteType, string> = {
-  general:   '#8494A8',
-  recycling: '#60A5FA',
-  organic:   '#34D399',
-  hazardous: '#FBBF24',
+  food_waste: '#8B4513',
+  paper:      '#4169E1',
+  glass:      '#228B22',
+  plastic:    '#FF6347',
+  general:    '#808080',
+  e_waste:    '#FFD700',
 };
 
 export default function BinsView({ bins }: Props) {
@@ -101,12 +105,12 @@ export default function BinsView({ bins }: Props) {
         {/* Header */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1.6fr 1fr 0.7fr 1.4fr 0.7fr 0.7fr',
+          gridTemplateColumns: '1.4fr 0.8fr 0.8fr 1.4fr 0.9fr 0.7fr 0.7fr',
           padding: '10px 16px',
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-muted)', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
         }}>
-          <span>BIN</span><span>ZONE</span><span>TYPE</span><span>FILL</span><span>BATTERY</span><span>STATUS</span>
+          <span>BIN</span><span>ZONE</span><span>TYPE</span><span>FILL</span><span>EST. WEIGHT</span><span>BATTERY</span><span>STATUS</span>
         </div>
 
         {/* Rows */}
@@ -116,7 +120,7 @@ export default function BinsView({ bins }: Props) {
               key={bin.id}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1.6fr 1fr 0.7fr 1.4fr 0.7fr 0.7fr',
+                gridTemplateColumns: '1.4fr 0.8fr 0.8fr 1.4fr 0.9fr 0.7fr 0.7fr',
                 padding: '12px 16px',
                 borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none',
                 alignItems: 'center',
@@ -145,6 +149,9 @@ export default function BinsView({ bins }: Props) {
                   {bin.fill}%
                 </span>
               </div>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: "'IBM Plex Mono', monospace" }}>
+                {bin.estimated_weight_kg.toFixed(1)} kg
+              </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <div style={{ fontSize: 10 }}>🔋</div>
                 <span style={{ fontSize: 11, color: bin.battery < 30 ? 'var(--warning)' : 'var(--text-secondary)' }}>

@@ -1,6 +1,7 @@
 import { Kafka, logLevel } from 'kafkajs';
 import { BinProcessedPayload, WasteCategory } from '../types';
 import { upsertBin, computeWeight } from '../store';
+import { emitBinUpdate } from '../socket';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'bin-status', message: msg }) + '\n');
@@ -38,7 +39,7 @@ export async function startKafkaConsumer(): Promise<void> {
         const estimated_weight_kg = p.estimated_weight_kg
           ?? computeWeight(p.fill_level_pct, volume_litres, waste_category);
 
-        upsertBin({
+        const updated = upsertBin({
           bin_id:              p.bin_id,
           fill_level_pct:      p.fill_level_pct,
           urgency_score:       p.urgency_score,
@@ -50,6 +51,11 @@ export async function startKafkaConsumer(): Promise<void> {
           lat:                 p.latitude  ?? 0,
           lng:                 p.longitude ?? 0,
           last_reading_at:     envelope.timestamp ?? new Date().toISOString(),
+        });
+
+        emitBinUpdate('dashboard-all', 'bin:update', {
+          ...updated,
+          timestamp: envelope.timestamp ?? new Date().toISOString(),
         });
       } catch (e) {
         slog('ERROR', `Failed to process waste.bin.processed: ${e}`);

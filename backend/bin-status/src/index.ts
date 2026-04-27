@@ -2,9 +2,11 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import { Server as SocketServer } from 'socket.io';
 import binsRoutes     from './routes/bins';
 import zonesRoutes    from './routes/zones';
 import internalRoutes from './routes/internal';
+import { setBinSocketServer } from './socket';
 import { startKafkaConsumer } from './kafka/consumer';
 
 const SERVICE = 'bin-status-service';
@@ -28,6 +30,30 @@ async function start() {
   const PORT = Number(process.env.PORT ?? 3002);
   await app.listen({ port: PORT, host: '0.0.0.0' });
   slog('INFO', `Listening on :${PORT}`);
+
+  const io = new SocketServer(app.server, {
+    cors:          { origin: '*' },
+    path:          '/socket.io',
+    transports:    ['websocket', 'polling'],
+    pingTimeout:   20000,
+    pingInterval:  10000,
+  });
+
+  setBinSocketServer(io);
+
+  io.on('connection', (socket) => {
+    slog('INFO', `Client connected: ${socket.id}`);
+    socket.on('join', (rooms: string[]) => {
+      if (!Array.isArray(rooms)) return;
+      rooms.forEach(room => socket.join(room));
+      slog('INFO', `${socket.id} joined rooms: ${rooms.join(', ')}`);
+    });
+    socket.on('leave', (rooms: string[]) => {
+      if (!Array.isArray(rooms)) return;
+      rooms.forEach(room => socket.leave(room));
+    });
+    socket.on('disconnect', () => slog('INFO', `Client disconnected: ${socket.id}`));
+  });
 
   startKafkaConsumer().catch(err =>
     slog('WARN', `Kafka unavailable — running without live bin data: ${err.message}`),
