@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { getBin, upsertBin, computeWeight } from '../store';
+import { emitBinUpdate } from '../socket';
 import { WasteCategory } from '../types';
 
 export default async function internalRoutes(app: FastifyInstance) {
@@ -36,6 +37,12 @@ export default async function internalRoutes(app: FastifyInstance) {
       ...(hasLng  ? { lng: Number(p.longitude ?? p.lng) } : {}),
       last_reading_at:  String(p.timestamp ?? new Date().toISOString()),
     });
+
+    emitBinUpdate('dashboard-all', 'bin:update', {
+      ...bin,
+      timestamp: bin.last_reading_at,
+    });
+
     return { ok: true, bin_id: bin.bin_id, fill_level_pct: bin.fill_level_pct };
   });
 
