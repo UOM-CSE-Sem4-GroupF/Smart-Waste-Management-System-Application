@@ -1,6 +1,6 @@
 export type BinStatus = 'ok' | 'warning' | 'critical';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
-export type WasteType = 'general' | 'recycling' | 'organic' | 'hazardous';
+export type WasteType = 'food_waste' | 'paper' | 'glass' | 'plastic' | 'general' | 'e_waste';
 export type ViewId = 'map' | 'bins' | 'route' | 'alerts' | 'analytics';
 
 export interface Bin {
@@ -9,13 +9,15 @@ export interface Bin {
   zone: string;
   lat: number;
   lng: number;
-  fill: number;       // 0–100
-  capacity: number;   // litres
+  fill: number;                 // 0–100
+  capacity: number;             // litres
   type: WasteType;
   status: BinStatus;
-  battery: number;    // 0–100
+  urgency_score: number;        // 0–100
+  estimated_weight_kg: number;
+  battery: number;              // 0–100
   offline: boolean;
-  lastPing: number;   // epoch ms
+  lastPing: number;             // epoch ms
 }
 
 export interface Alert {

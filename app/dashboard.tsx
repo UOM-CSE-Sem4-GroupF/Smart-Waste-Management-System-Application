@@ -20,8 +20,9 @@ const VIEW_TITLES: Record<ViewId, string> = {
   analytics: 'Analytics',
 };
 
-const POLL_MS  = 10000;
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+const POLL_MS        = 10000;
+const API_BASE       = process.env.NEXT_PUBLIC_API_BASE_URL  ?? 'http://localhost:8000';
+const BIN_STATUS_URL = process.env.NEXT_PUBLIC_BIN_STATUS_URL ?? 'http://localhost:3002';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}/api/v1${path}`, init);
@@ -33,6 +34,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 type F3BinState = {
   bin_id: string; fill_level_pct: number; urgency_status: string;
+  urgency_score: number; estimated_weight_kg: number;
   waste_category: string; volume_litres: number; zone_id: string;
   lat: number; lng: number; battery_pct: number; last_reading_at: string;
 };
@@ -49,26 +51,30 @@ type F3Job = {
 };
 
 const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
-const WASTE_TYPE_MAP: Record<string, string> = {
-  general: 'general', food_waste: 'organic', paper: 'recycling',
-  glass: 'recycling', plastic: 'recycling', e_waste: 'hazardous',
-};
+
+function mapUrgencyToStatus(urgency: string): BinStatus {
+  if (urgency === 'critical') return 'critical';
+  if (urgency === 'normal')   return 'ok';
+  return 'warning';
+}
 
 function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
   const items = Array.isArray(raw) ? raw : (raw.data ?? []);
   return items.map(b => ({
-    id:       b.bin_id,
-    label:    b.bin_id,
-    zone:     b.zone_id,
-    lat:      b.lat,
-    lng:      b.lng,
-    fill:     b.fill_level_pct,
-    capacity: b.volume_litres,
-    type:     (WASTE_TYPE_MAP[b.waste_category] ?? 'general') as WasteType,
-    status:   (b.urgency_status === 'critical' ? 'critical' : b.urgency_status === 'normal' ? 'ok' : 'warning') as BinStatus,
-    battery:  b.battery_pct ?? 100,
-    offline:  false,
-    lastPing: Date.parse(b.last_reading_at),
+    id:                  b.bin_id,
+    label:               b.bin_id,
+    zone:                b.zone_id,
+    lat:                 b.lat,
+    lng:                 b.lng,
+    fill:                b.fill_level_pct,
+    capacity:            b.volume_litres,
+    type:                (b.waste_category ?? 'general') as WasteType,
+    status:              mapUrgencyToStatus(b.urgency_status),
+    urgency_score:       b.urgency_score       ?? 0,
+    estimated_weight_kg: b.estimated_weight_kg ?? 0,
+    battery:             80,
+    offline:             false,
+    lastPing:            Date.parse(b.last_reading_at),
   }));
 }
 
@@ -175,27 +181,35 @@ export default function Dashboard() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchAll]);
 
-  // Socket.IO — real-time bin and vehicle updates
+  // Socket.IO — bin:update from bin-status service
   useEffect(() => {
-    const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket'] });
+    const socket = socketIo(BIN_STATUS_URL, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
-    // Join dashboard room so server emits reach this client
     socket.on('connect', () => socket.emit('join', ['dashboard-all']));
 
     socket.on('bin:update', (raw: Record<string, unknown>) => {
       const bin_id = String(raw.bin_id ?? '');
       if (!bin_id) return;
-      const fill         = Number(raw.fill_level_pct ?? 0);
-      const urgency      = String(raw.urgency_status ?? 'normal');
-      const status       = (urgency === 'critical' ? 'critical' : urgency === 'normal' ? 'ok' : 'warning') as BinStatus;
-      const lastPing     = Date.parse(String(raw.timestamp ?? new Date().toISOString()));
-      const battery      = raw.battery_pct !== undefined ? Number(raw.battery_pct) : undefined;
-      // Only patch mutable fields; preserve lat/lng loaded from REST (telemetry has no location)
+      // Preserve lat/lng from REST load; patch all other mutable fields
       setBins(prev => prev.map(b => b.id === bin_id ? {
-        ...b, fill, status, lastPing,
-        ...(battery !== undefined ? { battery } : {}),
+        ...b,
+        fill:                Number(raw.fill_level_pct        ?? b.fill),
+        status:              mapUrgencyToStatus(String(raw.urgency_status ?? 'normal')),
+        type:                (raw.waste_category              ?? b.type)   as WasteType,
+        urgency_score:       Number(raw.urgency_score         ?? b.urgency_score),
+        estimated_weight_kg: Number(raw.estimated_weight_kg   ?? b.estimated_weight_kg),
+        lastPing:            Date.parse(String(raw.timestamp  ?? new Date().toISOString())),
       } : b));
     });
+
+    return () => { socket.disconnect(); };
+  }, []);
+
+  // Socket.IO — vehicle positions and job alerts from notification service
+  useEffect(() => {
+    const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => socket.emit('join', ['dashboard-all', 'fleet-ops']));
 
     socket.on('vehicle:position', (vehicle: Vehicle) => {
       setVehicles(prev => {

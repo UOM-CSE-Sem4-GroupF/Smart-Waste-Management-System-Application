@@ -42,7 +42,7 @@ export function handle(topic: string, payload: Record<string, unknown>, timestam
           timestamp,
         });
       }
-      emitToRoom('dashboard-all', 'bin:update', { ...payload, timestamp });
+      // bin:update is now emitted by bin-status-service after enriching the store
       break;
     }
 
