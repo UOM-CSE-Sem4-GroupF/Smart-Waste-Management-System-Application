@@ -23,6 +23,7 @@ export interface BinState {
   zone_id:             string;
   lat:                 number;
   lng:                 number;
+  battery_pct:         number;
   last_reading_at:     string;
   last_collected_at?:  string;
 }
@@ -45,4 +46,5 @@ export interface BinProcessedPayload {
   zone_id?:            string;
   latitude?:           number;
   longitude?:          number;
+  battery_pct?:        number;
 }

@@ -36,7 +36,7 @@ type F3BinState = {
   bin_id: string; fill_level_pct: number; urgency_status: string;
   urgency_score: number; estimated_weight_kg: number;
   waste_category: string; volume_litres: number; zone_id: string;
-  lat: number; lng: number; last_reading_at: string;
+  lat: number; lng: number; battery_pct: number; last_reading_at: string;
 };
 type F3Vehicle = {
   vehicle_id: string; lat: number; lng: number; heading: number;
@@ -137,7 +137,7 @@ export default function Dashboard() {
   const [bins, setBins]             = useState<Bin[]>([]);
   const [alerts, setAlerts]         = useState<Alert[]>([]);
   const [routes, setRoutes]         = useState<Route[]>([]);
-  const [analytics, setAnalytics]   = useState<AnalyticsData>(EMPTY_ANALYTICS);
+  const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
   const [zones, setZones]           = useState<Zone[]>([]);
   const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
   const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'error'>('connecting');

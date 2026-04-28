@@ -18,11 +18,12 @@ export default async function internalRoutes(app: FastifyInstance) {
     const raw_status      = String(p.urgency_status  ?? '');
     const urgency_status  = (['critical','urgent','monitor','normal'].includes(raw_status) ? raw_status : fill_level_pct >= 90 ? 'critical' : fill_level_pct >= 75 ? 'urgent' : fill_level_pct >= 50 ? 'monitor' : 'normal') as 'critical' | 'urgent' | 'monitor' | 'normal';
 
-    // Only overwrite location fields if the telemetry actually provides them;
+    // Only overwrite location/battery fields if the telemetry actually provides them;
     // otherwise keep whatever is already in the store (e.g. seed data coordinates).
-    const hasLat = p.latitude !== undefined || p.lat !== undefined;
-    const hasLng = p.longitude !== undefined || p.lng !== undefined;
-    const hasZone = p.zone_id !== undefined || p.zone !== undefined;
+    const hasLat     = p.latitude    !== undefined || p.lat     !== undefined;
+    const hasLng     = p.longitude   !== undefined || p.lng     !== undefined;
+    const hasZone    = p.zone_id     !== undefined || p.zone    !== undefined;
+    const hasBattery = p.battery_pct !== undefined;
 
     const bin = upsertBin({
       bin_id,
@@ -32,9 +33,10 @@ export default async function internalRoutes(app: FastifyInstance) {
       estimated_weight_kg,
       waste_category,
       volume_litres,
-      ...(hasZone ? { zone_id: String(p.zone_id ?? p.zone) } : {}),
-      ...(hasLat  ? { lat: Number(p.latitude ?? p.lat) } : {}),
-      ...(hasLng  ? { lng: Number(p.longitude ?? p.lng) } : {}),
+      ...(hasZone    ? { zone_id:     String(p.zone_id ?? p.zone) }       : {}),
+      ...(hasLat     ? { lat:         Number(p.latitude ?? p.lat) }        : {}),
+      ...(hasLng     ? { lng:         Number(p.longitude ?? p.lng) }       : {}),
+      ...(hasBattery ? { battery_pct: Number(p.battery_pct) }              : {}),
       last_reading_at:  String(p.timestamp ?? new Date().toISOString()),
     });
 
