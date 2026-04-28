@@ -1,0 +1,1 @@
+{"version":3,"file":"collectionTrigger.d.ts","sourceRoot":"","sources":["../../src/rules/collectionTrigger.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAEH,MAAM,WAAW,uBAAuB;IACtC,aAAa,EAAE,OAAO,CAAC;IACvB,MAAM,CAAC,EAAE,MAAM,CAAC;CACjB;AAED,wBAAgB,uBAAuB,CACrC,YAAY,EAAE,MAAM,EACpB,YAAY,EAAE,OAAO,GACpB,uBAAuB,CAmBzB"}

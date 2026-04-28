@@ -2,9 +2,10 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import pino from 'pino';
 import { Server as SocketServer } from 'socket.io';
-import binsRoutes     from './routes/bins';
-import zonesRoutes    from './routes/zones';
+import binsRoutes from './routes/bins';
+import zonesRoutes from './routes/zones';
 import internalRoutes from './routes/internal';
 import { setBinSocketServer } from './socket';
 import { startKafkaConsumer } from './kafka/consumer';
@@ -12,52 +13,97 @@ import { startKafkaConsumer } from './kafka/consumer';
 const SERVICE = 'bin-status-service';
 const VERSION = '1.0.0';
 
-const slog = (level: string, msg: string) =>
-  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: SERVICE, message: msg }) + '\n');
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  transport:
+    process.env.NODE_ENV !== 'production'
+      ? {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+          },
+        }
+      : undefined,
+});
 
 async function start() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false, // We'll use pino directly
+  });
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, { origin: '*' });
 
-  app.get('/health', async () => ({ status: 'ok', service: SERVICE, version: VERSION }));
+  // Health check
+  app.get('/health', async () => ({
+    status: 'ok',
+    service: SERVICE,
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+  }));
 
+  // Register routes
   await app.register(binsRoutes);
   await app.register(zonesRoutes);
   await app.register(internalRoutes);
 
+  // Start server
   const PORT = Number(process.env.PORT ?? 3002);
-  await app.listen({ port: PORT, host: '0.0.0.0' });
-  slog('INFO', `Listening on :${PORT}`);
+  const HOST = process.env.HOST ?? '0.0.0.0';
 
+  await app.listen({ port: PORT, host: HOST });
+  logger.info(`${SERVICE} v${VERSION} listening on ${HOST}:${PORT}`);
+
+  // Setup Socket.IO
   const io = new SocketServer(app.server, {
-    cors:          { origin: '*' },
-    path:          '/socket.io',
-    transports:    ['websocket', 'polling'],
-    pingTimeout:   20000,
-    pingInterval:  10000,
+    cors: { origin: '*' },
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
+    pingTimeout: 20000,
+    pingInterval: 10000,
   });
 
   setBinSocketServer(io);
 
   io.on('connection', (socket) => {
-    slog('INFO', `Client connected: ${socket.id}`);
+    logger.debug({ client_id: socket.id }, 'Socket.IO client connected');
+
     socket.on('join', (rooms: string[]) => {
       if (!Array.isArray(rooms)) return;
-      rooms.forEach(room => socket.join(room));
-      slog('INFO', `${socket.id} joined rooms: ${rooms.join(', ')}`);
+      rooms.forEach((room) => socket.join(room));
+      logger.debug({ client_id: socket.id, rooms }, 'Socket.IO client joined rooms');
     });
+
     socket.on('leave', (rooms: string[]) => {
       if (!Array.isArray(rooms)) return;
-      rooms.forEach(room => socket.leave(room));
+      rooms.forEach((room) => socket.leave(room));
+      logger.debug({ client_id: socket.id, rooms }, 'Socket.IO client left rooms');
     });
-    socket.on('disconnect', () => slog('INFO', `Client disconnected: ${socket.id}`));
+
+    socket.on('disconnect', () => {
+      logger.debug({ client_id: socket.id }, 'Socket.IO client disconnected');
+    });
+
+    socket.on('error', (error) => {
+      logger.error({ client_id: socket.id, error }, 'Socket.IO error');
+    });
   });
 
-  startKafkaConsumer().catch(err =>
-    slog('WARN', `Kafka unavailable — running without live bin data: ${err.message}`),
-  );
+  // Start Kafka consumer
+  try {
+    await startKafkaConsumer();
+    logger.info('Kafka consumers started successfully');
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Kafka consumer failed to start — running without live bin data',
+    );
+  }
 }
 
-start().catch(err => { console.error(err); process.exit(1); });
+start().catch((error) => {
+  logger.error(error, 'Failed to start service');
+  process.exit(1);
+});
