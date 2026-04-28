@@ -1,71 +1,108 @@
 import { FastifyInstance } from 'fastify';
-import { emitToRoom } from '../socket';
-import { JobAssignedBody, JobCancelledBody, RouteUpdatedBody, JobEscalatedBody } from '../types';
+import { emitToRoom, emitToRooms, isDriverConnected } from '../socket';
+import { sendPush } from '../fcm';
+import {
+  JobAssignedBody,
+  JobCreatedBody,
+  JobCompletedBody,
+  JobEscalatedBody,
+  JobCancelledBody,
+  VehiclePositionBody,
+  AlertDeviationBody,
+} from '../types';
 
 export default async function internalRoutes(app: FastifyInstance) {
-  // Called by orchestrator: notify driver of job assignment
   app.post<{ Body: JobAssignedBody }>('/internal/notify/job-assigned', async (req) => {
-    const { job_id, driver_id, vehicle_id, zone_id, waste_category, estimated_bins, route_id } = req.body;
-    const ts = new Date().toISOString();
+    const body = req.body;
+    const { driver_id, job_id, job_type, total_bins } = body;
 
-    emitToRoom(`driver-${driver_id}`, 'job:status', {
-      event: 'job_assigned', job_id, vehicle_id, zone_id, waste_category, estimated_bins, route_id, ts,
-    });
-    emitToRoom('dashboard-all', 'job:status', {
-      event: 'job_assigned', job_id, driver_id, vehicle_id, zone_id, ts,
-    });
+    emitToRoom(`driver-${driver_id}`, 'job:assigned', body);
 
-    return { delivered: true, ts };
+    const connected = await isDriverConnected(driver_id);
+    if (!connected) {
+      await sendPush(
+        driver_id,
+        { title: 'New collection job assigned', body: `You have a new ${job_type} collection — ${total_bins} bins` },
+        { job_id, job_type, screen: 'job-detail' },
+      );
+    }
+
+    return { delivered: true };
   });
 
-  // Called by orchestrator: notify driver job was cancelled
+  app.post<{ Body: JobCreatedBody }>('/internal/notify/job-created', async (req) => {
+    const body = req.body;
+    emitToRooms([`dashboard-zone-${body.zone_id}`, 'dashboard-all', 'fleet-ops'], 'job:created', body);
+    return { delivered: true };
+  });
+
+  app.post<{ Body: JobCompletedBody }>('/internal/notify/job-completed', async (req) => {
+    const body = req.body;
+    const { zone_id, driver_id, job_id } = body;
+
+    emitToRooms([`dashboard-zone-${zone_id}`, 'dashboard-all', 'fleet-ops'], 'job:completed', body);
+    emitToRoom(`driver-${driver_id}`, 'job:completed', { job_id, message: 'Job complete. Well done!' });
+
+    const connected = await isDriverConnected(driver_id);
+    if (!connected) {
+      await sendPush(driver_id, { title: 'Job completed', body: 'Job complete. Well done!' }, { job_id });
+    }
+
+    return { delivered: true };
+  });
+
+  app.post<{ Body: JobEscalatedBody }>('/internal/notify/job-escalated', async (req) => {
+    const { job_id, zone_id, reason, urgent_bins } = req.body;
+
+    emitToRooms([`dashboard-zone-${zone_id}`, 'dashboard-all', 'alerts-all'], 'alert:escalated', {
+      job_id,
+      zone_id,
+      reason,
+      message: 'Emergency collection needs manual dispatch — no vehicle available',
+      urgent_bins,
+    });
+
+    return { delivered: true };
+  });
+
   app.post<{ Body: JobCancelledBody }>('/internal/notify/job-cancelled', async (req) => {
-    const { job_id, reason, driver_id } = req.body;
-    const ts = new Date().toISOString();
+    const body = req.body;
+    const { zone_id, driver_id, reason, job_id } = body;
 
-    if (driver_id) emitToRoom(`driver-${driver_id}`, 'job:status', { event: 'job_cancelled', job_id, reason, ts });
-    emitToRoom('dashboard-all', 'job:status', { event: 'job_cancelled', job_id, driver_id, reason, ts });
+    emitToRooms([`dashboard-zone-${zone_id}`, 'dashboard-all'], 'job:cancelled', body);
 
-    return { delivered: true, ts };
+    if (driver_id) {
+      emitToRoom(`driver-${driver_id}`, 'job:cancelled', body);
+      const connected = await isDriverConnected(driver_id);
+      if (!connected) {
+        await sendPush(driver_id, { title: 'Job cancelled', body: reason }, { job_id });
+      }
+    }
+
+    return { delivered: true };
   });
 
-  // Called by orchestrator: notify driver route was updated (e.g. after reassignment)
-  app.post<{ Body: RouteUpdatedBody }>('/internal/notify/route-updated', async (req) => {
-    const { job_id, driver_id, route_id } = req.body;
-    const ts = new Date().toISOString();
+  app.post<{ Body: VehiclePositionBody }>('/internal/notify/vehicle-position', async (req) => {
+    const body = req.body;
+    const { zone_id, vehicle_id, driver_id, cargo_utilisation_pct, weight_limit_warning } = body;
 
-    emitToRoom(`driver-${driver_id}`, 'job:status', { event: 'route_updated', job_id, route_id, ts });
-    emitToRoom('dashboard-all', 'job:status', { event: 'route_updated', job_id, driver_id, route_id, ts });
+    emitToRooms([`dashboard-zone-${zone_id}`, 'dashboard-all', 'fleet-ops'], 'vehicle:position', body);
 
-    return { delivered: true, ts };
-  });
-
-  // Called by telemetry-bridge: push a bin telemetry update to the dashboard
-  app.post<{ Body: Record<string, unknown> }>('/internal/notify/bin-update', async (req) => {
-    const payload = req.body;
-    const ts      = new Date().toISOString();
-    const urgency = Number(payload.urgency_score ?? payload.fill_level_pct ?? 0);
-
-    emitToRoom('dashboard-all', 'bin:update', { ...payload, timestamp: ts });
-    if (urgency >= 80) {
-      emitToRoom('dashboard-all', 'alert:urgent', {
-        bin_id:         payload.bin_id,
-        urgency_score:  urgency,
-        fill_level_pct: payload.fill_level_pct,
-        zone_id:        payload.zone_id,
-        timestamp:      ts,
+    if (weight_limit_warning) {
+      emitToRooms(['fleet-ops', 'dashboard-all'], 'alert:weight-limit', {
+        vehicle_id,
+        driver_id,
+        cargo_utilisation_pct,
+        message: `Vehicle ${vehicle_id} is at ${cargo_utilisation_pct.toFixed(0)}% cargo capacity`,
       });
     }
-    return { delivered: true, ts };
+
+    return { delivered: true };
   });
 
-  // Called by orchestrator: alert supervisors that a job needs manual intervention
-  app.post<{ Body: JobEscalatedBody }>('/internal/notify/job-escalated', async (req) => {
-    const { job_id, zone_id, reason } = req.body;
-    const ts = new Date().toISOString();
-
-    emitToRoom('dashboard-all', 'alert:urgent', { event: 'job_escalated', job_id, zone_id, reason, ts });
-
-    return { delivered: true, ts };
+  app.post<{ Body: AlertDeviationBody }>('/internal/notify/alert-deviation', async (req) => {
+    const body = req.body;
+    emitToRooms(['fleet-ops', `dashboard-zone-${body.zone_id}`, 'alerts-all'], 'alert:deviation', body);
+    return { delivered: true };
   });
 }
