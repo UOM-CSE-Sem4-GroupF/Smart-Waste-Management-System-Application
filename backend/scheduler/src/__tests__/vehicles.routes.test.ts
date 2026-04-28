@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Fastify from 'fastify';
-import vehiclesRoutes from '../routes/vehicles';
-import { vehicles, resetStore, assignJob } from '../store';
+import readRoutes from '../api/readRoutes';
+import { clearAll, assignJob } from '../db/queries';
 
 function buildApp() {
   const app = Fastify({ logger: false });
-  app.register(vehiclesRoutes);
+  app.register(readRoutes);
   return app;
 }
 
-beforeEach(() => resetStore());
+beforeEach(() => clearAll());
 
 describe('GET /api/v1/vehicles', () => {
   it('returns all 4 seed vehicles', async () => {
@@ -22,14 +22,23 @@ describe('GET /api/v1/vehicles', () => {
 describe('GET /api/v1/vehicles/active', () => {
   it('returns empty when all vehicles are available', async () => {
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
-    expect(res.json().data).toHaveLength(0);
+    expect(res.json().vehicles).toHaveLength(0);
   });
 
   it('returns only vehicles currently on a job', async () => {
     assignJob('JOB-1', 'DRV-001', 'LORRY-01', 300);
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
-    expect(res.json().data).toHaveLength(1);
-    expect(res.json().data[0].vehicle_id).toBe('LORRY-01');
+    expect(res.json().vehicles).toHaveLength(1);
+    expect(res.json().vehicles[0].vehicle_id).toBe('LORRY-01');
+  });
+
+  it('includes driver and cargo context in active vehicle', async () => {
+    assignJob('JOB-2', 'DRV-002', 'LORRY-02', 1000);
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
+    const v = res.json().vehicles[0];
+    expect(v.driver_id).toBe('DRV-002');
+    expect(v.cargo_limit_kg).toBe(8000);
+    expect(v.cargo_weight_kg).toBe(0);
   });
 });
 

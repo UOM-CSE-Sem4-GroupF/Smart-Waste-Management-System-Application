@@ -2,11 +2,11 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import internalRoutes    from './routes/internal';
-import collectionsRoutes from './routes/collections';
-import vehiclesRoutes    from './routes/vehicles';
-import driversRoutes     from './routes/drivers';
-import { startKafkaConsumer } from './kafka/consumer';
+import internalRoutes  from './api/internalRoutes';
+import collectionRoutes from './api/collectionRoutes';
+import readRoutes       from './api/readRoutes';
+import { startVehicleLocationConsumer }  from './consumers/vehicleLocationConsumer';
+import { startVehicleDeviationConsumer } from './consumers/vehicleDeviationConsumer';
 
 const SERVICE = 'scheduler-service';
 const VERSION = '1.0.0';
@@ -18,21 +18,23 @@ async function start() {
   const app = Fastify({ logger: false });
 
   await app.register(helmet, { contentSecurityPolicy: false });
-  await app.register(cors, { origin: '*' });
+  await app.register(cors,   { origin: '*' });
 
   app.get('/health', async () => ({ status: 'ok', service: SERVICE, version: VERSION }));
 
   await app.register(internalRoutes);
-  await app.register(collectionsRoutes);
-  await app.register(vehiclesRoutes);
-  await app.register(driversRoutes);
+  await app.register(collectionRoutes);
+  await app.register(readRoutes);
 
   const PORT = Number(process.env.PORT ?? 3003);
   await app.listen({ port: PORT, host: '0.0.0.0' });
   slog('INFO', `Listening on :${PORT}`);
 
-  startKafkaConsumer().catch(err =>
-    slog('WARN', `Kafka unavailable — running without live vehicle positions: ${err.message}`),
+  startVehicleLocationConsumer().catch(err =>
+    slog('WARN', `Vehicle location consumer unavailable: ${err.message}`),
+  );
+  startVehicleDeviationConsumer().catch(err =>
+    slog('WARN', `Vehicle deviation consumer unavailable: ${err.message}`),
   );
 }
 
