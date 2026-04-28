@@ -13,7 +13,7 @@ async function post(path: string, body: unknown): Promise<boolean> {
   }
 }
 
-export const notifyJobAssigned  = (body: unknown): Promise<boolean> => post('/internal/notify/job-assigned',  body);
-export const notifyJobCancelled = (body: unknown): Promise<boolean> => post('/internal/notify/job-cancelled', body);
-export const notifyRouteUpdated = (body: unknown): Promise<boolean> => post('/internal/notify/route-updated', body);
+export const notifyJobCreated   = (body: unknown): Promise<boolean> => post('/internal/notify/job-created',   body);
+export const notifyJobCompleted = (body: unknown): Promise<boolean> => post('/internal/notify/job-completed', body);
 export const notifyJobEscalated = (body: unknown): Promise<boolean> => post('/internal/notify/job-escalated', body);
+export const notifyJobCancelled = (body: unknown): Promise<boolean> => post('/internal/notify/job-cancelled', body);
