@@ -1,20 +1,36 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify from 'fastify';
-import collectionJobsRoutes from '../routes/collection-jobs';
-import { createJob, transition, clearAll } from '../store';
+import jobRoutes from '../api/jobRoutes';
+import { insertJob, clearAll } from '../db/queries';
 
-// Prevent the state machine from making real HTTP calls
-vi.mock('../state-machine/machine', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../state-machine/machine')>();
+// Prevent orchestrator workflows from making real HTTP calls
+vi.mock('../core/orchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/orchestrator')>();
   return {
     ...actual,
-    runStateMachine: vi.fn().mockResolvedValue(undefined),
+    executeEmergencyWorkflow: vi.fn().mockResolvedValue(undefined),
+    executeRoutineWorkflow:   vi.fn().mockResolvedValue(undefined),
+    completeJob:              vi.fn().mockImplementation(async (job) => {
+      // Simulate completing the job
+      job.state        = 'COMPLETED';
+      job.completed_at = new Date().toISOString();
+    }),
+    cancelJob: actual.cancelJob,
   };
 });
 
+// Prevent clients from making network calls when cancelJob is called
+vi.mock('../clients/schedulerClient', () => ({
+  dispatch:      vi.fn(),
+  releaseDriver: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../clients/notificationClient', () => ({
+  notifyDashboard: vi.fn().mockResolvedValue(undefined),
+}));
+
 function buildApp() {
   const app = Fastify({ logger: false });
-  app.register(collectionJobsRoutes);
+  app.register(jobRoutes);
   return app;
 }
 
@@ -30,23 +46,63 @@ describe('GET /api/v1/collection-jobs', () => {
     expect(res.json()).toMatchObject({ data: [], total: 0 });
   });
 
-  it('filters by state query param', async () => {
-    const j1 = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
-    const j2 = createJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
-    transition(j2, 'CANCELLED');
+  it('filters by state', async () => {
+    const j1 = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const j2 = insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    j2.state = 'CANCELLED';
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?state=CANCELLED' });
     expect(res.json().total).toBe(1);
     expect(res.json().data[0].job_id).toBe(j2.job_id);
   });
+
+  it('filters by job_type', async () => {
+    insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?job_type=routine' });
+    expect(res.json().total).toBe(1);
+  });
+
+  it('filters by zone_id', async () => {
+    insertJob({ job_type: 'emergency', zone_id: 'Zone-1', waste_category: 'general' });
+    insertJob({ job_type: 'emergency', zone_id: 'Zone-2', waste_category: 'general' });
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?zone_id=Zone-1' });
+    expect(res.json().total).toBe(1);
+  });
+});
+
+describe('GET /api/v1/collection-jobs/stats', () => {
+  it('returns stats shape with zeros when no jobs', async () => {
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs/stats' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty('total_jobs', 0);
+    expect(body).toHaveProperty('completion_rate_pct');
+    expect(body).toHaveProperty('emergency_jobs');
+    expect(body).toHaveProperty('routine_jobs');
+  });
+
+  it('returns correct counts with jobs', async () => {
+    const j1 = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const j2 = insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    j1.state = 'COMPLETED';
+    j2.state = 'ESCALATED';
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs/stats' });
+    const body = res.json();
+    expect(body.total_jobs).toBe(2);
+    expect(body.completed_jobs).toBe(1);
+    expect(body.escalated_jobs).toBe(1);
+  });
 });
 
 describe('GET /api/v1/collection-jobs/:id', () => {
-  it('returns full job details', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: ['B1'] });
+  it('returns full job with state_history and step_log', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({ method: 'GET', url: `/api/v1/collection-jobs/${job.job_id}` });
     expect(res.statusCode).toBe(200);
-    expect(res.json().job_id).toBe(job.job_id);
-    expect(res.json().bin_ids).toEqual(['B1']);
+    const body = res.json();
+    expect(body.job_id).toBe(job.job_id);
+    expect(body).toHaveProperty('state_history');
+    expect(body).toHaveProperty('step_log');
   });
 
   it('returns 404 for unknown job', async () => {
@@ -56,74 +112,75 @@ describe('GET /api/v1/collection-jobs/:id', () => {
   });
 });
 
-describe('POST /api/v1/collection-jobs/:id/accept', () => {
-  it('accepts a job in AWAITING_ACCEPTANCE and returns new state', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
-    transition(job, 'AWAITING_ACCEPTANCE');
-    const res = await buildApp().inject({
-      method: 'POST',
-      url: `/api/v1/collection-jobs/${job.job_id}/accept`,
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().state).toBe('IN_PROGRESS');
-  });
-
-  it('returns 409 when job is in wrong state', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
-    const res = await buildApp().inject({
-      method: 'POST',
-      url: `/api/v1/collection-jobs/${job.job_id}/accept`,
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe('INVALID_STATE');
-  });
-
-  it('returns 404 for unknown job', async () => {
-    const res = await buildApp().inject({ method: 'POST', url: '/api/v1/collection-jobs/NOPE/accept' });
-    expect(res.statusCode).toBe(404);
-  });
-});
-
 describe('POST /api/v1/collection-jobs/:id/cancel', () => {
-  it('cancels a job and returns CANCELLED state', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
+  it('cancels a job in CREATED state', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({
-      method: 'POST',
-      url: `/api/v1/collection-jobs/${job.job_id}/cancel`,
+      method:  'POST',
+      url:     `/api/v1/collection-jobs/${job.job_id}/cancel`,
       payload: { reason: 'test cancel' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().state).toBe('CANCELLED');
   });
 
-  it('returns 409 when job is already terminal', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
-    transition(job, 'COMPLETED');
+  it('returns 409 when job is IN_PROGRESS', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    job.state = 'IN_PROGRESS';
     const res = await buildApp().inject({
-      method: 'POST',
-      url: `/api/v1/collection-jobs/${job.job_id}/cancel`,
+      method:  'POST',
+      url:     `/api/v1/collection-jobs/${job.job_id}/cancel`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('CANNOT_CANCEL_IN_PROGRESS');
+  });
+
+  it('returns 409 when job is already COMPLETED', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    job.state = 'COMPLETED';
+    const res = await buildApp().inject({
+      method:  'POST',
+      url:     `/api/v1/collection-jobs/${job.job_id}/cancel`,
       payload: {},
     });
     expect(res.statusCode).toBe(409);
   });
 });
 
-describe('POST /api/v1/collection-jobs/:id/complete', () => {
-  it('returns 409 when job is not IN_PROGRESS', async () => {
-    const job = createJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general', bin_ids: [] });
+describe('POST /internal/jobs/:id/complete', () => {
+  it('completes an IN_PROGRESS job', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    job.state = 'IN_PROGRESS';
     const res = await buildApp().inject({
-      method: 'POST',
-      url: `/api/v1/collection-jobs/${job.job_id}/complete`,
+      method:  'POST',
+      url:     `/internal/jobs/${job.job_id}/complete`,
+      payload: {
+        job_id: job.job_id, vehicle_id: 'VEH-01', driver_id: 'DRV-01',
+        bins_collected: [], bins_skipped: [],
+        actual_weight_kg: 50, actual_distance_km: 3, route_gps_trail: [],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().state).toBe('COMPLETED');
+  });
+
+  it('returns 409 when job is not IN_PROGRESS', async () => {
+    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const res = await buildApp().inject({
+      method:  'POST',
+      url:     `/internal/jobs/${job.job_id}/complete`,
+      payload: { job_id: job.job_id, vehicle_id: '', driver_id: '', bins_collected: [], bins_skipped: [], actual_weight_kg: 0, actual_distance_km: 0, route_gps_trail: [] },
     });
     expect(res.statusCode).toBe(409);
   });
 });
 
 describe('POST /api/v1/collection-jobs', () => {
-  it('creates a new job and returns 201 with job_id', async () => {
+  it('creates a new emergency job and returns 201', async () => {
     const res = await buildApp().inject({
-      method: 'POST',
-      url: '/api/v1/collection-jobs',
+      method:  'POST',
+      url:     '/api/v1/collection-jobs',
       payload: { zone_id: 'Z1', bin_ids: ['B1'], waste_category: 'general' },
     });
     expect(res.statusCode).toBe(201);
