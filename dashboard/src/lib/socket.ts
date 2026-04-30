@@ -24,3 +24,8 @@ export function disconnectSocket() {
   socket?.disconnect()
   socket = null
 }
+
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__socket = { get: () => socket }
+}
