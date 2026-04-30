@@ -1,0 +1,72 @@
+# Architecture: Database-per-Service Mapping (v3.0 Schema)
+
+This document outlines how to split the unified PostgreSQL schema into independent databases for each service, fulfilling the "Database-per-Service" pattern.
+
+## 1. Inventory & Metadata Service (The Foundation)
+**Responsible for**: Defining the static/semi-static entities that all other services reference.
+- **Owned Tables**:
+  - `f2.waste_categories` (Reference data)
+  - `f2.city_zones` (GIS boundaries)
+  - `f2.bin_clusters` (Physical locations)
+  - `f2.bins` (Physical hardware registry)
+- **Communication Pattern**:
+  - Other services treat this as **Read-Only**.
+  - Update events (e.g., "New Bin Installed") are published to Kafka for other services to update their local caches.
+
+## 2. Bin Status & Telemetry Service
+**Responsible for**: Current state of bins and IoT hardware health.
+- **Owned Tables**:
+  - `f2.bin_current_state` (Flink-driven status)
+  - `f2.devices` (Sensor configuration and firmware status)
+  - `f2.zone_snapshots` (Aggregated statistics)
+- **Cross-Service Dependency**:
+  - **Reads** bin metadata from Inventory API.
+  - **Writes** collection triggers to Kafka (`waste.bin.processed`).
+
+## 3. Workflow Orchestrator (The "Brain")
+**Responsible for**: Managing the state machine of every collection job.
+- **Owned Tables**:
+  - `f3.collection_jobs` (Core job state)
+  - `f3.emergency_job_details` / `f3.routine_job_details` (Context)
+  - `f3.job_state_transitions` (Immutable audit log)
+  - `f3.bin_collection_records` (Stop-by-stop progress)
+  - `f3.job_step_results` (API call logs)
+- **Communication Pattern**:
+  - **Listens** to Kafka for triggers (ML predictions or Bin Status alerts).
+  - **Calls** Scheduler API for vehicle/driver assignment.
+
+## 4. Fleet & Driver Management Service
+**Responsible for**: Managing lorries, drivers, and their schedules.
+- **Owned Tables**:
+  - `f2.vehicles`
+  - `f2.vehicle_waste_categories`
+  - `f3.drivers`
+  - `f3.routine_schedules` (The rules for when/where to collect)
+  - `f3.driver_assignment_history`
+- **Communication Pattern**:
+  - **Exposes** an API for the Orchestrator to "Claim a Vehicle/Driver".
+
+## 5. Decision Support & Routing Service (ML + OR-Tools)
+**Responsible for**: Route plans and model metrics.
+- **Owned Tables**:
+  - `f2.route_plans` (The optimized paths)
+  - `f2.model_performance` (MLflow metrics integration)
+- **Cross-Service Dependency**:
+  - **Reads** current fill levels from Bin Status API.
+  - **Publishes** final routes to Kafka (`waste.routes.optimized`).
+
+## 6. Analytics & Audit Service
+**Responsible for**: Long-term performance and historical records.
+- **Owned Tables**:
+  - `f3.job_execution_metrics`
+  - `f3.vehicle_weight_logs`
+- **Communication Pattern**:
+  - **Listens** to `waste.job.completed` Kafka topic to calculate and record final costs/efficiency.
+
+---
+
+## Technical Transitions (How to handle Joins?)
+Since you can no longer `JOIN` across databases, you must use these strategies:
+1.  **ID-only references**: Store `bin_id` in the Orchestrator DB, but fetch the `lat/lng` from the Bin Status API when needed.
+2.  **Data Denormalization**: Copy essential but persistent data (like `cluster_id` or `waste_category_name`) into the Orchestrator DB at the moment the job is created.
+3.  **Kafka Materialized Views**: Every service listens to "Category Updated" events and keeps its own local `waste_categories` table for weight calculations.
