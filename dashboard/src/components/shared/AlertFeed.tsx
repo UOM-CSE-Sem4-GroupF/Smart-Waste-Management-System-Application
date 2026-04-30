@@ -27,9 +27,10 @@ interface AlertFeedProps {
 }
 
 export function AlertFeed({ limit = 20 }: AlertFeedProps) {
-  const alerts     = useAlertStore((s) => s.alerts.filter((a) => !a.dismissed))
+  const allAlerts  = useAlertStore((s) => s.alerts)
   const dismiss    = useAlertStore((s) => s.dismissAlert)
   const clearAll   = useAlertStore((s) => s.clearAll)
+  const alerts     = allAlerts.filter((a) => !a.dismissed)
 
   const visible = alerts.slice(0, limit)
 
