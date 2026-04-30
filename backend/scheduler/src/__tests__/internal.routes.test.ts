@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify from 'fastify';
 import internalRoutes from '../routes/internal';
-import { drivers, vehicles, resetStore } from '../store';
+import { vehicles, drivers, activeJobs, resetStore } from '../store';
+
+// Prevent dispatch from calling the real notification service
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
 
 function buildApp() {
   const app = Fastify({ logger: false });
@@ -9,66 +12,83 @@ function buildApp() {
   return app;
 }
 
-beforeEach(() => resetStore());
+beforeEach(() => {
+  resetStore();
+  vi.clearAllMocks();
+});
 
-describe('POST /internal/scheduler/assign', () => {
-  it('assigns an available driver and vehicle, returns their ids', async () => {
-    const res = await buildApp().inject({
-      method: 'POST',
-      url: '/internal/scheduler/assign',
-      payload: { job_id: 'JOB-1', zone_id: 'Zone-1', waste_category: 'general', planned_weight_kg: 200 },
-    });
+describe('POST /internal/scheduler/dispatch', () => {
+  const payload = {
+    job_id: 'JOB-1',
+    clusters: [{ cluster_id: 'C1', lat: 6.9, lng: 79.8, cluster_name: 'Cluster 1' }],
+    bins_to_collect: [{
+      bin_id: 'B1', cluster_id: 'C1', lat: 6.9, lng: 79.8,
+      waste_category: 'general', fill_level_pct: 80,
+      estimated_weight_kg: 50, urgency_score: 85, predicted_full_at: null,
+    }],
+    total_estimated_weight_kg: 50,
+    waste_category: 'general',
+    zone_id: 1,
+    priority: 8,
+  };
+
+  it('returns vehicle_id and driver_id on success', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/internal/scheduler/dispatch', payload });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.driver_id).toBeDefined();
+    expect(body.success).toBe(true);
     expect(body.vehicle_id).toBeDefined();
-    expect(body.assigned_at).toBeDefined();
-    // driver should now be marked unavailable
-    expect(drivers.get(body.driver_id)!.available).toBe(false);
+    expect(body.driver_id).toBeDefined();
+    expect(body.route_plan_id).toBeDefined();
   });
 
-  it('returns 409 when no driver is available', async () => {
-    drivers.forEach(d => { d.available = false; });
-    const res = await buildApp().inject({
-      method: 'POST',
-      url: '/internal/scheduler/assign',
-      payload: { job_id: 'JOB-1', zone_id: 'Zone-1', waste_category: 'general', planned_weight_kg: 200 },
-    });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe('NO_DRIVER_AVAILABLE');
+  it('marks vehicle and driver as dispatched', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/internal/scheduler/dispatch', payload });
+    const { vehicle_id, driver_id } = res.json();
+    expect(vehicles.get(vehicle_id)?.status).toBe('dispatched');
+    expect(drivers.get(driver_id)?.status).toBe('dispatched');
   });
 
   it('returns 409 when no vehicle supports the category', async () => {
     const res = await buildApp().inject({
-      method: 'POST',
-      url: '/internal/scheduler/assign',
-      payload: { job_id: 'JOB-1', zone_id: 'Zone-1', waste_category: 'radioactive', planned_weight_kg: 100 },
+      method: 'POST', url: '/internal/scheduler/dispatch',
+      payload: { ...payload, waste_category: 'radioactive' },
     });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe('NO_VEHICLE_AVAILABLE');
+    expect(res.json().reason).toBe('NO_VEHICLE_AVAILABLE');
   });
 
-  it('respects exclude_driver_ids', async () => {
-    // Exclude all Zone-1 drivers — should still assign from another zone
-    const zone1Drivers = [...drivers.values()].filter(d => d.zone_id === 'Zone-1').map(d => d.driver_id);
-    const res = await buildApp().inject({
-      method: 'POST',
-      url: '/internal/scheduler/assign',
-      payload: { job_id: 'JOB-1', zone_id: 'Zone-1', waste_category: 'general', planned_weight_kg: 100, exclude_driver_ids: zone1Drivers },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(zone1Drivers).not.toContain(res.json().driver_id);
+  it('calls notification service fire-and-forget', async () => {
+    await buildApp().inject({ method: 'POST', url: '/internal/scheduler/dispatch', payload });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
 
 describe('POST /internal/scheduler/release', () => {
-  it('releases the job and returns released:true', async () => {
+  it('returns released:true even for unknown job_id', async () => {
     const res = await buildApp().inject({
-      method: 'POST',
-      url: '/internal/scheduler/release',
-      payload: { job_id: 'JOB-UNKNOWN' },
+      method: 'POST', url: '/internal/scheduler/release', payload: { job_id: 'NOPE' },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ released: true, job_id: 'JOB-UNKNOWN' });
+    expect(res.json().released).toBe(true);
+  });
+
+  it('frees vehicle and driver when a known job is released', async () => {
+    // Set up a dispatched job
+    activeJobs.set('JOB-2', {
+      job_id: 'JOB-2', state: 'DISPATCHED',
+      assigned_vehicle_id: 'LORRY-01', assigned_driver_id: 'DRV-001',
+      zone_id: 1, waste_category: 'general', total_bins: 1, created_at: new Date().toISOString(),
+    });
+    vehicles.get('LORRY-01')!.status = 'dispatched';
+    drivers.get('DRV-001')!.status = 'dispatched';
+
+    await buildApp().inject({
+      method: 'POST', url: '/internal/scheduler/release', payload: { job_id: 'JOB-2' },
+    });
+
+    expect(vehicles.get('LORRY-01')?.status).toBe('available');
+    expect(drivers.get('DRV-001')?.status).toBe('available');
+    expect(activeJobs.has('JOB-2')).toBe(false);
   });
 });

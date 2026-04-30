@@ -4,11 +4,6 @@ import { emitToRoom } from '../socket';
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'notification', message: msg }) + '\n');
 
-// Spec topics
-const TOPICS = [
-  'waste.bin.dashboard.updates',    // Pre-enriched bin updates from bin-status
-  'waste.vehicle.dashboard.updates', // Pre-enriched vehicle updates from scheduler
-];
 
 function buildKafka() {
   const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
@@ -129,28 +124,32 @@ interface VehicleUpdateEvent {
   payload: VehiclePositionPayload | JobProgressPayload;
 }
 
+function makeRunner(kafka: ReturnType<typeof buildKafka>, groupId: string, topic: string) {
+  return async () => {
+    const consumer = kafka.consumer({ groupId });
+    await consumer.connect();
+    await consumer.subscribe({ topic, fromBeginning: false });
+    await consumer.run({
+      eachMessage: async ({ topic: t, message }) => {
+        if (!message.value) return;
+        try {
+          const envelope = JSON.parse(message.value.toString());
+          const event = envelope as DashboardUpdateEvent | VehicleUpdateEvent;
+          const timestamp = String(envelope.timestamp ?? new Date().toISOString());
+          handle(t, event, timestamp);
+        } catch (e) {
+          slog('ERROR', `Handler error on ${t}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    });
+    slog('INFO', `Kafka consumer ready — group=${groupId} topic=${topic}`);
+  };
+}
+
 export async function startKafkaConsumer(): Promise<void> {
-  const kafka    = buildKafka();
-  const consumer = kafka.consumer({ groupId: 'notification-vehicle-updates' });
-
-  await consumer.connect();
-  await consumer.subscribe({ topics: TOPICS, fromBeginning: false });
-
-  await consumer.run({
-    eachMessage: async ({ topic, message }) => {
-      if (!message.value) return;
-      try {
-        const envelope = JSON.parse(message.value.toString());
-        const event = envelope as DashboardUpdateEvent | VehicleUpdateEvent;
-        const timestamp = String(envelope.timestamp ?? new Date().toISOString());
-        handle(topic, event, timestamp);
-      } catch (e) {
-        slog('ERROR', `Handler error on ${topic}: ${e instanceof Error ? e.message : String(e)}`);
-        // Do not crash — continue consuming
-      }
-    },
-  });
-
-  slog('INFO', `Kafka consumer ready — subscribed to ${TOPICS.length} topics`);
+  const kafka = buildKafka();
+  // Spec §6.1 — separate group IDs for each topic
+  await makeRunner(kafka, 'notification-bin-updates',     'waste.bin.dashboard.updates')();
+  await makeRunner(kafka, 'notification-vehicle-updates', 'waste.vehicle.dashboard.updates')();
 }
 

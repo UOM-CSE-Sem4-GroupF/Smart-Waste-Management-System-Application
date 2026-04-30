@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import {
   DispatchRequest,
+  BinCollectionRecord,
   JobAssignedNotification,
   VehiclePositionUpdate
 } from '../types';
@@ -14,6 +15,8 @@ import {
   binCollectionRecords,
   activeJobs
 } from '../store';
+
+const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
@@ -120,7 +123,7 @@ export default async function internalRoutes(app: FastifyInstance) {
       created_at: new Date().toISOString()
     });
 
-    // Step 7: Call notification service (mock - in real system this would be HTTP call)
+    // Step 7: Call notification service — push job assignment to driver
     const notification: JobAssignedNotification = {
       driver_id: driver.driver_id,
       vehicle_id: vehicle.vehicle_id,
@@ -131,8 +134,11 @@ export default async function internalRoutes(app: FastifyInstance) {
     };
     slog('INFO', `Job ${job_id} assigned to ${driver.driver_id}/${vehicle.vehicle_id}`);
 
-    // Mock notification call - in real system: POST /internal/notify/job-assigned
-    // await app.inject({ method: 'POST', url: '/internal/notify/job-assigned', payload: notification });
+    fetch(`${NOTIFICATION_URL}/internal/notify/job-assigned`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notification),
+    }).catch(e => slog('WARN', `Notification call failed for job ${job_id}: ${(e as Error).message}`));
 
     return {
       success: true,
@@ -153,12 +159,13 @@ export default async function internalRoutes(app: FastifyInstance) {
   });
 
   // POST /internal/notify/alert-deviation - Mock endpoint for notification service
-  app.post('/internal/notify/alert-deviation', async (req) => {
-    const { vehicle_id, driver_id, job_id, deviation_metres, duration_seconds, message } = req.body;
-    slog('WARN', `Deviation alert: ${vehicle_id} ${message}`);
-    // In real system, this would send Socket.IO alert to fleet-ops room
-    return { acknowledged: true };
-  });
+  app.post<{ Body: { vehicle_id: string; driver_id: string; job_id: string; deviation_metres: number; duration_seconds: number; message: string } }>(
+    '/internal/notify/alert-deviation', async (req) => {
+      const { vehicle_id, message } = req.body;
+      slog('WARN', `Deviation alert: ${vehicle_id} ${message}`);
+      return { acknowledged: true };
+    },
+  );
 
   // POST /internal/jobs/:job_id/vehicle-full - Called when vehicle reaches weight limit
   app.post<{ Params: { job_id: string } }>('/internal/jobs/:job_id/vehicle-full', async (req) => {
@@ -181,5 +188,20 @@ export default async function internalRoutes(app: FastifyInstance) {
       slog('INFO', `Job ${job_id} completed`);
     }
     return { acknowledged: true };
+  });
+
+  // POST /internal/scheduler/release - Called by orchestrator on job cancel/complete
+  app.post<{ Body: { job_id: string } }>('/internal/scheduler/release', async (req) => {
+    const { job_id } = req.body;
+    const job = activeJobs.get(job_id);
+    if (job) {
+      const vehicle = vehicles.get(job.assigned_vehicle_id);
+      const driver  = drivers.get(job.assigned_driver_id);
+      if (vehicle) vehicle.status = 'available';
+      if (driver)  driver.status  = 'available';
+      activeJobs.delete(job_id);
+      slog('INFO', `Released vehicle/driver for job ${job_id}`);
+    }
+    return { released: true };
   });
 }

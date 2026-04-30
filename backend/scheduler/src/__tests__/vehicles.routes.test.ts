@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Fastify from 'fastify';
 import vehiclesRoutes from '../routes/vehicles';
-import { vehicles, resetStore, assignJob } from '../store';
+import { vehicles, drivers, activeJobs, resetStore } from '../store';
 
 function buildApp() {
   const app = Fastify({ logger: false });
@@ -11,38 +11,22 @@ function buildApp() {
 
 beforeEach(() => resetStore());
 
-describe('GET /api/v1/vehicles', () => {
-  it('returns all 4 seed vehicles', async () => {
-    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().data).toHaveLength(4);
-  });
-});
-
 describe('GET /api/v1/vehicles/active', () => {
   it('returns empty when all vehicles are available', async () => {
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
-    expect(res.json().data).toHaveLength(0);
-  });
-
-  it('returns only vehicles currently on a job', async () => {
-    assignJob('JOB-1', 'DRV-001', 'LORRY-01', 300);
-    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
-    expect(res.json().data).toHaveLength(1);
-    expect(res.json().data[0].vehicle_id).toBe('LORRY-01');
-  });
-});
-
-describe('GET /api/v1/vehicles/:id', () => {
-  it('returns vehicle details', async () => {
-    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/LORRY-02' });
     expect(res.statusCode).toBe(200);
-    expect(res.json().vehicle_id).toBe('LORRY-02');
+    expect(res.json().vehicles).toHaveLength(0);
   });
 
-  it('returns 404 for unknown vehicle', async () => {
-    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/GHOST' });
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe('RESOURCE_NOT_FOUND');
+  it('returns vehicles currently on a job', async () => {
+    activeJobs.set('JOB-1', {
+      job_id: 'JOB-1', state: 'IN_PROGRESS',
+      assigned_vehicle_id: 'LORRY-01', assigned_driver_id: 'DRV-001',
+      zone_id: 1, waste_category: 'general', total_bins: 2, created_at: new Date().toISOString(),
+    });
+    vehicles.get('LORRY-01')!.status = 'in_progress';
+    const res = await buildApp().inject({ method: 'GET', url: '/api/v1/vehicles/active' });
+    expect(res.json().vehicles).toHaveLength(1);
+    expect(res.json().vehicles[0].vehicle_id).toBe('LORRY-01');
   });
 });

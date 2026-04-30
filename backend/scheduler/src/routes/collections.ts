@@ -1,14 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import {
-  BinCollectedRequest,
-  BinSkipRequest,
-  JobProgressResponse,
-  activeJobs,
-  binCollectionRecords,
-  routePlans,
-  vehicles,
-  drivers
-} from '../store';
+import { BinCollectedRequest, BinSkipRequest, JobProgressResponse } from '../types';
+import { activeJobs, binCollectionRecords, routePlans, vehicles, drivers } from '../store';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
@@ -32,14 +24,14 @@ export default async function collectionsRoutes(app: FastifyInstance) {
     // Validate job exists and is IN_PROGRESS
     const job = activeJobs.get(job_id);
     if (!job || job.state !== 'IN_PROGRESS') {
-      return reply.code(404).send({ error: 'JOB_NOT_FOUND', message: `Job ${job_id} not found or not in progress` });
+      return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Job ${job_id} not found or not in progress` });
     }
 
     // Validate bin belongs to this job
     const binKey = `${job_id}_${bin_id}`;
     const binRecord = binCollectionRecords.get(binKey);
     if (!binRecord) {
-      return reply.code(404).send({ error: 'BIN_NOT_FOUND', message: `Bin ${bin_id} not found in job ${job_id}` });
+      return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Bin ${bin_id} not found in job ${job_id}` });
     }
 
     // Check if bin already collected
@@ -130,17 +122,21 @@ export default async function collectionsRoutes(app: FastifyInstance) {
     const { job_id, bin_id } = req.params;
     const { reason, notes } = req.body;
 
+    if (!reason) {
+      return reply.code(400).send({ error: 'VALIDATION_ERROR', message: 'reason is required' });
+    }
+
     // Validate job exists and is IN_PROGRESS
     const job = activeJobs.get(job_id);
     if (!job || job.state !== 'IN_PROGRESS') {
-      return reply.code(404).send({ error: 'JOB_NOT_FOUND', message: `Job ${job_id} not found or not in progress` });
+      return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Job ${job_id} not found or not in progress` });
     }
 
     // Validate bin belongs to this job
     const binKey = `${job_id}_${bin_id}`;
     const binRecord = binCollectionRecords.get(binKey);
     if (!binRecord) {
-      return reply.code(404).send({ error: 'BIN_NOT_FOUND', message: `Bin ${bin_id} not found in job ${job_id}` });
+      return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Bin ${bin_id} not found in job ${job_id}` });
     }
 
     // Check if bin already processed
@@ -188,7 +184,7 @@ export default async function collectionsRoutes(app: FastifyInstance) {
 
     const job = activeJobs.get(job_id);
     if (!job) {
-      return reply.code(404).send({ error: 'JOB_NOT_FOUND', message: `Job ${job_id} not found` });
+      return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Job ${job_id} not found` });
     }
 
     const driver = drivers.get(job.assigned_driver_id);

@@ -178,26 +178,22 @@ async function handleVehicleDeviation(event: VehicleDeviationEvent): Promise<voi
   if (!driver) return;
 
   const message = `${vehicles.get(vehicle_id)?.name || vehicle_id} is ${deviation_metres}m off planned route`;
-
-  // Call notification service
-  // In real system: POST /internal/notify/alert-deviation
   slog('WARN', `Deviation alert: ${message}`);
 
-  // Mock notification - in real system would make HTTP call to notification service
-  const alert = {
-    vehicle_id,
-    driver_id: driver.driver_id,
-    job_id,
-    deviation_metres,
-    duration_seconds,
-    message
-  };
-
-  // Forward to notification service topic or direct call
-  await producer.send({
-    topic: 'waste.notifications.alerts',
-    messages: [{ value: JSON.stringify(alert) }]
-  });
+  const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
+  fetch(`${NOTIFICATION_URL}/internal/notify/alert-deviation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      vehicle_id,
+      driver_id: driver.driver_id,
+      job_id,
+      zone_id: activeJobs.get(job_id)?.zone_id ?? 0,
+      deviation_metres,
+      duration_seconds,
+      message,
+    }),
+  }).catch(e => slog('WARN', `Deviation notification failed: ${(e as Error).message}`));
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
