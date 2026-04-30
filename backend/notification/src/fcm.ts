@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { getUserAttribute } from './keycloak';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'notification', message: msg }) + '\n');
@@ -41,9 +42,16 @@ export async function sendPush(
     return; // Firebase not initialized
   }
 
-  // In a real deployment, fetch fcmToken from Keycloak user attributes.
-  // For now, we assume the token would be passed in or fetched from a user store.
-  const fcmToken = process.env[`FCM_TOKEN_${driverId}`];
+  // Try to load fcmToken from Keycloak user attributes (preferred in prod)
+  let fcmToken: string | null = null;
+  try {
+    fcmToken = await getUserAttribute(driverId, 'fcm_token');
+  } catch {}
+
+  // Fallback to env-based token for local/dev scenarios
+  if (!fcmToken) {
+    fcmToken = process.env[`FCM_TOKEN_${driverId}`] ?? null;
+  }
 
   if (!fcmToken) {
     slog('WARN', `No FCM token available for driver ${driverId}`);
