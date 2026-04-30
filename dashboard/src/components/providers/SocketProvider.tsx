@@ -28,7 +28,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     if (!session?.accessToken) return
 
     const sock = getSocket(session.accessToken)
-    setSocket(sock) // triggers re-render → consumers get the real socket
+
+    // Use connect/disconnect events instead of synchronous setState in effect body
+    // (synchronous setState triggers cascading renders — React warning)
+    const onConnect    = () => setSocket(sock)
+    const onDisconnect = () => setSocket(null)
+    sock.on('connect',    onConnect)
+    sock.on('disconnect', onDisconnect)
+    // Already connected (e.g. token refresh) — defer to avoid sync setState
+    if (sock.connected) queueMicrotask(() => setSocket(sock))
 
     // ── Bin and zone events (from Bin Status Service via Kafka) ──
     sock.on('bin:update',   (payload) => updateBin(payload))
@@ -50,6 +58,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     sock.on('alert:weight-limit', (payload) => addAlert({ ...payload, type: 'weight-limit' }))
 
     return () => {
+      sock.off('connect',    onConnect)
+      sock.off('disconnect', onDisconnect)
       sock.off('bin:update')
       sock.off('zone:stats')
       sock.off('alert:urgent')
@@ -62,6 +72,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       sock.off('alert:deviation')
       sock.off('alert:weight-limit')
     }
+  // Zustand store actions are stable references (never change), so omitting them
+  // from deps is intentional — we only want to reconnect when the token changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.accessToken])
 
   return (
