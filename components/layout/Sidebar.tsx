@@ -1,14 +1,15 @@
 'use client';
 
-import { MapIcon, BinsIcon, RouteIcon, AlertsIcon, AnalyticsIcon, SettingsIcon } from '@/components/icons/NavIcons';
+import { MapIcon, BinsIcon, JobsIcon, AlertsIcon, AnalyticsIcon, HistoryIcon, SettingsIcon } from '@/components/icons/NavIcons';
 import type { Alert, ViewId } from '@/lib/types';
 
 const NAV: { id: ViewId; Icon: React.FC<{ color?: string }>; label: string }[] = [
-  { id: 'map',       Icon: MapIcon,       label: 'Live Map'  },
-  { id: 'bins',      Icon: BinsIcon,      label: 'Bins'      },
-  { id: 'route',     Icon: RouteIcon,     label: 'Routes'    },
-  { id: 'alerts',    Icon: AlertsIcon,    label: 'Alerts'    },
-  { id: 'analytics', Icon: AnalyticsIcon, label: 'Analytics' },
+  { id: 'map',       Icon: MapIcon,       label: 'Live Map'   },
+  { id: 'bins',      Icon: BinsIcon,      label: 'Bins'       },
+  { id: 'jobs',      Icon: JobsIcon,      label: 'Jobs'       },
+  { id: 'alerts',    Icon: AlertsIcon,    label: 'Alerts'     },
+  { id: 'analytics', Icon: AnalyticsIcon, label: 'Analytics'  },
+  { id: 'history',   Icon: HistoryIcon,   label: 'History'    },
 ];
 
 interface Props {
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function Sidebar({ active, onNav, alerts }: Props) {
-  const unread = alerts.filter(a => !a.read).length;
+  const unread = alerts.filter(a => !a.acknowledged).length;
 
   return (
     <div style={{

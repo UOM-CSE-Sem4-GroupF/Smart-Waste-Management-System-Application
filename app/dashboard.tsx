@@ -7,17 +7,22 @@ import Sidebar from '@/components/layout/Sidebar';
 import PulseDot from '@/components/ui/PulseDot';
 import MapView from '@/components/views/MapView';
 import BinsView from '@/components/views/BinsView';
-import RoutesView from '@/components/views/RoutesView';
+import JobsView from '@/components/views/JobsView';
 import AlertsView from '@/components/views/AlertsView';
 import AnalyticsView from '@/components/views/AnalyticsView';
-import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId, BinStatus, WasteType } from '@/lib/types';
+import HistoryView from '@/components/views/HistoryView';
+import type {
+  Bin, Alert, Route, Job, AnalyticsData, Zone, Vehicle,
+  ViewId, BinStatus, WasteType, JobState, JobType,
+} from '@/lib/types';
 
 const VIEW_TITLES: Record<ViewId, string> = {
   map:       'Live Map',
   bins:      'Bins Overview',
-  route:     'Route Optimisation',
+  jobs:      'Job Management',
   alerts:    'Alerts & Notifications',
   analytics: 'Analytics',
+  history:   'Historical Data',
 };
 
 const POLL_MS        = 10000;
@@ -30,7 +35,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// ── F3 → legacy shape adapters ───────────────────────────────────────────────
+// ── Legacy API shape adapters ─────────────────────────────────────────────────
 
 type F3BinState = {
   bin_id: string; fill_level_pct: number; urgency_status: string;
@@ -48,6 +53,7 @@ type F3Zone = {
 type F3Job = {
   job_id: string; state: string; zone_id: string; waste_category: string;
   bin_ids: string[]; driver_id?: string; vehicle_id?: string;
+  job_type?: string; created_at?: string;
 };
 
 const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
@@ -113,18 +119,53 @@ function adaptRoutes(raw: { data?: F3Job[] } | F3Job[]): Route[] {
     distanceKm:  0,
     durationMin: 0,
     status:      (['COMPLETED','CLOSED'].includes(j.state) ? 'complete'
-                 : ['COLLECTING','IN_TRANSIT','ARRIVED','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
+                 : ['IN_PROGRESS','COLLECTING','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
                  : 'pending') as Route['status'],
   }));
+}
+
+function adaptJobs(raw: { data?: F3Job[] } | F3Job[]): Job[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(j => ({
+    id:               j.job_id,
+    job_type:         (j.job_type ?? 'routine') as JobType,
+    state:            (j.state ?? 'CREATED') as JobState,
+    zone_id:          j.zone_id,
+    zone_name:        `Zone ${j.zone_id}`,
+    vehicle_id:       j.vehicle_id ?? '—',
+    driver_id:        j.driver_id  ?? '—',
+    total_bins:       j.bin_ids.length,
+    bins_collected:   0,
+    planned_weight_kg:0,
+    cargo_weight_kg:  0,
+    cargo_limit_kg:   2000,
+    clusters:         [],
+    created_at:       j.created_at ?? new Date().toISOString(),
+    state_history:    [{ state: j.state ?? 'CREATED', ts: j.created_at ?? new Date().toISOString() }],
+  }));
+}
+
+function makeAlert(type: Alert['type'], e: Record<string, unknown>): Alert {
+  return {
+    id:           `alert-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    type,
+    message:      String(e.message ?? `${type} alert`),
+    bin_id:       e.bin_id      ? String(e.bin_id)      : undefined,
+    vehicle_id:   e.vehicle_id  ? String(e.vehicle_id)  : undefined,
+    job_id:       e.job_id      ? String(e.job_id)      : undefined,
+    zone_id:      e.zone_id     ? Number(e.zone_id)     : undefined,
+    received_at:  new Date().toISOString(),
+    acknowledged: false,
+  };
 }
 
 const EMPTY_ANALYTICS: AnalyticsData = {
   weeklyCollections: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({ day, count: 0 })),
   fillRateByZone: [],
   alertsByType: [
-    { type: 'critical', count: 0 },
-    { type: 'warning',  count: 0 },
-    { type: 'info',     count: 0 },
+    { type: 'urgent',    count: 0 },
+    { type: 'deviation', count: 0 },
+    { type: 'escalated', count: 0 },
   ],
   totalCollectionsThisMonth: 0,
   avgFillOnCollection: 0,
@@ -137,6 +178,7 @@ export default function Dashboard() {
   const [bins, setBins]             = useState<Bin[]>([]);
   const [alerts, setAlerts]         = useState<Alert[]>([]);
   const [routes, setRoutes]         = useState<Route[]>([]);
+  const [jobs, setJobs]             = useState<Job[]>([]);
   const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
   const [zones, setZones]           = useState<Zone[]>([]);
   const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
@@ -158,7 +200,14 @@ export default function Dashboard() {
       anyOk = true;
     }
     if (jobsRes.status === 'fulfilled') {
-      setRoutes(adaptRoutes(jobsRes.value as Parameters<typeof adaptRoutes>[0]));
+      const raw = jobsRes.value as Parameters<typeof adaptRoutes>[0];
+      setRoutes(adaptRoutes(raw));
+      setJobs(prev => {
+        // Merge: keep socket-updated jobs, fill gaps from REST
+        const existing = new Map(prev.map(j => [j.id, j]));
+        adaptJobs(raw).forEach(j => { if (!existing.has(j.id)) existing.set(j.id, j); });
+        return Array.from(existing.values());
+      });
       anyOk = true;
     }
     if (zonesRes.status === 'fulfilled') {
@@ -174,14 +223,14 @@ export default function Dashboard() {
     else setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
   }, []);
 
-  // Polling (slower — Socket.IO handles real-time)
+  // REST polling
   useEffect(() => {
     fetchAll();
     pollRef.current = setInterval(fetchAll, POLL_MS);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchAll]);
 
-  // Socket.IO — bin:update from bin-status service
+  // Socket.IO — bin-status service
   useEffect(() => {
     const socket = socketIo(BIN_STATUS_URL, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
@@ -190,7 +239,6 @@ export default function Dashboard() {
     socket.on('bin:update', (raw: Record<string, unknown>) => {
       const bin_id = String(raw.bin_id ?? '');
       if (!bin_id) return;
-      // Preserve lat/lng from REST load; patch all other mutable fields
       setBins(prev => prev.map(b => b.id === bin_id ? {
         ...b,
         fill:                Number(raw.fill_level_pct        ?? b.fill),
@@ -205,36 +253,122 @@ export default function Dashboard() {
     return () => { socket.disconnect(); };
   }, []);
 
-  // Socket.IO — vehicle positions and job alerts from notification service
+  // Socket.IO — orchestrator / notification service
   useEffect(() => {
     const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => socket.emit('join', ['dashboard-all', 'fleet-ops']));
 
-    socket.on('vehicle:position', (vehicle: Vehicle) => {
+    socket.on('vehicle:position', (e: Record<string, unknown>) => {
+      const v: Vehicle = {
+        id:                   String(e.vehicle_id ?? ''),
+        lat:                  Number(e.lat),
+        lng:                  Number(e.lng),
+        heading:              Number(e.heading ?? 0),
+        speed:                Number(e.speed_kmh ?? 0),
+        routeId:              e.job_id ? String(e.job_id) : undefined,
+        lastUpdate:           Date.now(),
+        cargo_utilisation_pct:Number(e.cargo_utilisation_pct ?? 0),
+        bins_collected:       Number(e.bins_collected ?? 0),
+        bins_total:           Number(e.bins_total ?? 0),
+      };
+      if (!v.id) return;
       setVehicles(prev => {
-        const idx = prev.findIndex(v => v.id === vehicle.id);
-        return idx === -1 ? [...prev, vehicle] : prev.map((v, i) => i === idx ? vehicle : v);
+        const idx = prev.findIndex(x => x.id === v.id);
+        return idx === -1 ? [...prev, v] : prev.map((x, i) => i === idx ? v : x);
       });
+    });
+
+    socket.on('job:created', (e: Record<string, unknown>) => {
+      const job: Job = {
+        id:               String(e.job_id ?? ''),
+        job_type:         (String(e.job_type ?? 'routine')) as JobType,
+        state:            'CREATED',
+        zone_id:          String(e.zone_id ?? ''),
+        zone_name:        String(e.zone_name ?? `Zone ${e.zone_id}`),
+        vehicle_id:       String(e.vehicle_id ?? '—'),
+        driver_id:        String(e.driver_id  ?? '—'),
+        total_bins:       Number(e.total_bins ?? 0),
+        bins_collected:   0,
+        planned_weight_kg:Number(e.planned_weight_kg ?? 0),
+        cargo_weight_kg:  0,
+        cargo_limit_kg:   2000,
+        clusters:         Array.isArray(e.clusters) ? e.clusters.map(String) : [],
+        created_at:       new Date().toISOString(),
+        state_history:    [{ state: 'CREATED', ts: new Date().toISOString() }],
+      };
+      if (!job.id) return;
+      setJobs(prev => prev.find(j => j.id === job.id) ? prev : [job, ...prev]);
+    });
+
+    socket.on('job:progress', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state:          (String(e.state ?? j.state)) as JobState,
+        bins_collected: Number(e.bins_collected ?? j.bins_collected),
+        cargo_weight_kg:Number(e.cargo_weight_kg ?? j.cargo_weight_kg),
+        state_history:  [...j.state_history, { state: String(e.state ?? j.state), ts: new Date().toISOString() }],
+      }));
+    });
+
+    socket.on('job:completed', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state:            'COMPLETED',
+        bins_collected:   Number(e.bins_collected ?? j.bins_collected),
+        bins_skipped:     Number(e.bins_skipped ?? 0),
+        actual_weight_kg: Number(e.actual_weight_kg ?? 0),
+        duration_minutes: Number(e.duration_minutes ?? 0),
+        completed_at:     new Date().toISOString(),
+        state_history:    [...j.state_history, { state: 'COMPLETED', ts: new Date().toISOString() }],
+      }));
+      setRoutes(prev => prev.map(r => r.id === job_id ? { ...r, status: 'complete' } : r));
+    });
+
+    socket.on('job:cancelled', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state: 'CANCELLED',
+        state_history: [...j.state_history, { state: 'CANCELLED', ts: new Date().toISOString() }],
+      }));
+      setRoutes(prev => prev.filter(r => r.id !== job_id));
+    });
+
+    socket.on('alert:urgent', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('urgent', e), ...prev]);
+    });
+
+    socket.on('alert:deviation', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('deviation', e), ...prev]);
+    });
+
+    socket.on('alert:escalated', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('escalated', e), ...prev]);
     });
 
     return () => { socket.disconnect(); };
   }, []);
 
-  const markRead = useCallback(async (id: string) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
+  const acknowledgeAlert = useCallback(async (id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
     try { await apiFetch(`/alerts/${id}/read`, { method: 'PATCH' }); } catch { /* optimistic */ }
   }, []);
 
-  const markAllRead = useCallback(async () => {
-    setAlerts(prev => prev.map(a => ({ ...a, read: true })));
+  const acknowledgeAll = useCallback(async () => {
+    setAlerts(prev => prev.map(a => ({ ...a, acknowledged: true })));
     try { await apiFetch('/alerts/read-all', { method: 'PATCH' }); } catch { /* optimistic */ }
   }, []);
 
   const statusLabel = connStatus === 'live' ? '● Live'
     : connStatus === 'error' ? '◌ Reconnecting…' : '◌ Connecting…';
   const statusColor = connStatus === 'live' ? 'var(--ok)' : 'var(--text-muted)';
-  const hasData = bins.length > 0;
+  const hasData = bins.length > 0 || jobs.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -244,6 +378,7 @@ export default function Dashboard() {
         <Sidebar active={view} onNav={setView} alerts={alerts}/>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Breadcrumb + status bar */}
           <div style={{
             height: 40, display: 'flex', alignItems: 'center', padding: '0 20px',
             borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', flexShrink: 0,
@@ -260,15 +395,16 @@ export default function Dashboard() {
           </div>
 
           <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {!hasData ? (
+            {!hasData && view !== 'history' ? (
               <EmptyKafkaState status={connStatus}/>
             ) : (
               <>
                 {view === 'map'       && <div style={{ height: '100%' }}><MapView bins={bins} vehicles={vehicles} routes={routes} zones={zones}/></div>}
                 {view === 'bins'      && <BinsView bins={bins}/>}
-                {view === 'route'     && <RoutesView bins={bins} routes={routes}/>}
-                {view === 'alerts'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
-                {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones}/>}
+                {view === 'jobs'      && <JobsView jobs={jobs}/>}
+                {view === 'alerts'    && <AlertsView alerts={alerts} onAcknowledge={acknowledgeAlert} onAcknowledgeAll={acknowledgeAll}/>}
+                {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones} bins={bins} jobs={jobs}/>}
+                {view === 'history'   && <HistoryView/>}
               </>
             )}
           </div>

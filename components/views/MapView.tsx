@@ -21,11 +21,14 @@ function fillColor(fill: number, offline: boolean): string {
 }
 
 // Density kg/L per waste type — used to estimate weight from fill + capacity
+// Values: glass/paper from CLAUDE.md spec; others estimated
 const DENSITY: Record<WasteType, number> = {
-  general:   0.15,
-  recycling: 0.08,
-  organic:   0.25,
-  hazardous: 0.12,
+  food_waste: 0.25,
+  paper:      0.10,
+  glass:      2.50,
+  plastic:    0.05,
+  general:    0.15,
+  e_waste:    0.20,
 };
 
 function estimatedKg(bin: Bin): number {
@@ -122,7 +125,7 @@ interface Filters {
   showRoutes: boolean;
 }
 
-const ALL_TYPES: WasteType[]  = ['general','recycling','organic','hazardous'];
+const ALL_TYPES: WasteType[] = ['food_waste', 'paper', 'glass', 'plastic', 'general', 'e_waste'];
 const ALL_STATUSES            = ['normal','monitor','urgent','critical','offline'];
 
 function statusFromFill(bin: Bin): string {

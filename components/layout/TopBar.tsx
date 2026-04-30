@@ -17,9 +17,10 @@ export default function TopBar({ bins, alerts }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  const critical = bins.filter(b => b.status === 'critical').length;
-  const offline  = bins.filter(b => b.offline).length;
-  const unread   = alerts.filter(a => !a.read).length;
+  const critical     = bins.filter(b => b.status === 'critical').length;
+  const offline      = bins.filter(b => b.offline).length;
+  const unacknowledged = alerts.filter(a => !a.acknowledged).length;
+  const escalated    = alerts.filter(a => !a.acknowledged && a.type === 'escalated').length;
 
   return (
     <div style={{
@@ -56,8 +57,9 @@ export default function TopBar({ bins, alerts }: Props) {
       <div style={{ display: 'flex', gap: 10, flex: 1 }}>
         <StatusChip icon={<PulseDot color="var(--ok)"/>} label="System" value="Online" color="var(--ok)"/>
         <StatusChip label="Bins Active" value={`${bins.length - offline} / ${bins.length}`} color="var(--info)"/>
-        {critical > 0 && <StatusChip label="Critical" value={critical} color="var(--critical)"/>}
-        {unread  > 0 && <StatusChip label="Alerts"   value={unread}   color="var(--warning)"/>}
+        {critical > 0 && <StatusChip label="Critical Bins" value={critical} color="var(--critical)"/>}
+        {escalated > 0 && <StatusChip label="Escalated" value={escalated} color="var(--critical)"/>}
+        {unacknowledged > 0 && <StatusChip label="Alerts" value={unacknowledged} color="var(--warning)"/>}
       </div>
 
       {/* Clock + user */}
@@ -76,9 +78,9 @@ export default function TopBar({ bins, alerts }: Props) {
           </div>
           <div>
             <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>
-              Operator
+              Supervisor
             </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 9 }}>Admin</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 9 }}>fleet-operator</div>
           </div>
         </div>
       </div>

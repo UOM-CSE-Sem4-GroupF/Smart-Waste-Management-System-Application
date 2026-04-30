@@ -21,14 +21,12 @@ export function BinsIcon({ size = 18, color = 'currentColor' }: IconProps) {
   );
 }
 
-export function RouteIcon({ size = 18, color = 'currentColor' }: IconProps) {
+export function JobsIcon({ size = 18, color = 'currentColor' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
-      <circle cx="4" cy="5" r="2" stroke={color} strokeWidth="1.5"/>
-      <circle cx="16" cy="15" r="2" stroke={color} strokeWidth="1.5"/>
-      <circle cx="16" cy="5" r="2" stroke={color} strokeWidth="1.5"/>
-      <path d="M6 5h4.5A1.5 1.5 0 0112 6.5v7A1.5 1.5 0 0013.5 15"
-        stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+      <rect x="4" y="3" width="12" height="14" rx="1.5" stroke={color} strokeWidth="1.5"/>
+      <path d="M7 7h6M7 10h6M7 13h4" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 3V2a1 1 0 012 0v1M12 3V2a1 1 0 012 0v1" stroke={color} strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -52,6 +50,16 @@ export function AnalyticsIcon({ size = 18, color = 'currentColor' }: IconProps) 
       <rect x="14" y="5" width="3" height="12" rx="0.5" fill={color} opacity="0.8"/>
       <path d="M4.5 13l6-8 5 4" stroke={color} strokeWidth="1.5"
         strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+    </svg>
+  );
+}
+
+export function HistoryIcon({ size = 18, color = 'currentColor' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      <path d="M10 4a6 6 0 100 12A6 6 0 0010 4z" stroke={color} strokeWidth="1.5"/>
+      <path d="M10 7v3l2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 4L2 2M4 4H2M4 4V2" stroke={color} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }

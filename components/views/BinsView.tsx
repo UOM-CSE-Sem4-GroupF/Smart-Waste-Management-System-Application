@@ -7,9 +7,10 @@ import type { Bin, BinStatus, WasteType } from '@/lib/types';
 interface Props { bins: Bin[] }
 
 const STATUS_COLOR: Record<BinStatus, string> = {
-  ok: 'var(--ok)',
-  warning: 'var(--warning)',
+  ok:       'var(--ok)',
+  warning:  'var(--warning)',
   critical: 'var(--critical)',
+  offline:  'var(--text-muted)',
 };
 
 const TYPE_LABEL: Record<WasteType, string> = {

@@ -8,25 +8,24 @@ export const ZONES: Zone[] = [
 ];
 
 export const BINS: Bin[] = [
-  { id: 'BIN-001', label: 'Main St & 1st Ave',    zone: 'z1', lat: 14.5995, lng: 120.9842, fill: 82, capacity: 240, type: 'general',   status: 'critical', battery: 78, offline: false, lastPing: Date.now() - 12000  },
-  { id: 'BIN-002', label: 'Harbour Rd North',      zone: 'z2', lat: 14.5921, lng: 120.9763, fill: 65, capacity: 120, type: 'recycling', status: 'warning',  battery: 55, offline: false, lastPing: Date.now() - 8000   },
-  { id: 'BIN-003', label: 'Plaza Central',          zone: 'z1', lat: 14.6020, lng: 120.9900, fill: 30, capacity: 360, type: 'organic',   status: 'ok',       battery: 92, offline: false, lastPing: Date.now() - 5000   },
-  { id: 'BIN-004', label: 'East Park Entrance',     zone: 'z3', lat: 14.6110, lng: 121.0050, fill: 91, capacity: 240, type: 'general',   status: 'critical', battery: 20, offline: false, lastPing: Date.now() - 20000  },
-  { id: 'BIN-005', label: 'Industrial Gate 3',      zone: 'z4', lat: 14.5730, lng: 120.9650, fill: 48, capacity: 660, type: 'hazardous', status: 'ok',       battery: 85, offline: false, lastPing: Date.now() - 3000   },
-  { id: 'BIN-006', label: 'Harbour Ferry Terminal', zone: 'z2', lat: 14.5880, lng: 120.9710, fill: 55, capacity: 120, type: 'recycling', status: 'warning',  battery: 61, offline: false, lastPing: Date.now() - 15000  },
-  { id: 'BIN-007', label: 'Riverside Walk',         zone: 'z1', lat: 14.6000, lng: 120.9780, fill: 12, capacity: 120, type: 'general',   status: 'ok',       battery: 99, offline: false, lastPing: Date.now() - 2000   },
-  { id: 'BIN-008', label: 'Suburb Mall Parking',    zone: 'z3', lat: 14.6180, lng: 121.0100, fill: 0,  capacity: 240, type: 'general',   status: 'ok',       battery: 0,  offline: true,  lastPing: Date.now() - 900000 },
-  { id: 'BIN-009', label: 'Market Row',             zone: 'z1', lat: 14.5960, lng: 120.9870, fill: 74, capacity: 240, type: 'organic',   status: 'warning',  battery: 43, offline: false, lastPing: Date.now() - 7000   },
-  { id: 'BIN-010', label: 'Tech Park Block B',      zone: 'z3', lat: 14.6090, lng: 121.0020, fill: 35, capacity: 360, type: 'recycling', status: 'ok',       battery: 88, offline: false, lastPing: Date.now() - 4000   },
+  { id: 'BIN-001', label: 'Main St & 1st Ave',    zone: 'z1', lat: 14.5995, lng: 120.9842, fill: 82, capacity: 240, type: 'general',   status: 'critical', urgency_score: 85, estimated_weight_kg: 29.5, battery: 78, offline: false, lastPing: Date.now() - 12000  },
+  { id: 'BIN-002', label: 'Harbour Rd North',      zone: 'z2', lat: 14.5921, lng: 120.9763, fill: 65, capacity: 120, type: 'paper',     status: 'warning',  urgency_score: 60, estimated_weight_kg: 7.8,  battery: 55, offline: false, lastPing: Date.now() - 8000   },
+  { id: 'BIN-003', label: 'Plaza Central',          zone: 'z1', lat: 14.6020, lng: 120.9900, fill: 30, capacity: 360, type: 'food_waste',status: 'ok',       urgency_score: 20, estimated_weight_kg: 27.0, battery: 92, offline: false, lastPing: Date.now() - 5000   },
+  { id: 'BIN-004', label: 'East Park Entrance',     zone: 'z3', lat: 14.6110, lng: 121.0050, fill: 91, capacity: 240, type: 'general',   status: 'critical', urgency_score: 92, estimated_weight_kg: 32.8, battery: 20, offline: false, lastPing: Date.now() - 20000  },
+  { id: 'BIN-005', label: 'Industrial Gate 3',      zone: 'z4', lat: 14.5730, lng: 120.9650, fill: 48, capacity: 660, type: 'e_waste',   status: 'ok',       urgency_score: 35, estimated_weight_kg: 63.5, battery: 85, offline: false, lastPing: Date.now() - 3000   },
+  { id: 'BIN-006', label: 'Harbour Ferry Terminal', zone: 'z2', lat: 14.5880, lng: 120.9710, fill: 55, capacity: 120, type: 'glass',     status: 'warning',  urgency_score: 55, estimated_weight_kg: 165.0,battery: 61, offline: false, lastPing: Date.now() - 15000  },
+  { id: 'BIN-007', label: 'Riverside Walk',         zone: 'z1', lat: 14.6000, lng: 120.9780, fill: 12, capacity: 120, type: 'general',   status: 'ok',       urgency_score: 8,  estimated_weight_kg: 2.2,  battery: 99, offline: false, lastPing: Date.now() - 2000   },
+  { id: 'BIN-008', label: 'Suburb Mall Parking',    zone: 'z3', lat: 14.6180, lng: 121.0100, fill: 0,  capacity: 240, type: 'general',   status: 'offline',  urgency_score: 0,  estimated_weight_kg: 0,    battery: 0,  offline: true,  lastPing: Date.now() - 900000 },
+  { id: 'BIN-009', label: 'Market Row',             zone: 'z1', lat: 14.5960, lng: 120.9870, fill: 74, capacity: 240, type: 'food_waste',status: 'warning',  urgency_score: 72, estimated_weight_kg: 44.4, battery: 43, offline: false, lastPing: Date.now() - 7000   },
+  { id: 'BIN-010', label: 'Tech Park Block B',      zone: 'z3', lat: 14.6090, lng: 121.0020, fill: 35, capacity: 360, type: 'plastic',   status: 'ok',       urgency_score: 22, estimated_weight_kg: 6.3,  battery: 88, offline: false, lastPing: Date.now() - 4000   },
 ];
 
 export const ALERTS: Alert[] = [
-  { id: 'ALT-001', sev: 'critical', binId: 'BIN-001', msg: 'Fill level exceeded 80% — schedule pickup',   ts: Date.now() - 1000 * 60 * 5,  read: false },
-  { id: 'ALT-002', sev: 'critical', binId: 'BIN-004', msg: 'Fill level at 91% — immediate pickup needed', ts: Date.now() - 1000 * 60 * 12, read: false },
-  { id: 'ALT-003', sev: 'warning',  binId: 'BIN-004', msg: 'Battery critically low (20%)',                ts: Date.now() - 1000 * 60 * 18, read: false },
-  { id: 'ALT-004', sev: 'warning',  binId: 'BIN-002', msg: 'Fill level approaching 70% threshold',        ts: Date.now() - 1000 * 60 * 30, read: true  },
-  { id: 'ALT-005', sev: 'info',     binId: 'BIN-008', msg: 'Sensor offline — no ping for 15 minutes',     ts: Date.now() - 1000 * 60 * 60, read: true  },
-  { id: 'ALT-006', sev: 'info',     binId: 'BIN-003', msg: 'Scheduled maintenance due in 2 days',         ts: Date.now() - 1000 * 60 * 90, read: true  },
+  { id: 'ALT-001', type: 'urgent',    bin_id: 'BIN-001', message: 'Fill level exceeded 80% — schedule pickup',   zone_id: 1, received_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),  acknowledged: false },
+  { id: 'ALT-002', type: 'urgent',    bin_id: 'BIN-004', message: 'Fill level at 91% — immediate pickup needed', zone_id: 3, received_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(), acknowledged: false },
+  { id: 'ALT-003', type: 'deviation', vehicle_id: 'LORRY-03', message: 'Vehicle 650m off planned route',         zone_id: 3, received_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(), acknowledged: false },
+  { id: 'ALT-004', type: 'urgent',    bin_id: 'BIN-002', message: 'Fill level approaching 70% threshold',        zone_id: 2, received_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(), acknowledged: true  },
+  { id: 'ALT-005', type: 'escalated', job_id: 'job-abc', message: 'No vehicle available for Zone 1 emergency',  zone_id: 1, received_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(), acknowledged: true  },
 ];
 
 export const ROUTE: Route = {
@@ -64,9 +63,9 @@ export const ANALYTICS: AnalyticsData = {
     { zone: 'Industrial South', avg: 48 },
   ],
   alertsByType: [
-    { type: 'critical', count: 8  },
-    { type: 'warning',  count: 21 },
-    { type: 'info',     count: 14 },
+    { type: 'urgent',    count: 8  },
+    { type: 'deviation', count: 5  },
+    { type: 'escalated', count: 3  },
   ],
   totalCollectionsThisMonth: 487,
   avgFillOnCollection: 76,
