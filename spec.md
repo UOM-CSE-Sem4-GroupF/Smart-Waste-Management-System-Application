@@ -98,6 +98,7 @@ UI components:   shadcn/ui (Radix primitives + Tailwind)
 Forms:           react-hook-form + zod
 Date handling:   date-fns
 HTTP client:     ky (typed fetch wrapper — lighter than axios)
+Theming:         next-themes (light/dark mode toggle)
 ```
 
 ---
@@ -149,35 +150,115 @@ npm install react-hook-form zod @hookform/resolvers
 # Date utilities
 npm install date-fns
 
+# Theming (dark/light mode toggle)
+npm install next-themes
+
 # Dev tools
 npm install -D @tanstack/react-query-devtools
 ```
 
-### 4.3 Tailwind config — add custom colors matching the system
+### 4.3 Design tokens — Tailwind v4 CSS custom properties
 
-Add to `tailwind.config.ts`:
+**Tailwind v4 is CSS-first — there is no `tailwind.config.ts` for color extensions.** All custom tokens live inside the `@theme inline { }` block in `src/app/globals.css`. The following tokens are already added in the project scaffold:
 
-```typescript
-extend: {
-  colors: {
-    bin: {
-      normal:   '#22c55e',   // green-500
-      monitor:  '#eab308',   // yellow-500
-      urgent:   '#f97316',   // orange-500
-      critical: '#ef4444',   // red-500
-      offline:  '#6b7280',   // gray-500
-    },
-    waste: {
-      food_waste: '#8B4513',
-      paper:      '#4169E1',
-      glass:      '#228B22',
-      plastic:    '#FF6347',
-      general:    '#808080',
-      e_waste:    '#FFD700',
-    }
-  }
+```css
+/* src/app/globals.css — inside @theme inline { ... } */
+
+/* Bin fill-level status colours */
+--color-bin-normal:   #22c55e;   /* green-500  */
+--color-bin-monitor:  #eab308;   /* yellow-500 */
+--color-bin-urgent:   #f97316;   /* orange-500 */
+--color-bin-critical: #ef4444;   /* red-500    */
+--color-bin-offline:  #6b7280;   /* gray-500   */
+
+/* Waste-category colours */
+--color-waste-food-waste: #8B4513;
+--color-waste-paper:      #4169E1;
+--color-waste-glass:      #228B22;
+--color-waste-plastic:    #FF6347;
+--color-waste-general:    #808080;
+--color-waste-e-waste:    #FFD700;
+```
+
+In JSX, reference custom colors via the CSS variable syntax:
+
+```tsx
+<div className="bg-[var(--color-bin-critical)]" />
+```
+
+Dark mode is handled automatically — the `.dark` class on `<html>` causes shadcn/Nova's `globals.css` to swap all `--color-*` variables to their dark-mode values.
+
+---
+
+### 4.4 Dark/Light mode — `next-themes`
+
+`next-themes` manages the `.dark` class on `<html>`, which Tailwind v4 and shadcn use to switch CSS variable sets.
+
+#### `src/components/providers/ThemeProvider.tsx`
+
+```tsx
+'use client'
+import { ThemeProvider as NextThemesProvider } from 'next-themes'
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      {children}
+    </NextThemesProvider>
+  )
 }
 ```
+
+#### `src/components/layout/ThemeToggle.tsx`
+
+```tsx
+'use client'
+import { useTheme } from 'next-themes'
+import { Moon, Sun } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+
+export function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle theme"
+      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+    >
+      <Sun  className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    </Button>
+  )
+}
+```
+
+**Root layout integration** — `ThemeProvider` must wrap the entire tree so `.dark` is set before any component renders:
+
+```tsx
+// src/app/layout.tsx
+import { ThemeProvider } from '@/components/providers/ThemeProvider'
+import { Providers } from './providers'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider>
+          <Providers>{children}</Providers>
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+> `suppressHydrationWarning` on `<html>` is required — `next-themes` sets the `class` attribute during hydration and React would otherwise warn about the server/client mismatch.
 
 ---
 
@@ -285,17 +366,66 @@ export const config = {
 
 ### 6.4 `src/app/login/page.tsx`
 
+Split-screen layout: dark green brand panel on the left (hidden on mobile), sign-in form on the right. Works in both light and dark mode.
+
 ```tsx
 import { signIn } from '@/auth'
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <form action={async () => { 'use server'; await signIn('keycloak') }}>
-        <button type="submit" className="...">
-          Sign in with Keycloak
-        </button>
-      </form>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left — brand panel (desktop only) */}
+      <div className="hidden lg:flex flex-col justify-between bg-green-800 p-12 text-white dark:bg-green-950">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/20">
+            {/* Swap for your logo SVG */}
+            <span className="text-lg font-bold">S</span>
+          </div>
+          <span className="text-xl font-semibold tracking-tight">SWMS Dashboard</span>
+        </div>
+        <blockquote className="space-y-3">
+          <p className="text-2xl font-medium leading-relaxed">
+            Real-time visibility across every zone, every bin, every collection run.
+          </p>
+          <footer className="text-sm text-white/60">F3 Group — University of Moratuwa</footer>
+        </blockquote>
+      </div>
+
+      {/* Right — sign-in form */}
+      <div className="flex items-center justify-center bg-background p-8">
+        <div className="mx-auto w-full max-w-sm space-y-6">
+          {/* Mobile-only logo */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <div className="h-7 w-7 rounded-lg bg-green-700" />
+            <span className="text-lg font-semibold">SWMS Dashboard</span>
+          </div>
+
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+            <p className="text-sm text-muted-foreground">
+              Sign in with your organisation account to continue
+            </p>
+          </div>
+
+          <form
+            action={async () => {
+              'use server'
+              await signIn('keycloak', { redirectTo: '/dashboard' })
+            }}
+          >
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
+            >
+              Sign in with Keycloak
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-muted-foreground">
+            Access is restricted to authorised personnel only.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -873,10 +1003,12 @@ dashboard/
 │   │           └── page.tsx            # Charts and ML predictions
 │   ├── components/
 │   │   ├── providers/
-│   │   │   └── SocketProvider.tsx
+│   │   │   ├── SocketProvider.tsx
+│   │   │   └── ThemeProvider.tsx
 │   │   ├── layout/
 │   │   │   ├── Sidebar.tsx
 │   │   │   ├── Topbar.tsx
+│   │   │   ├── ThemeToggle.tsx
 │   │   │   └── AlertBell.tsx
 │   │   ├── map/
 │   │   │   ├── CityMap.tsx             # Main Leaflet map (Client Component)
@@ -1170,16 +1302,314 @@ Section 4: State History Timeline
 
 ## 12. Component Library
 
+### 12.0 Design System
+
+The dashboard uses a **professional, data-dense aesthetic** — clean sidebar navigation, card-based content areas, and status-aware colour coding. Both light and dark modes are fully supported via CSS variable token swapping (Section 4.4). The design language is similar to modern SaaS operations dashboards: generous whitespace, subtle shadows, rounded cards, green as the primary accent.
+
+---
+
+#### Layout shell
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Topbar  h-16  sticky top-0  z-40  bg-background/95 backdrop │
+├─────────────────┬────────────────────────────────────────────┤
+│  Sidebar        │  Main content area                         │
+│  w-64  fixed    │  flex-1  overflow-y-auto  p-6 lg:p-8       │
+│  bg-background  │                                            │
+│  border-r       │                                            │
+└─────────────────┴────────────────────────────────────────────┘
+```
+
+**`src/app/dashboard/layout.tsx`:**
+
+```tsx
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      <Sidebar />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <Topbar />
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+          {children}
+        </main>
+      </div>
+    </div>
+  )
+}
+```
+
+---
+
+#### Sidebar (`src/components/layout/Sidebar.tsx`)
+
+| Property | Value |
+|---|---|
+| Width | `w-64` (256 px), never collapses |
+| Background | `bg-background` (adapts to dark mode) |
+| Right border | `border-r border-border` |
+| Logo area | `h-16` row with `border-b border-border` |
+
+**Logo area:**
+
+```tsx
+<div className="flex h-16 items-center gap-3 border-b border-border px-4">
+  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-700 text-white">
+    {/* Trash2 or Recycle icon from Lucide */}
+  </div>
+  <span className="text-sm font-semibold tracking-tight">SWMS Dashboard</span>
+</div>
+```
+
+**Nav item classes (use `cn()`):**
+
+```tsx
+// Active  — green-tinted background + green text
+const active   = 'bg-green-50 text-green-700 font-medium dark:bg-green-950/40 dark:text-green-400'
+// Inactive — muted text + subtle hover
+const inactive = 'text-muted-foreground hover:bg-accent hover:text-foreground'
+// Shared base
+const base     = 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors w-full'
+```
+
+**Section labels:**
+
+```tsx
+<p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+  General
+</p>
+```
+
+**User block (pinned to bottom):**
+
+```tsx
+<div className="mt-auto border-t border-border p-4">
+  <div className="flex items-center gap-3">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-700 text-xs font-semibold text-white">
+      {initials}
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-medium">{session.user.name}</p>
+      <p className="truncate text-xs text-muted-foreground capitalize">{session.user.role}</p>
+    </div>
+  </div>
+</div>
+```
+
+**Navigation items:**
+
+| Icon (Lucide) | Label | Route | Visible to |
+|---|---|---|---|
+| `LayoutDashboard` | Overview | `/dashboard` | all |
+| `Map` | Live Map | `/dashboard/map` | all |
+| `Trash2` | Bins | `/dashboard/bins` | all |
+| `Briefcase` | Jobs | `/dashboard/jobs` | supervisor, fleet-operator |
+| `Truck` | Fleet | `/dashboard/fleet` | fleet-operator |
+| `BarChart3` | Analytics | `/dashboard/analytics` | supervisor |
+
+Use Lucide icons throughout (included in the Nova preset).
+
+---
+
+#### Topbar (`src/components/layout/Topbar.tsx`)
+
+| Property | Value |
+|---|---|
+| Height | `h-16` |
+| Sticky | `sticky top-0 z-40` |
+| Background | `bg-background/95 backdrop-blur-sm` |
+| Bottom border | `border-b border-border` |
+
+**Layout (left → right):**
+
+```tsx
+<header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur-sm">
+  <h1 className="text-lg font-semibold">{pageTitle}</h1>
+  <div className="ml-auto flex items-center gap-2">
+    <ConnectionBadge />
+    <AlertBell />
+    <ThemeToggle />
+    <UserAvatar />
+  </div>
+</header>
+```
+
+**`AlertBell` component:**
+
+```tsx
+'use client'
+export function AlertBell() {
+  const unread = useAlertStore((s) => s.alerts.filter((a) => !a.dismissed).length)
+  return (
+    <Button variant="ghost" size="icon" className="relative" aria-label="Alerts">
+      <Bell className="h-4 w-4" />
+      {unread > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          {unread > 9 ? '9+' : unread}
+        </span>
+      )}
+    </Button>
+  )
+}
+```
+
+**`ConnectionBadge` component** (shows Socket.IO live status in topbar):
+
+```tsx
+'use client'
+const statusConfig = {
+  connected:    { label: '● Live',           className: 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400' },
+  reconnecting: { label: '⟳ Reconnecting…', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-400' },
+  disconnected: { label: '○ Disconnected',   className: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400' },
+}
+
+export function ConnectionBadge() {
+  const socket = useSocket()
+  const status = socket?.connected ? 'connected' : 'disconnected'
+  const cfg = statusConfig[status]
+  return (
+    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', cfg.className)}>
+      {cfg.label}
+    </span>
+  )
+}
+```
+
+---
+
+#### Card design pattern
+
+All content panels use the shadcn `Card` as their base:
+
+```tsx
+<Card className="rounded-xl shadow-sm">
+  <CardHeader className="pb-2">
+    <CardTitle className="text-sm font-medium text-muted-foreground">Title</CardTitle>
+  </CardHeader>
+  <CardContent>{/* content */}</CardContent>
+</Card>
+```
+
+Shadow levels: `shadow-sm` (default) → `shadow-md` (hover or elevated panels). Border radius: `rounded-xl` for cards, `rounded-lg` for buttons and inputs, `rounded-md` for badges.
+
+---
+
+#### Typography scale
+
+| Usage | Tailwind class |
+|---|---|
+| Page heading | `text-2xl font-semibold tracking-tight` |
+| Section heading | `text-lg font-semibold` |
+| Card label | `text-sm font-medium text-muted-foreground` |
+| KPI large value | `text-3xl font-bold tracking-tight` |
+| Body / table cell | `text-sm` |
+| Caption / sublabel | `text-xs text-muted-foreground` |
+
+---
+
 ### `StatCard`
+
+KPI card with optional trend indicator and icon. Used in the overview row 1 and bin detail row 1.
 
 ```tsx
 interface StatCardProps {
-  label:    string
-  value:    string | number
-  sublabel?: string
-  trend?:  'up' | 'down' | 'neutral'
-  urgent?: boolean  // red highlight if true
+  label:       string
+  value:       string | number
+  sublabel?:   string           // secondary description line
+  trend?:      'up' | 'down' | 'neutral'
+  trendValue?: string           // e.g. '+3 since last hour'
+  urgent?:     boolean          // red card variant — use for critical bin count
+  icon?:       React.ReactNode  // Lucide icon (h-4 w-4)
+  href?:       string           // makes the card a clickable link
 }
+```
+
+**Implementation:**
+
+```tsx
+import Link from 'next/link'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
+
+export function StatCard({ label, value, sublabel, trend, trendValue, urgent, icon, href }: StatCardProps) {
+  const trendStyles: Record<string, string> = {
+    up:      'text-green-600 dark:text-green-400',
+    down:    'text-red-500 dark:text-red-400',
+    neutral: 'text-muted-foreground',
+  }
+  const trendIcon = trend === 'up' ? '↑' : trend === 'down' ? '↓' : null
+
+  const inner = (
+    <Card className={cn(
+      'rounded-xl shadow-sm transition-shadow hover:shadow-md',
+      urgent && 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20',
+      href && 'cursor-pointer',
+    )}>
+      <CardContent className="pt-6">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-muted-foreground">{label}</p>
+            <p className={cn(
+              'text-3xl font-bold tracking-tight',
+              urgent && 'text-red-600 dark:text-red-400',
+            )}>
+              {value}
+            </p>
+          </div>
+          {icon && (
+            <div className={cn(
+              'rounded-lg p-2',
+              urgent
+                ? 'bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                : 'bg-muted text-muted-foreground',
+            )}>
+              {icon}
+            </div>
+          )}
+        </div>
+        {(trendValue ?? sublabel) && (
+          <p className={cn('mt-2 flex items-center gap-1 text-xs', trendStyles[trend ?? 'neutral'])}>
+            {trendIcon && <span>{trendIcon}</span>}
+            <span>{trendValue ?? sublabel}</span>
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+
+  return href ? <Link href={href} className="block">{inner}</Link> : inner
+}
+```
+
+**Overview page usage:**
+
+```tsx
+<div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <StatCard
+    label="Total Bins"        value={totalBins}
+    icon={<Trash2 className="h-4 w-4" />}
+    sublabel="Across all zones"
+  />
+  <StatCard
+    label="Urgent / Critical" value={urgentCount}
+    icon={<AlertTriangle className="h-4 w-4" />}
+    urgent={urgentCount > 0}
+    trend="down"
+    trendValue={`${urgentCount} need attention`}
+  />
+  <StatCard
+    label="Active Jobs"       value={activeJobs}
+    icon={<Briefcase className="h-4 w-4" />}
+    href="/dashboard/jobs"
+    sublabel="Tap to view all"
+  />
+  <StatCard
+    label="Vehicles On Road"  value={activeVehicles}
+    icon={<Truck className="h-4 w-4" />}
+    href="/dashboard/fleet"
+    sublabel="Active now"
+  />
+</div>
 ```
 
 ### `BinStatusBadge`
