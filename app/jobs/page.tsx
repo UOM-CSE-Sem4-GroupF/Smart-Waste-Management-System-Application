@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { BINS } from '@/lib/mock-data';
+import { useRouter } from 'next/navigation';
+import { BINS, MOCK_JOBS } from '@/mock';
 import type { Bin } from '@/lib/types';
 
-type JobStatus = 'IN_PROGRESS' | 'COMPLETED' | 'ESCALATED';
+type JobStatus = 'IN_PROGRESS' | 'COMPLETED' | 'ESCALATED' | 'CANCELLED';
 
 interface Job {
   id: string;
@@ -22,102 +23,12 @@ interface Job {
   wasteType: string;
 }
 
-const MOCK_JOBS: Job[] = [
-  {
-    id: 'JOB-001',
-    label: 'Morning Collection - Downtown Core',
-    driver: 'R. Santos',
-    vehicle: 'TRK-07',
-    status: 'IN_PROGRESS',
-    progress: 65,
-    stops: [
-      { binId: 'BIN-001', order: 1, completed: true },
-      { binId: 'BIN-009', order: 2, completed: true },
-      { binId: 'BIN-007', order: 3, completed: false },
-      { binId: 'BIN-003', order: 4, completed: false },
-    ],
-    distanceKm: 12.4,
-    durationMin: 75,
-    createdAt: Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
-    zone: 'z1',
-    wasteType: 'general',
-  },
-  {
-    id: 'JOB-002',
-    label: 'Harbor District Run',
-    driver: 'M. Cruz',
-    vehicle: 'TRK-12',
-    status: 'IN_PROGRESS',
-    progress: 30,
-    stops: [
-      { binId: 'BIN-002', order: 1, completed: false },
-      { binId: 'BIN-006', order: 2, completed: false },
-    ],
-    distanceKm: 8.2,
-    durationMin: 45,
-    createdAt: Date.now() - 1 * 60 * 60 * 1000, // 1 hour ago
-    zone: 'z2',
-    wasteType: 'recycling',
-  },
-  {
-    id: 'JOB-003',
-    label: 'East Suburbs Collection',
-    driver: 'L. Reyes',
-    vehicle: 'TRK-03',
-    status: 'COMPLETED',
-    progress: 100,
-    stops: [
-      { binId: 'BIN-004', order: 1, completed: true },
-      { binId: 'BIN-008', order: 2, completed: true },
-      { binId: 'BIN-010', order: 3, completed: true },
-    ],
-    distanceKm: 15.6,
-    durationMin: 90,
-    createdAt: Date.now() - 6 * 60 * 60 * 1000, // 6 hours ago
-    completedAt: Date.now() - 4 * 60 * 60 * 1000, // 4 hours ago
-    zone: 'z3',
-    wasteType: 'general',
-  },
-  {
-    id: 'JOB-004',
-    label: 'Industrial Waste Pickup',
-    driver: 'J. Garcia',
-    vehicle: 'TRK-09',
-    status: 'COMPLETED',
-    progress: 100,
-    stops: [
-      { binId: 'BIN-005', order: 1, completed: true },
-    ],
-    distanceKm: 5.8,
-    durationMin: 25,
-    createdAt: Date.now() - 8 * 60 * 60 * 1000, // 8 hours ago
-    completedAt: Date.now() - 7 * 60 * 60 * 1000, // 7 hours ago
-    zone: 'z4',
-    wasteType: 'hazardous',
-  },
-  {
-    id: 'JOB-005',
-    label: 'Emergency Critical Bin Response',
-    driver: 'A. Lopez',
-    vehicle: 'TRK-15',
-    status: 'ESCALATED',
-    progress: 0,
-    stops: [
-      { binId: 'BIN-001', order: 1, completed: false },
-    ],
-    distanceKm: 3.2,
-    durationMin: 15,
-    createdAt: Date.now() - 30 * 60 * 1000, // 30 min ago
-    zone: 'z1',
-    wasteType: 'general',
-  },
-];
-
 function StatusBadge({ status }: { status: JobStatus }) {
   const colors = {
     IN_PROGRESS: 'var(--accent)',
     COMPLETED: 'var(--ok)',
     ESCALATED: 'var(--critical)',
+    CANCELLED: 'var(--text-muted)',
   };
 
   return (
@@ -466,21 +377,40 @@ function JobDetailDrawer({ job, onClose }: { job: Job | null; onClose: () => voi
 }
 
 export default function JobsPage() {
+  const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const activeJobs = MOCK_JOBS.filter(job => job.status === 'IN_PROGRESS');
   const completedJobs = MOCK_JOBS.filter(job => job.status === 'COMPLETED');
 
   return (
-    <div style={{ padding: '20px', background: 'var(--bg-app)', minHeight: '100vh' }}>
+    <div style={{ padding: '20px', background: 'var(--bg-app)', minHeight: '100vh', overflowY: 'auto' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Jobs Management
-          </h1>
-          <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
-            Monitor active collection jobs and view completed operations
-          </p>
+        <div style={{ marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                Jobs Management
+              </h1>
+              <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
+                Monitor active collection jobs and view completed operations
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/')}
+              style={{
+                padding: '10px 18px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
 
         {/* Active Jobs */}

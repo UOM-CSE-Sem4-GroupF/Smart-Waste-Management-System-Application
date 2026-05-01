@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import {
   BarChart,
   Bar,
@@ -15,7 +16,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { ANALYTICS, ZONES } from '@/lib/mock-data';
+import { ANALYTICS, ZONES } from '@/mock';
 
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
@@ -286,16 +287,35 @@ function AlertsBreakdownChart() {
 }
 
 export default function AnalyticsPage() {
+  const router = useRouter();
+
   return (
     <div style={{ padding: '20px', background: 'var(--bg-app)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Analytics Dashboard
-          </h1>
-          <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
-            Monitor waste management performance and efficiency metrics
-          </p>
+        <div style={{ marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                Analytics Dashboard
+              </h1>
+              <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
+                Monitor waste management performance and efficiency metrics
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/')}
+              style={{
+                padding: '10px 18px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
 
         {/* Key Metrics */}

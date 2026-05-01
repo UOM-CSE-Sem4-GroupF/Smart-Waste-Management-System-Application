@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { BINS, ZONES } from '@/lib/mock-data';
+import { useRouter } from 'next/navigation';
+import { BINS, ZONES, MOCK_COLLECTION_HISTORY } from '@/mock';
 import type { Bin } from '@/lib/types';
 
 type JobStatus = 'COMPLETED' | 'CANCELLED';
@@ -21,136 +22,6 @@ interface CollectionJob {
   wasteType: string;
   totalWeightKg: number;
 }
-
-const MOCK_COLLECTION_HISTORY: CollectionJob[] = [
-  {
-    id: 'JOB-001',
-    label: 'Morning Collection - Downtown Core',
-    driver: 'R. Santos',
-    vehicle: 'TRK-07',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-001', order: 1, completed: true },
-      { binId: 'BIN-009', order: 2, completed: true },
-      { binId: 'BIN-007', order: 3, completed: true },
-      { binId: 'BIN-003', order: 4, completed: true },
-    ],
-    distanceKm: 12.4,
-    durationMin: 75,
-    createdAt: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
-    completedAt: Date.now() - 7 * 24 * 60 * 60 * 1000 + 75 * 60 * 1000,
-    zone: 'z1',
-    wasteType: 'general',
-    totalWeightKg: 245,
-  },
-  {
-    id: 'JOB-002',
-    label: 'Harbor District Run',
-    driver: 'M. Cruz',
-    vehicle: 'TRK-12',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-002', order: 1, completed: true },
-      { binId: 'BIN-006', order: 2, completed: true },
-    ],
-    distanceKm: 8.2,
-    durationMin: 45,
-    createdAt: Date.now() - 6 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 6 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000,
-    zone: 'z2',
-    wasteType: 'recycling',
-    totalWeightKg: 156,
-  },
-  {
-    id: 'JOB-003',
-    label: 'East Suburbs Collection',
-    driver: 'L. Reyes',
-    vehicle: 'TRK-09',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-004', order: 1, completed: true },
-      { binId: 'BIN-010', order: 2, completed: true },
-      { binId: 'BIN-008', order: 3, completed: true },
-    ],
-    distanceKm: 15.7,
-    durationMin: 92,
-    createdAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 5 * 24 * 60 * 60 * 1000 + 92 * 60 * 1000,
-    zone: 'z3',
-    wasteType: 'general',
-    totalWeightKg: 312,
-  },
-  {
-    id: 'JOB-004',
-    label: 'Industrial South Emergency',
-    driver: 'J. Garcia',
-    vehicle: 'TRK-15',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-005', order: 1, completed: true },
-    ],
-    distanceKm: 6.1,
-    durationMin: 28,
-    createdAt: Date.now() - 4 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 4 * 24 * 60 * 60 * 1000 + 28 * 60 * 1000,
-    zone: 'z4',
-    wasteType: 'hazardous',
-    totalWeightKg: 89,
-  },
-  {
-    id: 'JOB-005',
-    label: 'Downtown Core Afternoon',
-    driver: 'R. Santos',
-    vehicle: 'TRK-07',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-001', order: 1, completed: true },
-      { binId: 'BIN-009', order: 2, completed: true },
-    ],
-    distanceKm: 9.8,
-    durationMin: 52,
-    createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 3 * 24 * 60 * 60 * 1000 + 52 * 60 * 1000,
-    zone: 'z1',
-    wasteType: 'organic',
-    totalWeightKg: 178,
-  },
-  {
-    id: 'JOB-006',
-    label: 'Harbor District Evening',
-    driver: 'M. Cruz',
-    vehicle: 'TRK-12',
-    status: 'CANCELLED',
-    stops: [
-      { binId: 'BIN-002', order: 1, completed: false },
-    ],
-    distanceKm: 4.2,
-    durationMin: 0,
-    createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 + 15 * 60 * 1000,
-    zone: 'z2',
-    wasteType: 'recycling',
-    totalWeightKg: 0,
-  },
-  {
-    id: 'JOB-007',
-    label: 'East Suburbs Morning',
-    driver: 'L. Reyes',
-    vehicle: 'TRK-09',
-    status: 'COMPLETED',
-    stops: [
-      { binId: 'BIN-004', order: 1, completed: true },
-      { binId: 'BIN-010', order: 2, completed: true },
-    ],
-    distanceKm: 11.3,
-    durationMin: 67,
-    createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
-    completedAt: Date.now() - 1 * 24 * 60 * 60 * 1000 + 67 * 60 * 1000,
-    zone: 'z1',
-    wasteType: 'general',
-    totalWeightKg: 234,
-  },
-];
 
 function getZoneName(zoneId: string): string {
   return ZONES.find(z => z.id === zoneId)?.name || zoneId;
@@ -172,6 +43,7 @@ function formatTime(timestamp: number): string {
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState({
     binId: '',
     jobId: '',
@@ -215,13 +87,30 @@ export default function HistoryPage() {
   return (
     <div style={{ padding: '20px', background: 'var(--bg-app)', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Collection History
-          </h1>
-          <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
-            View and search completed collection jobs and their details
-          </p>
+        <div style={{ marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                Collection History
+              </h1>
+              <p style={{ fontSize: 16, color: 'var(--text-muted)' }}>
+                View and search completed collection jobs and their details
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/')}
+              style={{
+                padding: '10px 18px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
 
         {/* Search Filters */}
