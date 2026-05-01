@@ -26,6 +26,10 @@ export default function Dashboard() {
       router.push('/map');
     } else if (view === 'jobs') {
       router.push('/jobs');
+    } else if (view === 'analytics') {
+      router.push('/analytics');
+    } else if (view === 'history') {
+      router.push('/history');
     }
   }, [view, router]);
   const [bins]                      = useState<Bin[]>(BINS);
@@ -68,14 +72,23 @@ export default function Dashboard() {
           </div>
 
           <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {hasData ? (
-              <>
-                {view === 'history'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
-                {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones}/>}
-              </>
-            ) : (
-              <div>No data available</div>
-            )}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏠</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>
+                Smart Waste Management
+              </div>
+              <div style={{ fontSize: '16px', maxWidth: '400px' }}>
+                Use the sidebar to navigate to different sections of the dashboard.
+              </div>
+            </div>
           </div>
         </div>
       </div>
