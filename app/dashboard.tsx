@@ -24,6 +24,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (view === 'map') {
       router.push('/map');
+    } else if (view === 'jobs') {
+      router.push('/jobs');
     }
   }, [view, router]);
   const [bins]                      = useState<Bin[]>(BINS);
@@ -68,7 +70,6 @@ export default function Dashboard() {
           <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
             {hasData ? (
               <>
-                {view === 'jobs'       && <RoutesView bins={bins} routes={routes}/>}
                 {view === 'history'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
                 {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones}/>}
               </>
