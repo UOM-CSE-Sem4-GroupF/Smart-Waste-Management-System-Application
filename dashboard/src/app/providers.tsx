@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
 import { SocketProvider } from '@/components/providers/SocketProvider'
+import { MSWProvider } from '@/mocks/MSWProvider'
+import { MockSocketInjector } from '@/mocks/MockSocketInjector'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -19,13 +21,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <SessionProvider>
-      <SocketProvider>
-        <QueryClientProvider client={queryClient}>
-          {children}
-          <ReactQueryDevtools initialIsOpen={false} />
-        </QueryClientProvider>
-      </SocketProvider>
-    </SessionProvider>
+    <MSWProvider>
+      <SessionProvider>
+        <SocketProvider>
+          <QueryClientProvider client={queryClient}>
+            {process.env.NODE_ENV === 'development' && <MockSocketInjector />}
+            {children}
+            <ReactQueryDevtools initialIsOpen={false} />
+          </QueryClientProvider>
+        </SocketProvider>
+      </SessionProvider>
+    </MSWProvider>
   )
 }
