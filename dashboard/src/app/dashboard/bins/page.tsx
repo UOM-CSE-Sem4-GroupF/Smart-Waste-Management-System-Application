@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { Suspense, useMemo, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useBins } from '@/hooks/useBins'
@@ -30,7 +30,7 @@ const STATUS_OPTIONS: BinStatus[] = ['normal', 'monitor', 'urgent', 'critical', 
 const WASTE_CATEGORIES = ['food_waste', 'paper', 'glass', 'plastic', 'general', 'e_waste']
 const PAGE_SIZE = 25
 
-export default function BinsPage() {
+function BinsContent() {
   const router     = useRouter()
   const pathname   = usePathname()
   const params     = useSearchParams()
@@ -220,5 +220,13 @@ export default function BinsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function BinsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading bins…</div>}>
+      <BinsContent />
+    </Suspense>
   )
 }
