@@ -5,12 +5,9 @@ import { useVehicleStore } from '@/store/vehicleStore'
 import { useAlertStore } from '@/store/alertStore'
 import { MOCK_BINS, MOCK_VEHICLE_POSITIONS } from './handlers'
 
-// Drift vehicles around their starting positions to simulate movement
-const BASE_POSITIONS = MOCK_VEHICLE_POSITIONS.map((v) => ({ lat: v.lat, lng: v.lng }))
+const IS_DEV = process.env.NODE_ENV === 'development'
 
 export function MockSocketInjector() {
-  if (process.env.NODE_ENV !== 'development') return null
-
   const updateBin = useBinStore((s) => s.updateBin)
   const updateVehicle = useVehicleStore((s) => s.updateVehicle)
   const addAlert = useAlertStore((s) => s.addAlert)
@@ -19,6 +16,7 @@ export function MockSocketInjector() {
   const vehicleOffsets = useRef(MOCK_VEHICLE_POSITIONS.map((v) => ({ lat: v.lat, lng: v.lng })))
 
   useEffect(() => {
+    if (!IS_DEV) return
     // --- Bin fill-level updates every 8 s ---
     const binInterval = setInterval(() => {
       const bin = MOCK_BINS[Math.floor(Math.random() * MOCK_BINS.length)]
