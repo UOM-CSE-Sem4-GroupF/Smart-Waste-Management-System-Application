@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { signOut } from '@/auth'
 
 export default function UnauthorizedPage() {
   return (
@@ -14,12 +14,22 @@ export default function UnauthorizedPage() {
             Drivers should use the SWMS mobile app instead.
           </p>
         </div>
-        <Link
-          href="/login"
-          className="inline-block rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+        {/* Must sign out (clears NextAuth session + Keycloak SSO session) before
+            returning to the login page, otherwise the existing session auto-signs
+            the driver back in and the middleware loops them here again. */}
+        <form
+          action={async () => {
+            'use server'
+            await signOut({ redirectTo: '/login' })
+          }}
         >
-          Back to sign in
-        </Link>
+          <button
+            type="submit"
+            className="inline-block rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+          >
+            Back to sign in
+          </button>
+        </form>
       </div>
     </div>
   )
