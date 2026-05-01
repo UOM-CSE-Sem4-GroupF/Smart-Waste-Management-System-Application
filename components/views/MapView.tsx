@@ -1,8 +1,36 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { Map as LeafletMap, Marker, Polyline, Polygon } from 'leaflet';
-import type { Bin, Vehicle, Route, Zone, WasteType } from '@/lib/types';
+import type { Bin, Vehicle, Route, Zone } from '@/lib/types';
+
+interface Props {
+  bins: Bin[];
+  vehicles: Vehicle[];
+  routes: Route[];
+  zones: Zone[];
+}
+
+export default function MapView({ bins, vehicles, routes, zones }: Props) {
+  return (
+    <div style={{
+      height: '100%',
+      background: '#f0f0f0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: '2px dashed #ccc',
+      borderRadius: '8px',
+    }}>
+      <div style={{ textAlign: 'center', color: '#666' }}>
+        <div style={{ fontSize: '24px', marginBottom: '8px' }}>🗺️</div>
+        <div style={{ fontSize: '18px', fontWeight: 'bold' }}>Map Placeholder</div>
+        <div style={{ fontSize: '14px', marginTop: '8px' }}>
+          Interactive map would be displayed here<br/>
+          Showing {bins.length} bins, {vehicles.length} vehicles, {routes.length} routes, {zones.length} zones
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   bins: Bin[];

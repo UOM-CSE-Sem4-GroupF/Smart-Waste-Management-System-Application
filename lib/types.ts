@@ -1,7 +1,7 @@
 export type BinStatus = 'ok' | 'warning' | 'critical';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 export type WasteType = 'food_waste' | 'paper' | 'glass' | 'plastic' | 'general' | 'e_waste';
-export type ViewId = 'map' | 'bins' | 'route' | 'alerts' | 'analytics';
+export type ViewId = 'map' | 'jobs' | 'analytics' | 'history';
 
 export interface Bin {
   id: string;

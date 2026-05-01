@@ -1,239 +1,46 @@
-'use client';
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { io as socketIo } from 'socket.io-client';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import TopBar from '@/components/layout/TopBar';
 import Sidebar from '@/components/layout/Sidebar';
 import PulseDot from '@/components/ui/PulseDot';
 import MapView from '@/components/views/MapView';
-import BinsView from '@/components/views/BinsView';
 import RoutesView from '@/components/views/RoutesView';
 import AlertsView from '@/components/views/AlertsView';
 import AnalyticsView from '@/components/views/AnalyticsView';
-import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId, BinStatus, WasteType } from '@/lib/types';
+import { BINS, ALERTS, ROUTE, ANALYTICS, ZONES } from '@/lib/mock-data';
+import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId } from '@/lib/types';
 
 const VIEW_TITLES: Record<ViewId, string> = {
-  map:       'Live Map',
-  bins:      'Bins Overview',
-  route:     'Route Optimisation',
-  alerts:    'Alerts & Notifications',
+  map:       'Map',
+  jobs:      'Jobs',
   analytics: 'Analytics',
-};
-
-const POLL_MS        = 10000;
-const API_BASE       = process.env.NEXT_PUBLIC_API_BASE_URL  ?? 'http://localhost:8000';
-const BIN_STATUS_URL = process.env.NEXT_PUBLIC_BIN_STATUS_URL ?? 'http://localhost:3002';
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}/api/v1${path}`, init);
-  if (!res.ok) throw new Error(`${res.status} ${path}`);
-  return res.json();
-}
-
-// ── F3 → legacy shape adapters ───────────────────────────────────────────────
-
-type F3BinState = {
-  bin_id: string; fill_level_pct: number; urgency_status: string;
-  urgency_score: number; estimated_weight_kg: number;
-  waste_category: string; volume_litres: number; zone_id: string;
-  lat: number; lng: number; battery_pct: number; last_reading_at: string;
-};
-type F3Vehicle = {
-  vehicle_id: string; lat: number; lng: number; heading: number;
-  speed_kmh: number; current_job_id?: string; last_update: string;
-};
-type F3Zone = {
-  zone_id: string; bin_count: number; avg_fill_pct: number;
-};
-type F3Job = {
-  job_id: string; state: string; zone_id: string; waste_category: string;
-  bin_ids: string[]; driver_id?: string; vehicle_id?: string;
-};
-
-const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
-
-function mapUrgencyToStatus(urgency: string): BinStatus {
-  if (urgency === 'critical') return 'critical';
-  if (urgency === 'normal')   return 'ok';
-  return 'warning';
-}
-
-function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(b => ({
-    id:                  b.bin_id,
-    label:               b.bin_id,
-    zone:                b.zone_id,
-    lat:                 b.lat,
-    lng:                 b.lng,
-    fill:                b.fill_level_pct,
-    capacity:            b.volume_litres,
-    type:                (b.waste_category ?? 'general') as WasteType,
-    status:              mapUrgencyToStatus(b.urgency_status),
-    urgency_score:       b.urgency_score       ?? 0,
-    estimated_weight_kg: b.estimated_weight_kg ?? 0,
-    battery:             80,
-    offline:             false,
-    lastPing:            Date.parse(b.last_reading_at),
-  }));
-}
-
-function adaptZones(raw: { data?: F3Zone[] } | F3Zone[]): Zone[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map((z, i) => ({
-    id:       z.zone_id,
-    name:     z.zone_id,
-    color:    ZONE_COLORS[i % ZONE_COLORS.length],
-    binCount: z.bin_count,
-    avgFill:  z.avg_fill_pct,
-  }));
-}
-
-function adaptVehicles(raw: { data?: F3Vehicle[] } | F3Vehicle[]): Vehicle[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(v => ({
-    id:         v.vehicle_id,
-    lat:        v.lat,
-    lng:        v.lng,
-    heading:    v.heading,
-    speed:      v.speed_kmh,
-    routeId:    v.current_job_id,
-    lastUpdate: Date.parse(v.last_update),
-  }));
-}
-
-function adaptRoutes(raw: { data?: F3Job[] } | F3Job[]): Route[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(j => ({
-    id:          j.job_id,
-    label:       `${j.waste_category} – ${j.zone_id}`,
-    driver:      j.driver_id ?? '—',
-    vehicle:     j.vehicle_id ?? '—',
-    stops:       j.bin_ids.map((binId, order) => ({ binId, order, eta: '—' })),
-    distanceKm:  0,
-    durationMin: 0,
-    status:      (['COMPLETED','CLOSED'].includes(j.state) ? 'complete'
-                 : ['COLLECTING','IN_TRANSIT','ARRIVED','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
-                 : 'pending') as Route['status'],
-  }));
-}
-
-const EMPTY_ANALYTICS: AnalyticsData = {
-  weeklyCollections: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({ day, count: 0 })),
-  fillRateByZone: [],
-  alertsByType: [
-    { type: 'critical', count: 0 },
-    { type: 'warning',  count: 0 },
-    { type: 'info',     count: 0 },
-  ],
-  totalCollectionsThisMonth: 0,
-  avgFillOnCollection: 0,
-  fuelSavedLitres: 0,
-  co2SavedKg: 0,
+  history:   'History',
 };
 
 export default function Dashboard() {
   const [view, setView]             = useState<ViewId>('map');
-  const [bins, setBins]             = useState<Bin[]>([]);
-  const [alerts, setAlerts]         = useState<Alert[]>([]);
-  const [routes, setRoutes]         = useState<Route[]>([]);
-  const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
-  const [zones, setZones]           = useState<Zone[]>([]);
-  const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
-  const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const router = useRouter();
 
-  const fetchAll = useCallback(async () => {
-    const [binsRes, jobsRes, zonesRes, vehiclesRes] = await Promise.allSettled([
-      apiFetch<unknown>('/bins'),
-      apiFetch<unknown>('/collection-jobs'),
-      apiFetch<unknown>('/zones'),
-      apiFetch<unknown>('/vehicles/active'),
-    ]);
-
-    let anyOk = false;
-
-    if (binsRes.status === 'fulfilled') {
-      setBins(adaptBins(binsRes.value as Parameters<typeof adaptBins>[0]));
-      anyOk = true;
-    }
-    if (jobsRes.status === 'fulfilled') {
-      setRoutes(adaptRoutes(jobsRes.value as Parameters<typeof adaptRoutes>[0]));
-      anyOk = true;
-    }
-    if (zonesRes.status === 'fulfilled') {
-      setZones(adaptZones(zonesRes.value as Parameters<typeof adaptZones>[0]));
-      anyOk = true;
-    }
-    if (vehiclesRes.status === 'fulfilled') {
-      setVehicles(adaptVehicles(vehiclesRes.value as Parameters<typeof adaptVehicles>[0]));
-      anyOk = true;
-    }
-
-    if (anyOk) setConnStatus('live');
-    else setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
-  }, []);
-
-  // Polling (slower — Socket.IO handles real-time)
   useEffect(() => {
-    fetchAll();
-    pollRef.current = setInterval(fetchAll, POLL_MS);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fetchAll]);
+    if (view === 'map') {
+      router.push('/map');
+    }
+  }, [view, router]);
+  const [bins]                      = useState<Bin[]>(BINS);
+  const [alerts, setAlerts]         = useState<Alert[]>(ALERTS);
+  const [routes]                    = useState<Route[]>([ROUTE]);
+  const [analytics]                 = useState<AnalyticsData>(ANALYTICS);
+  const [zones]                     = useState<Zone[]>(ZONES);
+  const [vehicles]                  = useState<Vehicle[]>([]);
 
-  // Socket.IO — bin:update from bin-status service
-  useEffect(() => {
-    const socket = socketIo(BIN_STATUS_URL, { path: '/socket.io', transports: ['websocket', 'polling'] });
-
-    socket.on('connect', () => socket.emit('join', ['dashboard-all']));
-
-    socket.on('bin:update', (raw: Record<string, unknown>) => {
-      const bin_id = String(raw.bin_id ?? '');
-      if (!bin_id) return;
-      // Preserve lat/lng from REST load; patch all other mutable fields
-      setBins(prev => prev.map(b => b.id === bin_id ? {
-        ...b,
-        fill:                Number(raw.fill_level_pct        ?? b.fill),
-        status:              mapUrgencyToStatus(String(raw.urgency_status ?? 'normal')),
-        type:                (raw.waste_category              ?? b.type)   as WasteType,
-        urgency_score:       Number(raw.urgency_score         ?? b.urgency_score),
-        estimated_weight_kg: Number(raw.estimated_weight_kg   ?? b.estimated_weight_kg),
-        lastPing:            Date.parse(String(raw.timestamp  ?? new Date().toISOString())),
-      } : b));
-    });
-
-    return () => { socket.disconnect(); };
-  }, []);
-
-  // Socket.IO — vehicle positions and job alerts from notification service
-  useEffect(() => {
-    const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket', 'polling'] });
-
-    socket.on('connect', () => socket.emit('join', ['dashboard-all', 'fleet-ops']));
-
-    socket.on('vehicle:position', (vehicle: Vehicle) => {
-      setVehicles(prev => {
-        const idx = prev.findIndex(v => v.id === vehicle.id);
-        return idx === -1 ? [...prev, vehicle] : prev.map((v, i) => i === idx ? vehicle : v);
-      });
-    });
-
-    return () => { socket.disconnect(); };
-  }, []);
-
-  const markRead = useCallback(async (id: string) => {
+  const markRead = (id: string) => {
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
-    try { await apiFetch(`/alerts/${id}/read`, { method: 'PATCH' }); } catch { /* optimistic */ }
-  }, []);
+  };
 
-  const markAllRead = useCallback(async () => {
+  const markAllRead = () => {
     setAlerts(prev => prev.map(a => ({ ...a, read: true })));
-    try { await apiFetch('/alerts/read-all', { method: 'PATCH' }); } catch { /* optimistic */ }
-  }, []);
+  };
 
-  const statusLabel = connStatus === 'live' ? '● Live'
-    : connStatus === 'error' ? '◌ Reconnecting…' : '◌ Connecting…';
-  const statusColor = connStatus === 'live' ? 'var(--ok)' : 'var(--text-muted)';
   const hasData = bins.length > 0;
 
   return (
@@ -255,21 +62,18 @@ export default function Dashboard() {
               {view === 'map' && hasData && (
                 <><PulseDot color="var(--ok)"/><span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Live feed</span></>
               )}
-              <span style={{ fontSize: 10, color: statusColor }}>{statusLabel}</span>
             </span>
           </div>
 
           <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {!hasData ? (
-              <EmptyKafkaState status={connStatus}/>
-            ) : (
+            {hasData ? (
               <>
-                {view === 'map'       && <div style={{ height: '100%' }}><MapView bins={bins} vehicles={vehicles} routes={routes} zones={zones}/></div>}
-                {view === 'bins'      && <BinsView bins={bins}/>}
-                {view === 'route'     && <RoutesView bins={bins} routes={routes}/>}
-                {view === 'alerts'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
+                {view === 'jobs'       && <RoutesView bins={bins} routes={routes}/>}
+                {view === 'history'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
                 {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones}/>}
               </>
+            ) : (
+              <div>No data available</div>
             )}
           </div>
         </div>

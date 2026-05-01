@@ -4,11 +4,10 @@ import { MapIcon, BinsIcon, RouteIcon, AlertsIcon, AnalyticsIcon, SettingsIcon }
 import type { Alert, ViewId } from '@/lib/types';
 
 const NAV: { id: ViewId; Icon: React.FC<{ color?: string }>; label: string }[] = [
-  { id: 'map',       Icon: MapIcon,       label: 'Live Map'  },
-  { id: 'bins',      Icon: BinsIcon,      label: 'Bins'      },
-  { id: 'route',     Icon: RouteIcon,     label: 'Routes'    },
-  { id: 'alerts',    Icon: AlertsIcon,    label: 'Alerts'    },
-  { id: 'analytics', Icon: AnalyticsIcon, label: 'Analytics' },
+  { id: 'map',       Icon: MapIcon,       label: 'Map'       },
+  { id: 'jobs',       Icon: RouteIcon,    label: 'Jobs'      },
+  { id: 'analytics',  Icon: AnalyticsIcon, label: 'Analytics' },
+  { id: 'history',    Icon: AlertsIcon,   label: 'History'   },
 ];
 
 interface Props {
