@@ -38,7 +38,12 @@ export default function LoginPage() {
           <form
             action={async () => {
               'use server'
-              await signIn('keycloak', { redirectTo: '/dashboard' })
+              // Force Keycloak to show the credential screen instead of reusing SSO silently.
+              await signIn(
+                'keycloak',
+                { redirectTo: '/dashboard' },
+                { prompt: 'login' },
+              )
             }}
           >
             <button
