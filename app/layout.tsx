@@ -26,8 +26,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         fontFamily: 'var(--font-ibm-plex), system-ui, sans-serif',
         background: 'var(--bg-app)',
         color: 'var(--text-primary)',
-        height: '100%',
-        overflow: 'hidden',
+        minHeight: '100%',
+        overflow: 'auto',
       }}>
         {children}
       </body>

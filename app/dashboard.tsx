@@ -1,306 +1,161 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { io as socketIo } from 'socket.io-client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import TopBar from '@/components/layout/TopBar';
 import Sidebar from '@/components/layout/Sidebar';
-import PulseDot from '@/components/ui/PulseDot';
-import MapView from '@/components/views/MapView';
-import BinsView from '@/components/views/BinsView';
-import RoutesView from '@/components/views/RoutesView';
-import AlertsView from '@/components/views/AlertsView';
-import AnalyticsView from '@/components/views/AnalyticsView';
-import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId, BinStatus, WasteType } from '@/lib/types';
-
-const VIEW_TITLES: Record<ViewId, string> = {
-  map:       'Live Map',
-  bins:      'Bins Overview',
-  route:     'Route Optimisation',
-  alerts:    'Alerts & Notifications',
-  analytics: 'Analytics',
-};
-
-const POLL_MS        = 10000;
-const API_BASE       = process.env.NEXT_PUBLIC_API_BASE_URL  ?? 'http://localhost:8000';
-const BIN_STATUS_URL = process.env.NEXT_PUBLIC_BIN_STATUS_URL ?? 'http://localhost:3002';
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}/api/v1${path}`, init);
-  if (!res.ok) throw new Error(`${res.status} ${path}`);
-  return res.json();
-}
-
-// ── F3 → legacy shape adapters ───────────────────────────────────────────────
-
-type F3BinState = {
-  bin_id: string; fill_level_pct: number; urgency_status: string;
-  urgency_score: number; estimated_weight_kg: number;
-  waste_category: string; volume_litres: number; zone_id: string;
-  lat: number; lng: number; battery_pct: number; last_reading_at: string;
-};
-type F3Vehicle = {
-  vehicle_id: string; lat: number; lng: number; heading: number;
-  speed_kmh: number; current_job_id?: string; last_update: string;
-};
-type F3Zone = {
-  zone_id: string; bin_count: number; avg_fill_pct: number;
-};
-type F3Job = {
-  job_id: string; state: string; zone_id: string; waste_category: string;
-  bin_ids: string[]; driver_id?: string; vehicle_id?: string;
-};
-
-const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
-
-function mapUrgencyToStatus(urgency: string): BinStatus {
-  if (urgency === 'critical') return 'critical';
-  if (urgency === 'normal')   return 'ok';
-  return 'warning';
-}
-
-function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(b => ({
-    id:                  b.bin_id,
-    label:               b.bin_id,
-    zone:                b.zone_id,
-    lat:                 b.lat,
-    lng:                 b.lng,
-    fill:                b.fill_level_pct,
-    capacity:            b.volume_litres,
-    type:                (b.waste_category ?? 'general') as WasteType,
-    status:              mapUrgencyToStatus(b.urgency_status),
-    urgency_score:       b.urgency_score       ?? 0,
-    estimated_weight_kg: b.estimated_weight_kg ?? 0,
-    battery:             80,
-    offline:             false,
-    lastPing:            Date.parse(b.last_reading_at),
-  }));
-}
-
-function adaptZones(raw: { data?: F3Zone[] } | F3Zone[]): Zone[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map((z, i) => ({
-    id:       z.zone_id,
-    name:     z.zone_id,
-    color:    ZONE_COLORS[i % ZONE_COLORS.length],
-    binCount: z.bin_count,
-    avgFill:  z.avg_fill_pct,
-  }));
-}
-
-function adaptVehicles(raw: { data?: F3Vehicle[] } | F3Vehicle[]): Vehicle[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(v => ({
-    id:         v.vehicle_id,
-    lat:        v.lat,
-    lng:        v.lng,
-    heading:    v.heading,
-    speed:      v.speed_kmh,
-    routeId:    v.current_job_id,
-    lastUpdate: Date.parse(v.last_update),
-  }));
-}
-
-function adaptRoutes(raw: { data?: F3Job[] } | F3Job[]): Route[] {
-  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
-  return items.map(j => ({
-    id:          j.job_id,
-    label:       `${j.waste_category} – ${j.zone_id}`,
-    driver:      j.driver_id ?? '—',
-    vehicle:     j.vehicle_id ?? '—',
-    stops:       j.bin_ids.map((binId, order) => ({ binId, order, eta: '—' })),
-    distanceKm:  0,
-    durationMin: 0,
-    status:      (['COMPLETED','CLOSED'].includes(j.state) ? 'complete'
-                 : ['COLLECTING','IN_TRANSIT','ARRIVED','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
-                 : 'pending') as Route['status'],
-  }));
-}
-
-const EMPTY_ANALYTICS: AnalyticsData = {
-  weeklyCollections: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({ day, count: 0 })),
-  fillRateByZone: [],
-  alertsByType: [
-    { type: 'critical', count: 0 },
-    { type: 'warning',  count: 0 },
-    { type: 'info',     count: 0 },
-  ],
-  totalCollectionsThisMonth: 0,
-  avgFillOnCollection: 0,
-  fuelSavedLitres: 0,
-  co2SavedKg: 0,
-};
+import { BINS, ALERTS, ROUTE, ANALYTICS, ZONES, VEHICLES } from '@/mock';
+import type { Bin, Alert, Route, AnalyticsData, Zone, Vehicle, ViewId } from '@/lib/types';
 
 export default function Dashboard() {
-  const [view, setView]             = useState<ViewId>('map');
-  const [bins, setBins]             = useState<Bin[]>([]);
-  const [alerts, setAlerts]         = useState<Alert[]>([]);
-  const [routes, setRoutes]         = useState<Route[]>([]);
-  const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
-  const [zones, setZones]           = useState<Zone[]>([]);
-  const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
-  const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [view, setView] = useState<ViewId>('map');
+  const router = useRouter();
+  const [bins] = useState<Bin[]>(BINS);
+  const [alerts, setAlerts] = useState<Alert[]>(ALERTS);
+  const [routes] = useState<Route[]>([ROUTE]);
+  const [analytics] = useState<AnalyticsData>(ANALYTICS);
+  const [zones] = useState<Zone[]>(ZONES);
+  const [vehicles] = useState<Vehicle[]>(VEHICLES);
 
-  const fetchAll = useCallback(async () => {
-    const [binsRes, jobsRes, zonesRes, vehiclesRes] = await Promise.allSettled([
-      apiFetch<unknown>('/bins'),
-      apiFetch<unknown>('/collection-jobs'),
-      apiFetch<unknown>('/zones'),
-      apiFetch<unknown>('/vehicles/active'),
-    ]);
+  const handleNav = (selected: ViewId) => {
+    setView(selected);
+    router.push(`/${selected}`);
+  };
 
-    let anyOk = false;
-
-    if (binsRes.status === 'fulfilled') {
-      setBins(adaptBins(binsRes.value as Parameters<typeof adaptBins>[0]));
-      anyOk = true;
-    }
-    if (jobsRes.status === 'fulfilled') {
-      setRoutes(adaptRoutes(jobsRes.value as Parameters<typeof adaptRoutes>[0]));
-      anyOk = true;
-    }
-    if (zonesRes.status === 'fulfilled') {
-      setZones(adaptZones(zonesRes.value as Parameters<typeof adaptZones>[0]));
-      anyOk = true;
-    }
-    if (vehiclesRes.status === 'fulfilled') {
-      setVehicles(adaptVehicles(vehiclesRes.value as Parameters<typeof adaptVehicles>[0]));
-      anyOk = true;
-    }
-
-    if (anyOk) setConnStatus('live');
-    else setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
-  }, []);
-
-  // Polling (slower — Socket.IO handles real-time)
-  useEffect(() => {
-    fetchAll();
-    pollRef.current = setInterval(fetchAll, POLL_MS);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fetchAll]);
-
-  // Socket.IO — bin:update from bin-status service
-  useEffect(() => {
-    const socket = socketIo(BIN_STATUS_URL, { path: '/socket.io', transports: ['websocket', 'polling'] });
-
-    socket.on('connect', () => socket.emit('join', ['dashboard-all']));
-
-    socket.on('bin:update', (raw: Record<string, unknown>) => {
-      const bin_id = String(raw.bin_id ?? '');
-      if (!bin_id) return;
-      // Preserve lat/lng from REST load; patch all other mutable fields
-      setBins(prev => prev.map(b => b.id === bin_id ? {
-        ...b,
-        fill:                Number(raw.fill_level_pct        ?? b.fill),
-        status:              mapUrgencyToStatus(String(raw.urgency_status ?? 'normal')),
-        type:                (raw.waste_category              ?? b.type)   as WasteType,
-        urgency_score:       Number(raw.urgency_score         ?? b.urgency_score),
-        estimated_weight_kg: Number(raw.estimated_weight_kg   ?? b.estimated_weight_kg),
-        lastPing:            Date.parse(String(raw.timestamp  ?? new Date().toISOString())),
-      } : b));
-    });
-
-    return () => { socket.disconnect(); };
-  }, []);
-
-  // Socket.IO — vehicle positions and job alerts from notification service
-  useEffect(() => {
-    const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket', 'polling'] });
-
-    socket.on('connect', () => socket.emit('join', ['dashboard-all', 'fleet-ops']));
-
-    socket.on('vehicle:position', (vehicle: Vehicle) => {
-      setVehicles(prev => {
-        const idx = prev.findIndex(v => v.id === vehicle.id);
-        return idx === -1 ? [...prev, vehicle] : prev.map((v, i) => i === idx ? vehicle : v);
-      });
-    });
-
-    return () => { socket.disconnect(); };
-  }, []);
-
-  const markRead = useCallback(async (id: string) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
-    try { await apiFetch(`/alerts/${id}/read`, { method: 'PATCH' }); } catch { /* optimistic */ }
-  }, []);
-
-  const markAllRead = useCallback(async () => {
-    setAlerts(prev => prev.map(a => ({ ...a, read: true })));
-    try { await apiFetch('/alerts/read-all', { method: 'PATCH' }); } catch { /* optimistic */ }
-  }, []);
-
-  const statusLabel = connStatus === 'live' ? '● Live'
-    : connStatus === 'error' ? '◌ Reconnecting…' : '◌ Connecting…';
-  const statusColor = connStatus === 'live' ? 'var(--ok)' : 'var(--text-muted)';
-  const hasData = bins.length > 0;
+  const criticalBins = bins.filter(b => b.status === 'critical').length;
+  const warningBins = bins.filter(b => b.status === 'warning').length;
+  const offlineBins = bins.filter(b => b.offline).length;
+  const unreadAlerts = alerts.filter(a => !a.read).length;
+  const activeRoutes = routes.filter(r => r.status === 'active' || r.status === 'pending').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
       <TopBar bins={bins} alerts={alerts}/>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <Sidebar active={view} onNav={setView} alerts={alerts}/>
+        <Sidebar active={view} onNav={handleNav} alerts={alerts}/>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{
-            height: 40, display: 'flex', alignItems: 'center', padding: '0 20px',
-            borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', flexShrink: 0,
-          }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Dashboard</span>
-            <span style={{ color: 'var(--border-hi)', margin: '0 8px' }}>›</span>
-            <span style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>{VIEW_TITLES[view]}</span>
-            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-              {view === 'map' && hasData && (
-                <><PulseDot color="var(--ok)"/><span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Live feed</span></>
-              )}
-              <span style={{ fontSize: 10, color: statusColor }}>{statusLabel}</span>
-            </span>
-          </div>
+        <main style={{ flex: 1, overflow: 'auto', padding: 24, background: 'var(--bg-app)' }}>
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                  Operations Command Center
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 640, lineHeight: 1.7 }}>
+                  Monitor bin fill levels, route status, and critical alerts in a polished command view.
+                  This UI is built entirely from mock data so it stays fast and backend-free.
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleNav('map')}
+                  style={{ padding: '12px 18px', borderRadius: 10, border: '1px solid transparent', background: 'var(--accent)', color: '#0F1624', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Open Map View
+                </button>
+                <button
+                  onClick={() => handleNav('jobs')}
+                  style={{ padding: '12px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                >
+                  View Jobs
+                </button>
+              </div>
+            </div>
 
-          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {!hasData ? (
-              <EmptyKafkaState status={connStatus}/>
-            ) : (
-              <>
-                {view === 'map'       && <div style={{ height: '100%' }}><MapView bins={bins} vehicles={vehicles} routes={routes} zones={zones}/></div>}
-                {view === 'bins'      && <BinsView bins={bins}/>}
-                {view === 'route'     && <RoutesView bins={bins} routes={routes}/>}
-                {view === 'alerts'    && <AlertsView alerts={alerts} onMarkRead={markRead} onMarkAllRead={markAllRead}/>}
-                {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones}/>}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              {[
+                { label: 'Active bins', value: bins.length, accent: 'var(--accent)' },
+                { label: 'Critical bins', value: criticalBins, accent: 'var(--critical)' },
+                { label: 'Urgent bins', value: warningBins, accent: 'var(--warning)' },
+                { label: 'Offline bins', value: offlineBins, accent: '#64748B' },
+                { label: 'Active routes', value: activeRoutes, accent: 'var(--ok)' },
+                { label: 'Unread alerts', value: unreadAlerts, accent: 'var(--warning)' },
+              ].map(stat => (
+                <div key={stat.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                    {stat.label}
+                  </span>
+                  <span style={{ fontSize: 32, fontWeight: 700, color: stat.accent }}>
+                    {stat.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
 
-function EmptyKafkaState({ status }: { status: 'connecting' | 'live' | 'error' }) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', gap: 16,
-    }}>
-      <div style={{
-        width: 48, height: 48, borderRadius: '50%',
-        border: '3px solid var(--border)',
-        borderTopColor: status === 'error' ? 'var(--critical)' : 'var(--accent)',
-        animation: status !== 'error' ? 'spin 1s linear infinite' : 'none',
-      }}/>
-      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-        {status === 'connecting' && 'Connecting to backend…'}
-        {status === 'live'       && 'Waiting for Kafka data…'}
-        {status === 'error'      && 'Cannot reach backend'}
+          <section style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20 }}>
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Operational Snapshot</h2>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Mock state</span>
+              </div>
+              <div style={{ display: 'grid', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 16, borderRadius: 16, background: 'rgba(56,189,248,0.06)' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Avg fill across bins</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent)' }}>{Math.round(bins.reduce((sum, b) => sum + b.fill, 0) / bins.length)}%</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Data driven from current mock dataset</div>
+                </div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {alerts.slice(0, 3).map(alert => (
+                    <div key={alert.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: 16, borderRadius: 16, background: 'var(--bg-surface)' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{alert.msg}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Bin {alert.binId} • {alert.sev.toUpperCase()}</div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: alert.sev === 'critical' ? 'var(--critical)' : alert.sev === 'warning' ? 'var(--warning)' : 'var(--text-muted)' }}>
+                        {alert.sev}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: 24 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>Quick Actions</h3>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {([
+                    { title: 'View live map', subtitle: 'Inspect bin clusters and route positions', action: 'map' },
+                    { title: 'Manage jobs', subtitle: 'Track collection progress and completed routes', action: 'jobs' },
+                    { title: 'Review analytics', subtitle: 'Assess performance trends and zone fill rates', action: 'analytics' },
+                    { title: 'Search history', subtitle: 'Filter completed jobs and export past runs', action: 'history' },
+                  ] as const).map(item => (
+                    <button
+                      key={item.title}
+                      onClick={() => handleNav(item.action)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '16px',
+                        borderRadius: 16,
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg-surface)',
+                        cursor: 'pointer',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{item.title}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{item.subtitle}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Design Intent</h3>
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+                  This dashboard is intentionally designed for fast visual scanning, clear section hierarchy, and lightweight navigation. All data shown is mock-only, so you can focus on the UI/UX experience.
+                </p>
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
-      <div style={{ fontSize: 12, maxWidth: 340, textAlign: 'center', lineHeight: 1.7, color: 'var(--text-muted)' }}>
-        {status === 'error'
-          ? 'Check that the Fastify server is running on port 3001.'
-          : 'Dashboard populates as messages arrive on the Kafka topics.'}
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
