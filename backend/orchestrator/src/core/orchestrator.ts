@@ -24,7 +24,7 @@ export async function handleWorkflowFailure(job: CollectionJob, error: unknown):
   const msg = error instanceof Error ? error.message : String(error);
   slog('ERROR', `Workflow failure: ${msg}`, job.job_id);
   try {
-    transition(job, 'FAILED', msg);
+    await transition(job, 'FAILED', msg);
   } catch {
     // Already in a terminal state
   }
@@ -36,7 +36,7 @@ export async function executeEmergencyWorkflow(
 ): Promise<void> {
   try {
     // Step 1: Confirm bin urgency
-    transition(job, 'BIN_CONFIRMING');
+    await transition(job, 'BIN_CONFIRMING');
 
     const snapshot = await step(job, 'bin_confirmation', () =>
       getClusterSnapshot(event.zone_id).then(s => {
@@ -46,15 +46,15 @@ export async function executeEmergencyWorkflow(
     );
 
     if (!snapshot.bins.some(b => b.urgency_score >= 80)) {
-      transition(job, 'CANCELLED', 'Bin no longer urgent at confirmation');
+      await transition(job, 'CANCELLED', 'Bin no longer urgent at confirmation');
       slog('INFO', 'Job cancelled — no urgent bins remain', job.job_id);
       return;
     }
 
-    transition(job, 'BIN_CONFIRMED');
+    await transition(job, 'BIN_CONFIRMED');
 
     // Step 2: Cluster assembly + wait window
-    transition(job, 'CLUSTER_ASSEMBLING');
+    await transition(job, 'CLUSTER_ASSEMBLING');
 
     const clusterSet = await assemble({
       job,
@@ -64,15 +64,15 @@ export async function executeEmergencyWorkflow(
       initialSnapshot: snapshot,
     });
 
-    updateJob(job, {
+    await updateJob(job, {
       clusters:        clusterSet.cluster_ids,
       bins_to_collect: clusterSet.bin_ids,
       planned_weight_kg: clusterSet.total_weight_kg,
     });
-    transition(job, 'CLUSTER_ASSEMBLED');
+    await transition(job, 'CLUSTER_ASSEMBLED');
 
     // Step 3: Dispatch
-    transition(job, 'DISPATCHING');
+    await transition(job, 'DISPATCHING');
 
     let dispatchResult;
     try {
@@ -88,7 +88,7 @@ export async function executeEmergencyWorkflow(
         }),
       { retries: 3, retryDelayMs: 2_000 });
     } catch {
-      transition(job, 'ESCALATED', 'No vehicle available after 3 attempts');
+      await transition(job, 'ESCALATED', 'No vehicle available after 3 attempts');
       await notifyDashboard('job-escalated', {
         job_id:  job.job_id,
         zone_id: event.zone_id,
@@ -98,16 +98,16 @@ export async function executeEmergencyWorkflow(
       return;
     }
 
-    updateJob(job, {
+    await updateJob(job, {
       assigned_vehicle_id: dispatchResult.vehicle_id,
       assigned_driver_id:  dispatchResult.driver_id,
       route_plan_id:       dispatchResult.route_plan_id,
       assigned_at:         new Date().toISOString(),
     });
-    transition(job, 'DISPATCHED');
+    await transition(job, 'DISPATCHED');
 
     // Step 4: Notify driver (handled by scheduler) + notify dashboard
-    transition(job, 'DRIVER_NOTIFIED');
+    await transition(job, 'DRIVER_NOTIFIED');
     await notifyDashboard('job-created', {
       job_id:            job.job_id,
       job_type:          'emergency',
@@ -123,8 +123,8 @@ export async function executeEmergencyWorkflow(
     });
 
     // Step 5: Job now IN_PROGRESS — pauses here until POST /internal/jobs/:id/complete
-    transition(job, 'IN_PROGRESS');
-    updateJob(job, { started_at: new Date().toISOString() });
+    await transition(job, 'IN_PROGRESS');
+    await updateJob(job, { started_at: new Date().toISOString() });
     slog('INFO', 'Job now IN_PROGRESS — waiting for collection completion', job.job_id);
 
   } catch (error) {
@@ -138,18 +138,18 @@ export async function executeRoutineWorkflow(
 ): Promise<void> {
   try {
     // Routine jobs skip BIN_CONFIRMING — go straight to CLUSTER_ASSEMBLING
-    transition(job, 'CLUSTER_ASSEMBLING');
+    await transition(job, 'CLUSTER_ASSEMBLING');
 
-    updateJob(job, {
+    await updateJob(job, {
       clusters:        [trigger.zone_id],
       bins_to_collect: trigger.bin_ids,
       route_plan_id:   trigger.route_plan_id,
       planned_weight_kg: 0,
     });
-    transition(job, 'CLUSTER_ASSEMBLED');
+    await transition(job, 'CLUSTER_ASSEMBLED');
 
     // Dispatch
-    transition(job, 'DISPATCHING');
+    await transition(job, 'DISPATCHING');
 
     let dispatchResult;
     try {
@@ -164,7 +164,7 @@ export async function executeRoutineWorkflow(
         }),
       { retries: 3, retryDelayMs: 2_000 });
     } catch {
-      transition(job, 'ESCALATED', 'No vehicle available after 3 attempts');
+      await transition(job, 'ESCALATED', 'No vehicle available after 3 attempts');
       await notifyDashboard('job-escalated', {
         job_id:  job.job_id,
         zone_id: trigger.zone_id,
@@ -173,14 +173,14 @@ export async function executeRoutineWorkflow(
       return;
     }
 
-    updateJob(job, {
+    await updateJob(job, {
       assigned_vehicle_id: dispatchResult.vehicle_id,
       assigned_driver_id:  dispatchResult.driver_id,
       route_plan_id:       dispatchResult.route_plan_id ?? trigger.route_plan_id,
       assigned_at:         new Date().toISOString(),
     });
-    transition(job, 'DISPATCHED');
-    transition(job, 'DRIVER_NOTIFIED');
+    await transition(job, 'DISPATCHED');
+    await transition(job, 'DRIVER_NOTIFIED');
 
     await notifyDashboard('job-created', {
       job_id:     job.job_id,
@@ -194,8 +194,8 @@ export async function executeRoutineWorkflow(
       route:      dispatchResult.route,
     });
 
-    transition(job, 'IN_PROGRESS');
-    updateJob(job, { started_at: new Date().toISOString() });
+    await transition(job, 'IN_PROGRESS');
+    await updateJob(job, { started_at: new Date().toISOString() });
     slog('INFO', 'Routine job now IN_PROGRESS', job.job_id);
 
   } catch (error) {
@@ -208,28 +208,28 @@ export async function completeJob(job: CollectionJob, request: JobCompleteReques
     throw new Error(`Cannot complete job in state ${job.state}`);
   }
 
-  transition(job, 'COMPLETING');
+  await transition(job, 'COMPLETING');
 
   // Step 1: Mark each bin collected
   for (const bin of request.bins_collected) {
     const ok = await markCollected(bin.bin_id, job.job_id, bin.collected_at);
-    recordStep(job, `mark-collected:${bin.bin_id}`, 1, ok, 0);
+    await recordStep(job, `mark-collected:${bin.bin_id}`, 1, ok, 0);
   }
 
   // Step 2: Update metrics
   const startedMs      = Date.parse(job.started_at ?? job.created_at);
   const actualDuration = Math.round((Date.now() - startedMs) / 60_000);
 
-  updateJob(job, {
+  await updateJob(job, {
     actual_weight_kg:   request.actual_weight_kg,
     actual_distance_km: request.actual_distance_km,
     actual_duration_min: actualDuration,
     collection_done_at:  new Date().toISOString(),
   });
-  transition(job, 'COLLECTION_DONE');
+  await transition(job, 'COLLECTION_DONE');
 
   // Step 3: Hyperledger audit (with retries)
-  transition(job, 'RECORDING_AUDIT');
+  await transition(job, 'RECORDING_AUDIT');
 
   const auditPayload: AuditPayload = {
     job_id:            job.job_id,
@@ -257,17 +257,17 @@ export async function completeJob(job: CollectionJob, request: JobCompleteReques
       { retries: 3, retryDelayMs: 5_000 },
     );
     hyperledger_tx_id = auditResult.tx_id;
-    updateJob(job, { hyperledger_tx_id });
-    transition(job, 'AUDIT_RECORDED');
+    await updateJob(job, { hyperledger_tx_id });
+    await transition(job, 'AUDIT_RECORDED');
   } catch (e) {
     slog('WARN', `Hyperledger audit failed: ${e} — continuing to COMPLETED`, job.job_id);
-    transition(job, 'AUDIT_FAILED');
+    await transition(job, 'AUDIT_FAILED');
   }
 
   // Step 4: Complete
   const completedAt = new Date().toISOString();
-  transition(job, 'COMPLETED');
-  updateJob(job, { completed_at: completedAt });
+  await transition(job, 'COMPLETED');
+  await updateJob(job, { completed_at: completedAt });
 
   // Step 5: Release vehicle/driver
   await releaseDriver(job.job_id);
@@ -318,7 +318,7 @@ export async function cancelJob(job: CollectionJob, reason: string): Promise<boo
     });
   }
 
-  transition(job, 'CANCELLED', reason, 'supervisor');
+  await transition(job, 'CANCELLED', reason, 'supervisor');
   slog('INFO', `Job CANCELLED: ${reason}`, job.job_id);
   return true;
 }

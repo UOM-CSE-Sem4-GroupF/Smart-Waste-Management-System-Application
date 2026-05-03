@@ -26,12 +26,12 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /api/v1/collection-jobs/:id
   app.get<{ Params: { id: string } }>('/api/v1/collection-jobs/:id', async (req, reply) => {
-    const job = getJob(req.params.id);
+    const job = await getJob(req.params.id);
     if (!job) return reply.code(404).send(err404(req.params.id));
     return {
       ...job,
-      state_history: getStateHistory(job.job_id),
-      step_log:      getStepLog(job.job_id),
+      state_history: await getStateHistory(job.job_id),
+      step_log:      await getStepLog(job.job_id),
     };
   });
 
@@ -39,7 +39,7 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { reason?: string } }>(
     '/api/v1/collection-jobs/:id/cancel',
     async (req, reply) => {
-      const job = getJob(req.params.id);
+      const job = await getJob(req.params.id);
       if (!job) return reply.code(404).send(err404(req.params.id));
 
       if (job.state === 'IN_PROGRESS') {
@@ -61,7 +61,7 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: JobCompleteRequest }>(
     '/internal/jobs/:id/complete',
     async (req, reply) => {
-      const job = getJob(req.params.id);
+      const job = await getJob(req.params.id);
       if (!job) return reply.code(404).send(err404(req.params.id));
       if (job.state !== 'IN_PROGRESS') {
         return reply.code(409).send({ error: 'INVALID_STATE', message: `Cannot complete job in state ${job.state}` });
@@ -75,7 +75,7 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>(
     '/api/v1/collection-jobs/:id/complete',
     async (req, reply) => {
-      const job = getJob(req.params.id);
+      const job = await getJob(req.params.id);
       if (!job) return reply.code(404).send(err404(req.params.id));
       if (job.state !== 'IN_PROGRESS') {
         return reply.code(409).send({ error: 'INVALID_STATE', message: `Cannot complete job in state ${job.state}` });
@@ -113,7 +113,7 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
     const zone_id     = req.body.zone_id;
     const bin_ids     = req.body.bin_ids ?? [];
 
-    const job = insertJob({
+    const job = await insertJob({
       job_type:              jt,
       zone_id,
       waste_category:        waste_cat,

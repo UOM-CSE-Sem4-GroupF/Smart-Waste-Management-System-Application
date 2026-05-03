@@ -45,7 +45,7 @@ export async function startRoutineScheduleConsumer(): Promise<void> {
 
         slog('INFO', `Routine trigger: zone=${zone_id} bins=${bin_ids.length}`);
 
-        const job = insertJob({
+        const job = await insertJob({
           job_type:       'routine',
           zone_id,
           waste_category: waste_cat,

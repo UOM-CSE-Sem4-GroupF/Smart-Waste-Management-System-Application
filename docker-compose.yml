@@ -20,6 +20,7 @@ services:
       BIN_STATUS_URL:   http://bin-status:3002
       SCHEDULER_URL:    http://scheduler:3003
       NOTIFICATION_URL: http://notification:3004
+      DATABASE_URL: postgresql://waste_admin:waste_admin_password@postgres:5432/waste_management
     expose:
       - "3001"
     extra_hosts:
@@ -181,4 +182,5 @@ services:
 
 networks:
   garabadge:
-    driver: bridge
+    external: true
+    name: garabadge

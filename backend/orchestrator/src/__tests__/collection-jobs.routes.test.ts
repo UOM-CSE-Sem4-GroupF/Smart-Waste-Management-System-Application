@@ -1,7 +1,77 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Fastify from 'fastify';
 import jobRoutes from '../api/jobRoutes';
-import { insertJob, clearAll } from '../db/queries';
+
+vi.mock('../db/queries', async () => {
+  let _counter = 0;
+  const _jobs    = new Map<string, any>();
+  const _history = new Map<string, any[]>();
+  const _steps   = new Map<string, any[]>();
+  const { validateTransition } = await vi.importActual<any>('../core/stateMachine');
+
+  return {
+    insertJob: vi.fn(async (p: any) => {
+      const job = {
+        job_id: `JOB-${String(++_counter).padStart(4, '0')}`,
+        state: 'CREATED',
+        clusters: [],
+        bins_to_collect: [],
+        ...p,
+        created_at: new Date().toISOString(),
+      };
+      _jobs.set(job.job_id, job);
+      _history.set(job.job_id, []);
+      _steps.set(job.job_id, []);
+      return job;
+    }),
+    clearAll: vi.fn(async () => {
+      _jobs.clear(); _history.clear(); _steps.clear(); _counter = 0;
+    }),
+    getJob: vi.fn(async (id: string) => _jobs.get(id)),
+    getJobs: vi.fn(async (filters: any = {}) => {
+      let data = [..._jobs.values()];
+      if (filters.state)    data = data.filter((j: any) => j.state    === filters.state);
+      if (filters.job_type) data = data.filter((j: any) => j.job_type === filters.job_type);
+      if (filters.zone_id)  data = data.filter((j: any) => j.zone_id  === filters.zone_id);
+      const page = filters.page ?? 1;
+      const limit = filters.limit ?? 20;
+      return { data: data.slice((page - 1) * limit, page * limit), total: data.length, page, limit };
+    }),
+    getStats: vi.fn(async () => {
+      const all = [..._jobs.values()];
+      const total     = all.length;
+      const emergency = all.filter((j: any) => j.job_type === 'emergency').length;
+      const completed = all.filter((j: any) => j.state    === 'COMPLETED').length;
+      const escalated = all.filter((j: any) => j.state    === 'ESCALATED').length;
+      return {
+        total_jobs: total,
+        emergency_jobs: emergency,
+        routine_jobs: total - emergency,
+        completed_jobs: completed,
+        escalated_jobs: escalated,
+        cancelled_jobs: 0,
+        completion_rate_pct: total > 0 ? parseFloat(((completed / total) * 100).toFixed(1)) : 0,
+        avg_duration_minutes: 0,
+        avg_bins_per_job: 0,
+        avg_weight_per_job_kg: 0,
+        emergency_vs_routine_ratio: 0,
+      };
+    }),
+    getStateHistory: vi.fn(async (id: string) => _history.get(id) ?? []),
+    getStepLog: vi.fn(async (id: string) => _steps.get(id) ?? []),
+    transition: vi.fn(async (job: any, to: string, reason?: string, actor = 'system') => {
+      validateTransition(job.state, to);
+      const from = job.state;
+      job.state = to;
+      const h = _history.get(job.job_id) ?? [];
+      h.push({ from_state: from, to_state: to, reason, actor, transitioned_at: new Date().toISOString() });
+      _history.set(job.job_id, h);
+    }),
+    updateJob: vi.fn(async (job: any, patch: any) => { Object.assign(job, patch); }),
+    recordStep: vi.fn(async () => {}),
+    hasActiveJobForBin: vi.fn(async () => false),
+  };
+});
 
 // Prevent orchestrator workflows from making real HTTP calls
 vi.mock('../core/orchestrator', async (importOriginal) => {
@@ -10,8 +80,7 @@ vi.mock('../core/orchestrator', async (importOriginal) => {
     ...actual,
     executeEmergencyWorkflow: vi.fn().mockResolvedValue(undefined),
     executeRoutineWorkflow:   vi.fn().mockResolvedValue(undefined),
-    completeJob:              vi.fn().mockImplementation(async (job) => {
-      // Simulate completing the job
+    completeJob:              vi.fn().mockImplementation(async (job: any) => {
       job.state        = 'COMPLETED';
       job.completed_at = new Date().toISOString();
     }),
@@ -19,7 +88,6 @@ vi.mock('../core/orchestrator', async (importOriginal) => {
   };
 });
 
-// Prevent clients from making network calls when cancelJob is called
 vi.mock('../clients/schedulerClient', () => ({
   dispatch:      vi.fn(),
   releaseDriver: vi.fn().mockResolvedValue(undefined),
@@ -28,14 +96,16 @@ vi.mock('../clients/notificationClient', () => ({
   notifyDashboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { insertJob, clearAll } from '../db/queries';
+
 function buildApp() {
   const app = Fastify({ logger: false });
   app.register(jobRoutes);
   return app;
 }
 
-beforeEach(() => {
-  clearAll();
+beforeEach(async () => {
+  await clearAll();
   vi.clearAllMocks();
 });
 
@@ -47,8 +117,8 @@ describe('GET /api/v1/collection-jobs', () => {
   });
 
   it('filters by state', async () => {
-    const j1 = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
-    const j2 = insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    const j1 = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const j2 = await insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
     j2.state = 'CANCELLED';
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?state=CANCELLED' });
     expect(res.json().total).toBe(1);
@@ -56,15 +126,15 @@ describe('GET /api/v1/collection-jobs', () => {
   });
 
   it('filters by job_type', async () => {
-    insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
-    insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    await insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?job_type=routine' });
     expect(res.json().total).toBe(1);
   });
 
   it('filters by zone_id', async () => {
-    insertJob({ job_type: 'emergency', zone_id: 'Zone-1', waste_category: 'general' });
-    insertJob({ job_type: 'emergency', zone_id: 'Zone-2', waste_category: 'general' });
+    await insertJob({ job_type: 'emergency', zone_id: 'Zone-1', waste_category: 'general' });
+    await insertJob({ job_type: 'emergency', zone_id: 'Zone-2', waste_category: 'general' });
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs?zone_id=Zone-1' });
     expect(res.json().total).toBe(1);
   });
@@ -82,8 +152,8 @@ describe('GET /api/v1/collection-jobs/stats', () => {
   });
 
   it('returns correct counts with jobs', async () => {
-    const j1 = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
-    const j2 = insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
+    const j1 = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const j2 = await insertJob({ job_type: 'routine',   zone_id: 'Z1', waste_category: 'general' });
     j1.state = 'COMPLETED';
     j2.state = 'ESCALATED';
     const res = await buildApp().inject({ method: 'GET', url: '/api/v1/collection-jobs/stats' });
@@ -96,7 +166,7 @@ describe('GET /api/v1/collection-jobs/stats', () => {
 
 describe('GET /api/v1/collection-jobs/:id', () => {
   it('returns full job with state_history and step_log', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({ method: 'GET', url: `/api/v1/collection-jobs/${job.job_id}` });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -114,7 +184,7 @@ describe('GET /api/v1/collection-jobs/:id', () => {
 
 describe('POST /api/v1/collection-jobs/:id/cancel', () => {
   it('cancels a job in CREATED state', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({
       method:  'POST',
       url:     `/api/v1/collection-jobs/${job.job_id}/cancel`,
@@ -125,7 +195,7 @@ describe('POST /api/v1/collection-jobs/:id/cancel', () => {
   });
 
   it('returns 409 when job is IN_PROGRESS', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state = 'IN_PROGRESS';
     const res = await buildApp().inject({
       method:  'POST',
@@ -137,7 +207,7 @@ describe('POST /api/v1/collection-jobs/:id/cancel', () => {
   });
 
   it('returns 409 when job is already COMPLETED', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state = 'COMPLETED';
     const res = await buildApp().inject({
       method:  'POST',
@@ -150,7 +220,7 @@ describe('POST /api/v1/collection-jobs/:id/cancel', () => {
 
 describe('POST /internal/jobs/:id/complete', () => {
   it('completes an IN_PROGRESS job', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state = 'IN_PROGRESS';
     const res = await buildApp().inject({
       method:  'POST',
@@ -166,7 +236,7 @@ describe('POST /internal/jobs/:id/complete', () => {
   });
 
   it('returns 409 when job is not IN_PROGRESS', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     const res = await buildApp().inject({
       method:  'POST',
       url:     `/internal/jobs/${job.job_id}/complete`,

@@ -65,14 +65,14 @@ export async function startBinProcessedConsumer(): Promise<void> {
         }
 
         // Step 3: Check for existing active job
-        if (hasActiveJobForBin(bin_id)) {
+        if (await hasActiveJobForBin(bin_id)) {
           slog('INFO', `Active job exists for bin ${bin_id} — skipping`);
           return;
         }
 
         // Step 4: Create job record
         recentlyProcessed.set(bin_id, Date.now());
-        const job = insertJob({
+        const job = await insertJob({
           job_type:               'emergency',
           zone_id,
           waste_category:         waste_cat,

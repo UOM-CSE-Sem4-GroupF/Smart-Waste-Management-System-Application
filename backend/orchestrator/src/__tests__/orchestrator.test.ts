@@ -1,5 +1,49 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { insertJob, clearAll, getStateHistory } from '../db/queries';
+
+vi.mock('../db/queries', async () => {
+  let _counter = 0;
+  const _jobs    = new Map<string, any>();
+  const _history = new Map<string, any[]>();
+  const _steps   = new Map<string, any[]>();
+  const { validateTransition } = await vi.importActual<any>('../core/stateMachine');
+
+  return {
+    insertJob: vi.fn(async (p: any) => {
+      const job = {
+        job_id: `JOB-${String(++_counter).padStart(4, '0')}`,
+        state: 'CREATED',
+        clusters: [],
+        bins_to_collect: [],
+        ...p,
+        created_at: new Date().toISOString(),
+      };
+      _jobs.set(job.job_id, job);
+      _history.set(job.job_id, []);
+      _steps.set(job.job_id, []);
+      return job;
+    }),
+    clearAll: vi.fn(async () => {
+      _jobs.clear(); _history.clear(); _steps.clear(); _counter = 0;
+    }),
+    getStateHistory: vi.fn(async (id: string) => _history.get(id) ?? []),
+    getStepLog: vi.fn(async (id: string) => _steps.get(id) ?? []),
+    transition: vi.fn(async (job: any, to: string, reason?: string, actor = 'system') => {
+      validateTransition(job.state, to);
+      const from = job.state;
+      job.state = to;
+      const h = _history.get(job.job_id) ?? [];
+      h.push({ from_state: from, to_state: to, reason, actor, transitioned_at: new Date().toISOString() });
+      _history.set(job.job_id, h);
+    }),
+    updateJob: vi.fn(async (job: any, patch: any) => { Object.assign(job, patch); }),
+    recordStep: vi.fn(async (job: any, step_name: string, attempt_number: number, success: boolean, duration_ms: number, error_message?: string) => {
+      const s = _steps.get(job.job_id) ?? [];
+      s.push({ step_name, attempt_number, success, duration_ms, error_message, executed_at: new Date().toISOString() });
+      _steps.set(job.job_id, s);
+    }),
+    hasActiveJobForBin: vi.fn(async () => false),
+  };
+});
 
 vi.mock('../clients/binStatusClient', () => ({
   getClusterSnapshot: vi.fn(),
@@ -27,6 +71,7 @@ import { notifyDashboard } from '../clients/notificationClient';
 import { recordAudit } from '../clients/hyperledgerClient';
 import { publishJobCompleted } from '../kafka/producer';
 import { completeJob, cancelJob } from '../core/orchestrator';
+import { insertJob, clearAll, getStateHistory } from '../db/queries';
 import { JobCompleteRequest } from '../types';
 
 const makeCompleteRequest = (bin_ids: string[]): JobCompleteRequest => ({
@@ -43,8 +88,8 @@ const makeCompleteRequest = (bin_ids: string[]): JobCompleteRequest => ({
   route_gps_trail:    [],
 });
 
-beforeEach(() => {
-  clearAll();
+beforeEach(async () => {
+  await clearAll();
   vi.clearAllMocks();
 });
 
@@ -56,7 +101,7 @@ describe('completeJob', () => {
     vi.mocked(publishJobCompleted).mockResolvedValue();
     vi.mocked(notifyDashboard).mockResolvedValue();
 
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state            = 'IN_PROGRESS';
     job.bins_to_collect  = ['BIN-001', 'BIN-002'];
     job.assigned_driver_id  = 'DRV-01';
@@ -72,7 +117,7 @@ describe('completeJob', () => {
     expect(publishJobCompleted).toHaveBeenCalledOnce();
     expect(notifyDashboard).toHaveBeenCalledWith('job-completed', expect.objectContaining({ job_id: job.job_id }));
 
-    const history = getStateHistory(job.job_id).map(h => h.to_state);
+    const history = (await getStateHistory(job.job_id)).map((h: any) => h.to_state);
     expect(history).toContain('COMPLETING');
     expect(history).toContain('COLLECTION_DONE');
     expect(history).toContain('RECORDING_AUDIT');
@@ -87,21 +132,21 @@ describe('completeJob', () => {
     vi.mocked(publishJobCompleted).mockResolvedValue();
     vi.mocked(notifyDashboard).mockResolvedValue();
 
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state           = 'IN_PROGRESS';
     job.bins_to_collect = ['BIN-001'];
 
     await completeJob(job, makeCompleteRequest(['BIN-001']));
 
     expect(job.state).toBe('COMPLETED');
-    const history = getStateHistory(job.job_id).map(h => h.to_state);
+    const history = (await getStateHistory(job.job_id)).map((h: any) => h.to_state);
     expect(history).toContain('AUDIT_FAILED');
     expect(history).toContain('COMPLETED');
     expect(history).not.toContain('AUDIT_RECORDED');
   });
 
   it('throws when job is not IN_PROGRESS', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     await expect(completeJob(job, makeCompleteRequest([]))).rejects.toThrow('Cannot complete job in state CREATED');
   });
 });
@@ -111,7 +156,7 @@ describe('cancelJob', () => {
     vi.mocked(releaseDriver).mockResolvedValue();
     vi.mocked(notifyDashboard).mockResolvedValue();
 
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state               = 'DISPATCHED';
     job.assigned_driver_id  = 'DRV-01';
 
@@ -123,15 +168,15 @@ describe('cancelJob', () => {
   });
 
   it('returns false when job is IN_PROGRESS', async () => {
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state = 'IN_PROGRESS';
     expect(await cancelJob(job, 'reason')).toBe(false);
   });
 
   it('returns false for terminal states', async () => {
     for (const s of ['COMPLETED', 'FAILED', 'CANCELLED', 'ESCALATED'] as const) {
-      clearAll();
-      const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+      await clearAll();
+      const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
       job.state = s;
       expect(await cancelJob(job, 'reason')).toBe(false);
     }
@@ -141,7 +186,7 @@ describe('cancelJob', () => {
     vi.mocked(releaseDriver).mockResolvedValue();
     vi.mocked(notifyDashboard).mockResolvedValue();
 
-    const job = insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
+    const job = await insertJob({ job_type: 'emergency', zone_id: 'Z1', waste_category: 'general' });
     job.state = 'BIN_CONFIRMING';
 
     const ok = await cancelJob(job, 'bin no longer urgent');
