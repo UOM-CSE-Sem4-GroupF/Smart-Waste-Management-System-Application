@@ -3,7 +3,6 @@ import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import { LogOut } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
-import { AlertBell } from './AlertBell'
 import { ConnectionBadge } from './ConnectionBadge'
 import {
   DropdownMenu,
@@ -46,7 +45,6 @@ export function Topbar() {
       <h1 className="text-lg font-semibold">{getTitle(pathname)}</h1>
       <div className="ml-auto flex items-center gap-2">
         <ConnectionBadge />
-        <AlertBell />
         <ThemeToggle />
         {/* User avatar dropdown */}
         <DropdownMenu>
