@@ -12,20 +12,13 @@ const BIN_STATUS_STYLES = {
 }
 
 export function JobDetailClient({ initial }: { initial: CollectionJobDetail }) {
-  const progress = useJobStore((s) => s.jobProgress.get(initial.id))
+  const liveJob = useJobStore((s) => s.jobs.get(initial.id))
 
-  // Merge live state
-  const state = (progress?.state ?? initial.state) as JobState
+  // Merge live state (from socket job:progress patches) with REST initial
+  const state = ((liveJob?.state ?? initial.state) || initial.state) as JobState
 
-  // Build live bin statuses map from job:progress waypoints
+  // No live waypoint data without jobProgress — fall back to initial bin_collections statuses
   const liveBinStatus: Record<string, 'collected' | 'skipped' | 'pending'> = {}
-  if (progress) {
-    progress.waypoints.forEach((wp) => {
-      wp.bins.forEach((binId) => {
-        liveBinStatus[binId] = wp.status === 'completed' ? 'collected' : wp.status === 'current' ? 'pending' : 'pending'
-      })
-    })
-  }
 
   return (
     <div className="space-y-8">
@@ -39,10 +32,9 @@ export function JobDetailClient({ initial }: { initial: CollectionJobDetail }) {
       <section className="rounded-xl border border-border bg-background shadow-sm">
         <div className="border-b border-border px-6 py-4">
           <h3 className="text-lg font-semibold">Bin Collection Progress</h3>
-          {progress && (
+          {liveJob?.bins_collected != null && (
             <p className="mt-1 text-xs text-muted-foreground">
-              {progress.bins_collected}/{progress.total_bins} bins ·{' '}
-              {progress.cargo_weight_kg.toFixed(1)}/{progress.cargo_limit_kg} kg
+              {liveJob.bins_collected}/{liveJob.total_bins} bins collected
             </p>
           )}
         </div>

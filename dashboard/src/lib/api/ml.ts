@@ -20,6 +20,6 @@ export async function getZoneForecast(
   params: { zone_id: number; date_range: string },
 ) {
   return api
-    .get('api/v1/ml/predict/zone-generation', { searchParams: params as Record<string, string> })
+    .get('api/v1/ml/predict/zone-generation', { searchParams: params as unknown as Record<string, string> })
     .json()
 }

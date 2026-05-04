@@ -33,7 +33,7 @@ export async function getJobStats(
   params: { date_from: string; date_to: string; zone_id?: number },
 ) {
   return api
-    .get('api/v1/collection-jobs/stats', { searchParams: params as Record<string, string> })
+    .get('api/v1/collection-jobs/stats', { searchParams: params as unknown as Record<string, string> })
     .json()
 }
 
