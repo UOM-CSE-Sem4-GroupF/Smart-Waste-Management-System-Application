@@ -81,7 +81,8 @@ export function MockSocketInjector() {
         message:
           type === 'urgent'    ? `Bin ${bin.bin_id} is at critical fill level (${bin.fill_level_pct}%)` :
           type === 'escalated' ? `Bin ${bin.bin_id} escalated — no collection in 48 h` :
-                                 `Vehicle VEH-001 deviated from planned route
+                                 `Vehicle VEH-001 deviated from planned route`,
+      })
     }, 30_000)
 
     return () => {

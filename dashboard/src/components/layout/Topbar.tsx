@@ -15,11 +15,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard':           'Overview',
+  '/dashboard':           'Live Map',
   '/dashboard/map':       'Live Map',
   '/dashboard/bins':      'Bins',
   '/dashboard/jobs':      'Collection Jobs',
-  '/dashboard/fleet':     'Fleet',
+  '/dashboard/history':   'History',
   '/dashboard/analytics': 'Analytics',
 }
 
@@ -27,8 +27,9 @@ function getTitle(pathname: string): string {
   // exact match first
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
   // dynamic segments: /dashboard/bins/[id], /dashboard/jobs/[id]
-  if (pathname.startsWith('/dashboard/bins/'))  return 'Bin Detail'
-  if (pathname.startsWith('/dashboard/jobs/'))  return 'Job Detail'
+  if (pathname.startsWith('/dashboard/bins/'))    return 'Bin Detail'
+  if (pathname.startsWith('/dashboard/jobs/'))    return 'Job Detail'
+  if (pathname.startsWith('/dashboard/history/')) return 'History'
   return 'Dashboard'
 }
 

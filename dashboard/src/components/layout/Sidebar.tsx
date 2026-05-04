@@ -3,14 +3,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import {
-  LayoutDashboard,
   Map,
   Trash2,
   Briefcase,
-  Truck,
   BarChart3,
   Recycle,
   LogOut,
+  History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -24,11 +23,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Overview',  href: '/dashboard' },
   { icon: Map,             label: 'Live Map',  href: '/dashboard/map' },
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
-  { icon: Truck,           label: 'Fleet',     href: '/dashboard/fleet',     roles: ['fleet-operator', 'admin'] },
+  { icon: History,         label: 'History',   href: '/dashboard/history',   roles: ['supervisor', 'fleet-operator', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
 ]
 
@@ -41,8 +39,7 @@ export function Sidebar() {
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??'
 
-  const isActive = (href: string) =>
-    href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href)
+  const isActive = (href: string) => pathname.startsWith(href)
 
   const visibleItems = NAV_ITEMS.filter((item) =>
     !item.roles || item.roles.includes(role)
