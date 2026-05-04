@@ -1,5 +1,6 @@
 import type { KyInstance } from 'ky'
-import type { Bin, BinHistory, ZoneSummary } from '@/types'
+import type { Bin, BinHistory } from '@/types'
+import type { Cluster } from '@/types/cluster'
 
 export async function getBins(
   api: KyInstance,
@@ -24,6 +25,6 @@ export async function getBinHistory(api: KyInstance, binId: string) {
   return api.get(`api/v1/bins/${binId}/history`).json<BinHistory>()
 }
 
-export async function getZoneSummary(api: KyInstance, zoneId: number) {
-  return api.get(`api/v1/zones/${zoneId}/summary`).json<ZoneSummary>()
+export async function getCluster(clusterId: string, api: KyInstance) {
+  return api.get(`api/v1/clusters/${clusterId}`).json<Cluster>()
 }
