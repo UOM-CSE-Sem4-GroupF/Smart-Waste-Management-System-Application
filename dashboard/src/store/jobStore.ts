@@ -1,19 +1,24 @@
 import { create } from 'zustand'
-import type { CollectionJob, CollectionJobListItem, JobProgress } from '@/types'
+import type { CollectionJob, CollectionJobListItem } from '@/types'
+
+interface JobCompletedEvent {
+  job_id:          string
+  bins_collected:  number
+  [key: string]:   unknown
+}
 
 interface JobStore {
-  jobs:        Map<string, CollectionJob>
-  jobProgress: Map<string, JobProgress> // live job progress keyed by job_id
-  addJob:             (job: CollectionJob) => void
-  updateJob:          (jobId: string, patch: Partial<CollectionJob>) => void
-  setJobs:            (jobs: CollectionJob[]) => void
-  setJobsFromList:    (jobs: CollectionJobListItem[]) => void // maps REST list (uses .id)
-  updateJobProgress:  (payload: JobProgress) => void         // from job:progress socket event
+  jobs:         Map<string, CollectionJob>
+  addJob:       (job: CollectionJob) => void
+  updateJob:    (jobId: string, patch: Partial<CollectionJob>) => void
+  setJobs:      (jobs: CollectionJob[]) => void
+  setJobsFromList: (jobs: CollectionJobListItem[]) => void
+  completeJob:  (event: JobCompletedEvent) => void
+  removeJob:    (jobId: string) => void
 }
 
 export const useJobStore = create<JobStore>((set) => ({
-  jobs:        new Map(),
-  jobProgress: new Map(),
+  jobs: new Map(),
 
   addJob: (job) =>
     set((state) => {
@@ -42,10 +47,23 @@ export const useJobStore = create<JobStore>((set) => ({
       jobs: new Map(list.map((j) => [j.id, j as unknown as CollectionJob])),
     })),
 
-  updateJobProgress: (payload) =>
+  completeJob: (event) =>
     set((state) => {
-      const next = new Map(state.jobProgress)
-      next.set(payload.job_id, payload)
-      return { jobProgress: next }
+      const existing = state.jobs.get(event.job_id)
+      if (!existing) return state
+      const next = new Map(state.jobs)
+      next.set(event.job_id, {
+        ...existing,
+        state:          'COMPLETED',
+        bins_collected: event.bins_collected,
+      })
+      return { jobs: next }
+    }),
+
+  removeJob: (jobId) =>
+    set((state) => {
+      const next = new Map(state.jobs)
+      next.delete(jobId)
+      return { jobs: next }
     }),
 }))
