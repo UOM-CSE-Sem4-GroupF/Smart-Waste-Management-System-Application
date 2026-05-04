@@ -8,17 +8,15 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 const ALERT_ICON: Record<Alert['type'], React.ElementType> = {
-  urgent:        Bell,
-  escalated:     AlertTriangle,
-  deviation:     TriangleAlert,
-  'weight-limit': TriangleAlert,
+  urgent:    Bell,
+  escalated: AlertTriangle,
+  deviation: TriangleAlert,
 }
 
 const ALERT_COLOR: Record<Alert['type'], string> = {
-  urgent:        'text-red-500',
-  escalated:     'text-orange-500',
-  deviation:     'text-yellow-500',
-  'weight-limit': 'text-yellow-500',
+  urgent:    'text-red-500',
+  escalated: 'text-orange-500',
+  deviation: 'text-yellow-500',
 }
 
 interface AlertFeedProps {
@@ -28,9 +26,9 @@ interface AlertFeedProps {
 
 export function AlertFeed({ limit = 20 }: AlertFeedProps) {
   const allAlerts  = useAlertStore((s) => s.alerts)
-  const dismiss    = useAlertStore((s) => s.dismissAlert)
-  const clearAll   = useAlertStore((s) => s.clearAll)
-  const alerts     = allAlerts.filter((a) => !a.dismissed)
+  const acknowledge = useAlertStore((s) => s.acknowledgeAlert)
+  const clearAll    = useAlertStore((s) => s.clearAll)
+  const alerts      = allAlerts.filter((a) => !a.acknowledged)
 
   const visible = alerts.slice(0, limit)
 
@@ -72,8 +70,8 @@ export function AlertFeed({ limit = 20 }: AlertFeedProps) {
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                  aria-label="Dismiss alert"
-                  onClick={() => dismiss(alert.id)}
+                  aria-label="Acknowledge alert"
+                  onClick={() => acknowledge(alert.id)}
                 >
                   ×
                 </Button>

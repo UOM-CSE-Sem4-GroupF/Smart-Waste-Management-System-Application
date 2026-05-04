@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useAlertStore } from '@/store/alertStore'
 
 export function AlertBell() {
-  const alerts = useAlertStore((s) => s.alerts)
-  const unread = alerts.filter((a) => !a.dismissed).length
+  const unread = useAlertStore((s) => s.unacknowledgedCount)
   return (
     <Button variant="ghost" size="icon" className="relative" aria-label="Alerts">
       <Bell className="h-4 w-4" />
