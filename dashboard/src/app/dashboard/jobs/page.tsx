@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useJobStore } from '@/store/jobStore'
 import { useJobs } from '@/hooks/useJobs'
 import { useSession } from 'next-auth/react'
@@ -30,7 +30,8 @@ const TERMINAL_STATES: JobState[] = [
 export default function JobsPage() {
   const { data: session }  = useSession()
   const queryClient        = useQueryClient()
-  const liveJobs           = useJobStore((s) => Array.from(s.jobs.values()))
+  const jobsMap   = useJobStore((s) => s.jobs)
+  const liveJobs  = useMemo(() => Array.from(jobsMap.values()), [jobsMap])
 
   const [drawerJobId, setDrawerJobId] = useState<string | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
