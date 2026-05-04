@@ -120,6 +120,79 @@ export function DashboardMapInner({ showZones, showRoutes }: Props) {
 
   const map = mapRef.current
   const showIndividualBins = zoom >= 13
+  // Use canvas-based GL layer instead of DOM markers when > 100 bins are visible
+  const useCanvasLayer = showIndividualBins && filteredBins.size > 100
+
+  // ── Canvas layer: Mapbox GL source + circle layer for > 100 bins ──────────
+  useEffect(() => {
+    if (!map || !mapReady) return
+    const SOURCE_ID = 'bins-canvas-source'
+    const LAYER_ID  = 'bins-canvas-layer'
+
+    if (!useCanvasLayer) {
+      // Remove canvas layer when switching back to DOM markers
+      if (map.getLayer(LAYER_ID))  map.removeLayer(LAYER_ID)
+      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID)
+      return
+    }
+
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: Array.from(filteredBins.values())
+        .filter((b) => b.lat != null && b.lng != null)
+        .map((b) => ({
+          type: 'Feature',
+          id:   b.bin_id,
+          geometry: { type: 'Point', coordinates: [b.lng!, b.lat!] },
+          properties: {
+            bin_id:         b.bin_id,
+            status:         b.status,
+            fill_level_pct: b.fill_level_pct,
+          },
+        })),
+    }
+
+    if (map.getSource(SOURCE_ID)) {
+      (map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource).setData(geojson)
+    } else {
+      map.addSource(SOURCE_ID, { type: 'geojson', data: geojson })
+      map.addLayer({
+        id:     LAYER_ID,
+        type:   'circle',
+        source: SOURCE_ID,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['get', 'fill_level_pct'],
+            0, 6, 100, 14,
+          ],
+          'circle-color': [
+            'match', ['get', 'status'],
+            'normal',   '#22c55e',
+            'monitor',  '#eab308',
+            'urgent',   '#f97316',
+            'critical', '#ef4444',
+            /* default (offline) */ '#6b7280',
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9,
+        },
+      })
+
+      const onClick = (e: mapboxgl.MapLayerMouseEvent) => {
+        const feature = e.features?.[0]
+        if (feature?.properties?.bin_id) selectBin(feature.properties.bin_id as string)
+      }
+      map.on('click', LAYER_ID, onClick)
+      map.on('mouseenter', LAYER_ID, () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', LAYER_ID, () => { map.getCanvas().style.cursor = '' })
+    }
+
+    return () => {
+      // Cleanup handled in the !useCanvasLayer branch on next call
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, mapReady, useCanvasLayer, filteredBins, selectBin])
 
   return (
     // containerRef must always be mounted so Mapbox attaches to the DOM node
@@ -136,18 +209,20 @@ export function DashboardMapInner({ showZones, showRoutes }: Props) {
           {showZones && <ZoneOverlay map={map} zones={[]} />}
 
           {/* Bin / cluster markers */}
-          {showIndividualBins
+          {showIndividualBins && !useCanvasLayer
             ? Array.from(filteredBins.values()).map((bin) => (
                 <BinMarker key={bin.bin_id} map={map} bin={bin} onSelect={handleSelectBin} />
               ))
-            : clusters.map((cluster) => (
-                <ClusterMarker
-                  key={cluster.cluster_id}
-                  map={map}
-                  cluster={cluster}
-                  onSelect={handleSelectCluster}
-                />
-              ))}
+            : !showIndividualBins
+              ? clusters.map((cluster) => (
+                  <ClusterMarker
+                    key={cluster.cluster_id}
+                    map={map}
+                    cluster={cluster}
+                    onSelect={handleSelectCluster}
+                  />
+                ))
+              : null /* canvas layer renders the bins, nothing needed in React tree */}
 
           {/* Vehicle markers */}
           {Array.from(vehicles.values()).map((vehicle) => (

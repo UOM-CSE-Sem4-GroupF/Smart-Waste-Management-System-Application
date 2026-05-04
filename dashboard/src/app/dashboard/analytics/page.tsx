@@ -9,6 +9,7 @@ import { useJobStore } from '@/store/jobStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends, getZoneForecast } from '@/lib/api/ml'
 import { getJobStats } from '@/lib/api/jobs'
+import dynamic from 'next/dynamic'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, Legend,
@@ -21,10 +22,24 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
-import { CollectionEfficiency } from '@/components/analytics/CollectionEfficiency'
-import { VehicleUtilisation } from '@/components/analytics/VehicleUtilisation'
-import { ZoneForecast } from '@/components/analytics/ZoneForecast'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+
+const FillRateHeatmap = dynamic(
+  () => import('@/components/analytics/FillRateHeatmap').then((m) => m.FillRateHeatmap),
+  { ssr: false, loading: () => <div className="flex h-48 items-center justify-center"><LoadingSpinner /></div> },
+)
+const CollectionEfficiency = dynamic(
+  () => import('@/components/analytics/CollectionEfficiency').then((m) => m.CollectionEfficiency),
+  { ssr: false, loading: () => <div className="flex h-48 items-center justify-center"><LoadingSpinner /></div> },
+)
+const VehicleUtilisation = dynamic(
+  () => import('@/components/analytics/VehicleUtilisation').then((m) => m.VehicleUtilisation),
+  { ssr: false, loading: () => <div className="flex h-48 items-center justify-center"><LoadingSpinner /></div> },
+)
+const ZoneForecast = dynamic(
+  () => import('@/components/analytics/ZoneForecast').then((m) => m.ZoneForecast),
+  { ssr: false, loading: () => <div className="flex h-48 items-center justify-center"><LoadingSpinner /></div> },
+)
 
 const ZONE_COLOURS = ['#22c55e', '#3b82f6', '#a855f7', '#f97316', '#eab308', '#14b8a6']
 

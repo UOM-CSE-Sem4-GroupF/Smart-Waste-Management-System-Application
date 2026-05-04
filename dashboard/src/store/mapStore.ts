@@ -8,11 +8,13 @@ export interface MapFilters {
 }
 
 interface MapStore {
-  bins:           Map<string, BinUpdatePayload>
-  vehicles:       Map<string, VehiclePositionPayload>
-  zoneStats:      Map<number, ZoneStatsPayload>
-  selectedBinId:  string | null
-  selectedZoneId: number | null
+  bins:                  Map<string, BinUpdatePayload>
+  vehicles:              Map<string, VehiclePositionPayload>
+  zoneStats:             Map<number, ZoneStatsPayload>
+  // Throttle vehicle position updates — stores last accepted timestamp per vehicle
+  _vehicleLastUpdated:   Map<string, number>
+  selectedBinId:         string | null
+  selectedZoneId:        number | null
   filters: MapFilters
 
   // Bin actions
@@ -36,12 +38,13 @@ interface MapStore {
 }
 
 export const useMapStore = create<MapStore>((set, get) => ({
-  bins:           new Map(),
-  vehicles:       new Map(),
-  zoneStats:      new Map(),
-  selectedBinId:  null,
-  selectedZoneId: null,
-  filters:        { status: [], wasteCategory: [], zoneId: null },
+  bins:                 new Map(),
+  vehicles:             new Map(),
+  zoneStats:            new Map(),
+  _vehicleLastUpdated:  new Map(),
+  selectedBinId:        null,
+  selectedZoneId:       null,
+  filters:              { status: [], wasteCategory: [], zoneId: null },
 
   updateBin: (event) =>
     set((state) => {
@@ -55,12 +58,20 @@ export const useMapStore = create<MapStore>((set, get) => ({
       bins: new Map(bins.map((b) => [b.bin_id, b])),
     })),
 
-  updateVehicle: (event) =>
+  // Throttle: accept at most 1 update per vehicle per second to avoid
+  // flooding React with re-renders from high-frequency GPS packets.
+  updateVehicle: (event) => {
+    const now = Date.now()
+    const last = get()._vehicleLastUpdated.get(event.vehicle_id) ?? 0
+    if (now - last < 1000) return  // drop if < 1s since last accepted update
     set((state) => {
-      const next = new Map(state.vehicles)
-      next.set(event.vehicle_id, event)
-      return { vehicles: next }
-    }),
+      const nextVehicles  = new Map(state.vehicles)
+      const nextTimestamp = new Map(state._vehicleLastUpdated)
+      nextVehicles.set(event.vehicle_id, event)
+      nextTimestamp.set(event.vehicle_id, now)
+      return { vehicles: nextVehicles, _vehicleLastUpdated: nextTimestamp }
+    })
+  },
 
   setVehicles: (list) =>
     set(() => ({
