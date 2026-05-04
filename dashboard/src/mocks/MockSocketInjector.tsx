@@ -1,16 +1,15 @@
 'use client'
 import { useEffect, useRef } from 'react'
-import { useBinStore } from '@/store/binStore'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { MOCK_BINS, MOCK_VEHICLE_POSITIONS } from './handlers'
 
 const IS_DEV = process.env.NODE_ENV === 'development'
 
 export function MockSocketInjector() {
-  const updateBin = useBinStore((s) => s.updateBin)
-  const updateVehicle = useVehicleStore((s) => s.updateVehicle)
-  const addAlert = useAlertStore((s) => s.addAlert)
+  const updateBin     = useMapStore((s) => s.updateBin)
+  const updateVehicle = useMapStore((s) => s.updateVehicle)
+  const addAlert      = useAlertStore((s) => s.addAlert)
 
   // Track mutable vehicle positions between ticks without causing re-renders
   const vehicleOffsets = useRef(MOCK_VEHICLE_POSITIONS.map((v) => ({ lat: v.lat, lng: v.lng })))

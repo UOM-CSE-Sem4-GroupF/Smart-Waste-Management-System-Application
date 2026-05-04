@@ -3,8 +3,7 @@ import { useMemo } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useBinStore }     from '@/store/binStore'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore }     from '@/store/mapStore'
 import { useJobStore }     from '@/store/jobStore'
 
 // Fix Leaflet default marker icon path broken by Next.js bundling
@@ -33,8 +32,8 @@ function truckIcon(heading = 0) {
 }
 
 export function MapInner() {
-  const bins     = useBinStore((s) => s.bins)
-  const vehicles = useVehicleStore((s) => s.vehicles)
+  const bins     = useMapStore((s) => s.bins)
+  const vehicles = useMapStore((s) => s.vehicles)
   const jobProgress = useJobStore((s) => s.jobProgress)
 
   const binMarkers     = useMemo(() => Array.from(bins.values()), [bins])

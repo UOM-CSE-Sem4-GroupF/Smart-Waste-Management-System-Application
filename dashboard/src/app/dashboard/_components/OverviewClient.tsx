@@ -7,9 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/shared/StatCard'
 import { ZoneCard } from '@/components/shared/ZoneCard'
 import { AlertFeed } from '@/components/shared/AlertFeed'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
-import { useVehicleStore } from '@/store/vehicleStore'
 import type { BinUpdatePayload, CollectionJob } from '@/types'
 
 interface OverviewClientProps {
@@ -27,9 +26,9 @@ const ACTIVE_STATES = new Set([
 ])
 
 export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps) {
-  const { setBins, bins, zones } = useBinStore()
+  const { setBins, bins, zoneStats: zones } = useMapStore()
   const { setJobs }              = useJobStore()
-  const vehicles                 = useVehicleStore((s) => s.vehicles)
+  const vehicles                 = useMapStore((s) => s.vehicles)
   const jobs                     = useJobStore((s) => s.jobs)
 
   // Seed stores once with initial SSR data

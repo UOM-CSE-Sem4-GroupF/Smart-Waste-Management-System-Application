@@ -3,8 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { type Socket } from 'socket.io-client'
 import { getSocket } from '@/lib/socket'
 import { useSession } from 'next-auth/react'
-import { useBinStore } from '@/store/binStore'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { useJobStore } from '@/store/jobStore'
 
@@ -16,9 +15,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   // useSocket() receive the live socket instance once it connects, not null.
   const [socket, setSocket] = useState<Socket | null>(null)
 
-  const updateBin         = useBinStore((s) => s.updateBin)
-  const updateZone        = useBinStore((s) => s.updateZone)
-  const updateVehicle     = useVehicleStore((s) => s.updateVehicle)
+  const updateBin         = useMapStore((s) => s.updateBin)
+  const updateZone        = useMapStore((s) => s.updateZoneStats)
+  const updateVehicle     = useMapStore((s) => s.updateVehicle)
   const addAlert          = useAlertStore((s) => s.addAlert)
   const updateJob         = useJobStore((s) => s.updateJob)
   const addJob            = useJobStore((s) => s.addJob)

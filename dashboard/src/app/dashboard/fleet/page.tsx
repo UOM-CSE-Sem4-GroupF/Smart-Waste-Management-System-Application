@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { useVehicles } from '@/hooks/useVehicles'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { CargoBar } from '@/components/fleet/CargoBar'
 import { AlertFeed } from '@/components/shared/AlertFeed'
@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export default function FleetPage() {
   const { data, isLoading } = useVehicles()
-  const liveVehicles = useVehicleStore((s) => s.vehicles)
+  const liveVehicles = useMapStore((s) => s.vehicles)
 
   // Merge REST data with live store state
   const vehicles = (data?.vehicles ?? []).map((v: ActiveVehicle) => {
