@@ -1,9 +1,9 @@
 # ── Shared env snippet ─────────────────────────────────────────────────────────
 x-kafka-env: &kafka-env
-  KAFKA_BROKER: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_BROKERS: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_USER:   ${KAFKA_USER:-}
-  KAFKA_PASS:   ${KAFKA_PASS:-}
+  KAFKA_BROKER:  ${KAFKA_BROKER:-163.47.8.3:9094}
+  KAFKA_BROKERS: ${KAFKA_BROKER:-163.47.8.3:9094}
+  KAFKA_USER:    ${KAFKA_USER:-user1}
+  KAFKA_PASS:    ${KAFKA_PASS:-c4eFajFH2t}
 
 services:
 
@@ -23,7 +23,7 @@ services:
     expose:
       - "3001"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     depends_on:
@@ -52,7 +52,7 @@ services:
     expose:
       - "3002"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     healthcheck:
@@ -74,7 +74,7 @@ services:
     expose:
       - "3003"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     healthcheck:
@@ -96,7 +96,7 @@ services:
     expose:
       - "3004"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     healthcheck:
@@ -117,7 +117,7 @@ services:
       BIN_STATUS_URL:   http://bin-status:3002
       NOTIFICATION_URL: http://notification:3004
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:163.47.8.3"
     depends_on:
       bin-status:
         condition: service_healthy

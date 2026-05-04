@@ -1,0 +1,12 @@
+{
+  "name": "garabadge-simulator",
+  "version": "1.0.0",
+  "description": "Kafka event simulator for Garabadge waste management system",
+  "main": "simulate.js",
+  "scripts": {
+    "start": "node simulate.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  }
+}
