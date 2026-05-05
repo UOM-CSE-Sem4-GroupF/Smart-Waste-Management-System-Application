@@ -20,12 +20,6 @@ export function buildKafka(clientId: string): Kafka {
   });
 }
 
-// Group-free consumer — equivalent to Python kafka-python group_id=None + assign() + seek_to_end().
-//
-// kafkajs v2 has no public kafka.cluster() method.  The internal factory lives at
-// kafkajs/src/cluster and the merged config is stored on kafka.options.
-// We use those two together to create a raw Cluster, then call cluster.findBroker()
-// + broker.fetch() directly — the KRaft group coordinator is never contacted.
 export async function startManualConsumer(
   clientId: string,
   topic: string,
@@ -56,8 +50,6 @@ export async function startManualConsumer(
     return () => {};
   }
 
-  // Start from log-end so we do not replay existing messages.
-  // Stored as strings to avoid BigInt encoding surprises in broker.fetch().
   const offsets = new Map<number, string>(
     topicOffsets.map(({ partition, offset }: { partition: number; offset: string }) =>
       [partition, offset],
@@ -65,23 +57,32 @@ export async function startManualConsumer(
   );
 
   // ── 2. Raw cluster via kafkajs internal factory ──────────────────────────────────
-  // kafkajs/src/cluster exports the same createCluster() called by kafka.admin/consumer/producer.
-  // kafka.options holds the merged config (brokers, sasl, logCreator, retry, …).
-  const createCluster: (opts: unknown) => any = require('kafkajs/src/cluster');
-  const clusterOpts: any = (kafka as any).options ?? {
-    brokers: (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(','),
+  // We use the internal Cluster class to bypass the group coordinator entirely.
+  const ClusterClass: any = require('kafkajs/src/cluster');
+  
+  const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
+  const user    = process.env.KAFKA_USER;
+  const pass    = process.env.KAFKA_PASS;
+
+  const cluster = new ClusterClass({
+    brokers,
     clientId,
-    sasl: process.env.KAFKA_USER && process.env.KAFKA_PASS
-      ? { mechanism: 'scram-sha-256', username: process.env.KAFKA_USER, password: process.env.KAFKA_PASS }
-      : undefined,
-    logLevel: logLevel.ERROR,
-    logCreator: () => () => {},
-  };
+    sasl: user && pass ? { mechanism: 'scram-sha-256', username: user, password: pass } : undefined,
+    logger: kafka.logger(),
+    instrumentationEmitter: (kafka as any).instrumentationEmitter ?? {
+      emit: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    },
+    socketFactory: require('kafkajs/src/network/socketFactory')(),
+    connectionTimeout: 10000,
+    authenticationTimeout: 10000,
+    requestTimeout: 30000,
+    retry: { retries: 5, multiplier: 2, maxRetryTime: 30000, initialRetryTime: 300 },
+  });
 
-  const cluster = createCluster(clusterOpts);
   await cluster.connect();
-
-  log('INFO', `${clientId}: connected — ${partitions.length} partition(s) on ${topic}, starting from latest`);
+  log('INFO', `${clientId}: connected — ${partitions.length} partition(s) on ${topic}, starting from latest (Group-Free)`);
 
   let running = true;
 
@@ -130,7 +131,7 @@ export async function startManualConsumer(
     log('INFO', `${clientId} stopped`);
   };
 
-  poll().catch(e => log('ERROR', `${clientId} poll crashed: ${e?.message}`));
+  poll().catch(e => log('ERROR', `${clientId} poll crashed: ${e?.message ?? String(e)}`));
 
   return () => { running = false; };
 }

@@ -12,6 +12,11 @@ services:
     build:
       context: ./backend/orchestrator
       dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    volumes:
+      - ./backend/orchestrator/src:/app/src
+      - ./backend/orchestrator/prisma:/app/prisma
     container_name: f3-orchestrator
     restart: unless-stopped
     environment:
