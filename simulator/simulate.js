@@ -23,7 +23,7 @@ const { Kafka, logLevel } = require('kafkajs');
 // Remote: DOKS external load balancer (default)
 const BROKER     = process.env.KAFKA_BROKER || '163.47.8.3:9094';
 const KAFKA_USER = process.env.KAFKA_USER   || 'user1';
-const KAFKA_PASS = process.env.KAFKA_PASS   || 'c4eFajFH2t';
+const KAFKA_PASS = process.env.KAFKA_PASS   || 'QA7aKGtPHV';
 
 // Safe partitions for 6-partition topics (Broker 0 partitions 1,3,4 are unreachable
 // on the remote AWS cluster; irrelevant for local single-broker Kafka).

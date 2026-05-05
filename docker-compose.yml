@@ -3,7 +3,13 @@ x-kafka-env: &kafka-env
   KAFKA_BROKER:  ${KAFKA_BROKER:-163.47.8.3:9094}
   KAFKA_BROKERS: ${KAFKA_BROKER:-163.47.8.3:9094}
   KAFKA_USER:    ${KAFKA_USER:-user1}
-  KAFKA_PASS:    ${KAFKA_PASS:-c4eFajFH2t}
+  KAFKA_PASS:    ${KAFKA_PASS:-QA7aKGtPHV}
+
+# Kafka returns "controller.internal" as its advertised listener hostname.
+# This maps it to the broker's public IP so containers can reach it.
+x-extra-hosts: &extra-hosts
+  extra_hosts:
+    - "controller.internal:163.47.8.3"
 
 services:
 
@@ -20,10 +26,9 @@ services:
       BIN_STATUS_URL:   http://bin-status:3002
       SCHEDULER_URL:    http://scheduler:3003
       NOTIFICATION_URL: http://notification:3004
+    <<: *extra-hosts
     expose:
       - "3001"
-    extra_hosts:
-      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     depends_on:
@@ -49,10 +54,9 @@ services:
     environment:
       <<: *kafka-env
       PORT: 3002
-    expose:
-      - "3002"
-    extra_hosts:
-      - "controller.internal:163.47.8.3"
+    <<: *extra-hosts
+    ports:
+      - "3002:3002"   # exposed for browser → Socket.IO direct connection
     networks:
       - garabadge
     healthcheck:
@@ -71,10 +75,9 @@ services:
     environment:
       <<: *kafka-env
       PORT: 3003
+    <<: *extra-hosts
     expose:
       - "3003"
-    extra_hosts:
-      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     healthcheck:
@@ -93,10 +96,9 @@ services:
     environment:
       <<: *kafka-env
       PORT: 3004
+    <<: *extra-hosts
     expose:
       - "3004"
-    extra_hosts:
-      - "controller.internal:163.47.8.3"
     networks:
       - garabadge
     healthcheck:
@@ -105,7 +107,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Telemetry bridge (Python, no consumer group — bypasses KRaft controller) ──
+  # ── Telemetry bridge (Python) ──────────────────────────────────────────────
   telemetry-bridge:
     build:
       context: ./telemetry-bridge
@@ -116,10 +118,30 @@ services:
       <<: *kafka-env
       BIN_STATUS_URL:   http://bin-status:3002
       NOTIFICATION_URL: http://notification:3004
-    extra_hosts:
-      - "controller.internal:163.47.8.3"
+    <<: *extra-hosts
     depends_on:
       bin-status:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    networks:
+      - garabadge
+
+  # ── Kafka Simulator ────────────────────────────────────────────────────────
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: garabadge-simulator
+    restart: unless-stopped
+    environment:
+      <<: *kafka-env
+    depends_on:
+      bin-status:
+        condition: service_healthy
+      orchestrator:
+        condition: service_healthy
+      scheduler:
         condition: service_healthy
       notification:
         condition: service_healthy
@@ -131,8 +153,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     container_name: garabadge-nextjs
     restart: unless-stopped
     environment:
@@ -148,15 +168,15 @@ services:
     container_name: garabadge-kong
     restart: unless-stopped
     environment:
-      KONG_DATABASE:          "off"
+      KONG_DATABASE:           "off"
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
-      KONG_PROXY_ACCESS_LOG:  /dev/stdout
-      KONG_ADMIN_ACCESS_LOG:  /dev/stdout
-      KONG_PROXY_ERROR_LOG:   /dev/stderr
-      KONG_ADMIN_ERROR_LOG:   /dev/stderr
-      KONG_ADMIN_LISTEN:      "0.0.0.0:8001"
+      KONG_PROXY_ACCESS_LOG:   /dev/stdout
+      KONG_ADMIN_ACCESS_LOG:   /dev/stdout
+      KONG_PROXY_ERROR_LOG:    /dev/stderr
+      KONG_ADMIN_ERROR_LOG:    /dev/stderr
+      KONG_ADMIN_LISTEN:       "0.0.0.0:8001"
     ports:
-      - "8000:8000"   # public API proxy
+      - "8000:8000"   # public API + notification Socket.IO
       - "8001:8001"   # Kong admin
     volumes:
       - ./kong/kong.yml:/kong/kong.yml:ro
