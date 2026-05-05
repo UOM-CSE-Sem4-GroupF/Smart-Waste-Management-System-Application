@@ -50,11 +50,17 @@ services:
     build:
       context: ./backend/bin-status
       dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    volumes:
+      - ./backend/bin-status/src:/app/src
     container_name: f3-bin-status
     restart: unless-stopped
     environment:
       <<: *kafka-env
       PORT: 3002
+      DATA_ANALYSIS_URL: http://kong:8000/data-analysis
+      NOTIFICATION_URL: http://notification:3004
     expose:
       - "3002"
     extra_hosts:

@@ -14,6 +14,7 @@ import { shouldTriggerCollection } from '../rules/collectionTrigger';
 import { shouldPushToDashboard, updateFilterState } from '../rules/dashboardFilter';
 import { classifyUrgency } from '../rules/urgencyClassifier';
 import { calculateBinWeightByCategory } from '../rules/weightCalculator';
+import { startManualConsumer } from './manualConsumer';
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -247,61 +248,41 @@ async function processZoneStatisticsMessage(event: ZoneStatisticsEvent): Promise
 }
 
 export async function startKafkaConsumer(): Promise<void> {
-  const kafka = buildKafka();
+  const log = (level: string, msg: string) => {
+    if (level === 'ERROR') logger.error(msg);
+    else if (level === 'WARN') logger.warn(msg);
+    else logger.info(msg);
+  };
 
-  // Create separate consumers for each topic group
-  const binConsumer = kafka.consumer({ groupId: 'bin-status-service' });
-  const zoneConsumer = kafka.consumer({ groupId: 'bin-status-service-zones' });
+  // 1. Bin Processed Consumer
+  await startManualConsumer(
+    'bin-status-service-bin-processed',
+    'waste.bin.processed',
+    async (value) => {
+      try {
+        const event = JSON.parse(value.toString()) as BinProcessedEvent;
+        await processBinProcessedMessage(event);
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to parse waste.bin.processed message');
+      }
+    },
+    log
+  );
 
-  try {
-    // Start bin.processed consumer
-    await binConsumer.connect();
-    await binConsumer.subscribe({ topic: 'waste.bin.processed', fromBeginning: false });
+  // 2. Zone Statistics Consumer
+  await startManualConsumer(
+    'bin-status-service-zone-statistics',
+    'waste.zone.statistics',
+    async (value) => {
+      try {
+        const event = JSON.parse(value.toString()) as ZoneStatisticsEvent;
+        await processZoneStatisticsMessage(event);
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to parse waste.zone.statistics message');
+      }
+    },
+    log
+  );
 
-    await binConsumer.run({
-      eachMessage: async ({ message }) => {
-        if (!message.value) return;
-
-        try {
-          const event = JSON.parse(message.value.toString()) as BinProcessedEvent;
-          await processBinProcessedMessage(event);
-        } catch (error) {
-          logger.error(
-            { error: error instanceof Error ? error.message : String(error) },
-            'Failed to parse waste.bin.processed message',
-          );
-        }
-      },
-    });
-
-    logger.info('Kafka consumer started: waste.bin.processed');
-
-    // Start zone.statistics consumer
-    await zoneConsumer.connect();
-    await zoneConsumer.subscribe({ topic: 'waste.zone.statistics', fromBeginning: false });
-
-    await zoneConsumer.run({
-      eachMessage: async ({ message }) => {
-        if (!message.value) return;
-
-        try {
-          const event = JSON.parse(message.value.toString()) as ZoneStatisticsEvent;
-          await processZoneStatisticsMessage(event);
-        } catch (error) {
-          logger.error(
-            { error: error instanceof Error ? error.message : String(error) },
-            'Failed to parse waste.zone.statistics message',
-          );
-        }
-      },
-    });
-
-    logger.info('Kafka consumer started: waste.zone.statistics');
-  } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Failed to start Kafka consumer',
-    );
-    throw error;
-  }
+  logger.info('Kafka manual consumers started: waste.bin.processed, waste.zone.statistics');
 }
