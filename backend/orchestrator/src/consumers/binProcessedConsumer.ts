@@ -32,8 +32,27 @@ export async function startBinProcessedConsumer(): Promise<void> {
 
         const bin_id    = p.bin_id;
         const urgency   = Number(p.urgency_score);
-        const zone_id   = p.zone_id      ?? 'unknown';
+        let zone_id   = p.zone_id      ?? 'unknown';
         const waste_cat = p.waste_category ?? 'general';
+
+        if (zone_id === 'unknown') {
+          try {
+            const snapshot = await getClusterSnapshot('all'); // Need a way to get all zones or specific bin
+            // Alternatively, just wait for bin-status to enrich it.
+            // For now, let's just query the bin-status API for this specific bin's zone.
+            const allBinsRes = await fetch(`${process.env.BIN_STATUS_URL ?? 'http://bin-status:3002'}/api/v1/bins`);
+            if (allBinsRes.ok) {
+               const { data } = await allBinsRes.json() as any;
+               const found = data.find((b: any) => b.bin_id === bin_id);
+               if (found && found.zone_id) {
+                 zone_id = String(found.zone_id);
+                 slog('INFO', `Resolved zone_id for ${bin_id}: ${zone_id}`);
+               }
+            }
+          } catch (e) {
+            slog('WARN', `Failed to resolve zone for ${bin_id}: ${e}`);
+          }
+        }
 
         pruneDedup();
         const lastSeen = recentlyProcessed.get(bin_id);

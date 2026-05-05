@@ -19,31 +19,46 @@ export interface BinMetadata {
 }
 
 export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/v1/bins/${bin_id}`);
-    if (!res.ok) {
-      logger.warn({ bin_id, status: res.status }, 'Bin metadata not found in DataAnalysis API');
-      return null;
-    }
-    
-    const body = await res.json() as { data: any };
-    const data = body.data;
-    if (!data) return null;
+  const maxRetries = 3;
+  let lastError: any;
 
-    return {
-      bin_id: data.id,
-      cluster_id: data.cluster_id,
-      cluster_name: data.cluster?.name ?? 'Unknown Cluster',
-      zone_id: data.cluster?.zone_id ?? 0,
-      zone_name: data.cluster?.zone?.name ?? 'Unknown Zone',
-      waste_category: data.waste_category?.name ?? 'general',
-      waste_category_colour: data.waste_category?.colour_code ?? '#808080',
-      volume_litres: data.volume_litres ?? 240,
-    };
-  } catch (error) {
-    logger.error({ bin_id, error: error instanceof Error ? error.message : String(error) }, 'Failed to fetch bin metadata from DataAnalysis API');
-    return null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/bins/${bin_id}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          logger.warn({ bin_id }, 'Bin not found in DataAnalysis API');
+          return null;
+        }
+        throw new Error(`API returned ${res.status}`);
+      }
+      
+      const body = await res.json() as { data: any };
+      const data = body.data;
+      if (!data) return null;
+
+      return {
+        bin_id: data.id,
+        cluster_id: data.cluster_id,
+        cluster_name: data.cluster?.name ?? 'Unknown Cluster',
+        zone_id: data.cluster?.zone_id ?? 0,
+        zone_name: data.cluster?.zone?.name ?? 'Unknown Zone',
+        waste_category: data.waste_category?.name ?? 'general',
+        waste_category_colour: data.waste_category?.colour_code ?? '#808080',
+        volume_litres: data.volume_litres ?? 240,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = attempt * 2000;
+        logger.info({ bin_id, attempt, delay }, 'Retrying metadata fetch...');
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
+
+  logger.error({ bin_id, error: lastError?.message }, 'Failed to fetch bin metadata after retries');
+  return null;
 }
 
 export interface ZoneMetadata {

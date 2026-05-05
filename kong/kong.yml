@@ -157,9 +157,9 @@ services:
         methods:    ["GET", "POST", "OPTIONS"]
         strip_path: false
 
-  # ── Next.js frontend ───────────────────────────────────────────────────────
+  # ── Next.js frontend (running on host) ──────────────────────────────────
   - name: nextjs-ui
-    url: http://nextjs:3000
+    url: http://host.docker.internal:3000
     routes:
       - name:       ui
         paths:      ["/"]
