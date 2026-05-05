@@ -6,8 +6,10 @@
 const { io } = require("socket.io-client");
 
 // Connect to Kong (which proxies to the notification service)
+const MOCK_PAYLOAD = Buffer.from(JSON.stringify({ sub: "test", realm_access: { roles: ["supervisor"] } })).toString('base64');
 const socket = io("http://localhost:8000", {
-  path: "/ws",
+  path: "/socket.io",
+  auth: { token: `header.${MOCK_PAYLOAD}.sig` },
   transports: ["websocket"]
 });
 

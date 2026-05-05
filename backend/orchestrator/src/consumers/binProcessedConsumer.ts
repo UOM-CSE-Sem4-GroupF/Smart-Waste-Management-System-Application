@@ -36,23 +36,30 @@ export async function startBinProcessedConsumer(): Promise<void> {
         const waste_cat = p.waste_category ?? 'general';
 
         if (zone_id === 'unknown') {
-          try {
-            const snapshot = await getClusterSnapshot('all'); // Need a way to get all zones or specific bin
-            // Alternatively, just wait for bin-status to enrich it.
-            // For now, let's just query the bin-status API for this specific bin's zone.
-            const allBinsRes = await fetch(`${process.env.BIN_STATUS_URL ?? 'http://bin-status:3002'}/api/v1/bins`);
-            if (allBinsRes.ok) {
-               const { data } = await allBinsRes.json() as any;
-               const found = data.find((b: any) => b.bin_id === bin_id);
-               if (found && found.zone_id) {
-                 zone_id = String(found.zone_id);
-                 slog('INFO', `Resolved zone_id for ${bin_id}: ${zone_id}`);
-               }
+          for (let attempt = 1; attempt <= 10; attempt++) {
+            try {
+              const allBinsRes = await fetch(`${process.env.BIN_STATUS_URL ?? 'http://bin-status:3002'}/api/v1/bins`);
+              if (allBinsRes.ok) {
+                 const { data } = await allBinsRes.json() as any;
+                 const found = data.find((b: any) => b.bin_id === bin_id);
+                 if (found && found.zone_id) {
+                   zone_id = String(found.zone_id);
+                   slog('INFO', `Resolved zone_id for ${bin_id}: ${zone_id}`);
+                   break;
+                 }
+              }
+            } catch (e) {
+              // Ignore fetch errors during startup
             }
-          } catch (e) {
-            slog('WARN', `Failed to resolve zone for ${bin_id}: ${e}`);
+            slog('INFO', `Waiting for bin-status to sync bin ${bin_id} (attempt ${attempt}/10)...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          if (zone_id === 'unknown') {
+            slog('WARN', `Failed to resolve zone for ${bin_id} after retries. Defaulting to zone 1.`);
+            zone_id = '1';
           }
         }
+
 
         pruneDedup();
         const lastSeen = recentlyProcessed.get(bin_id);
