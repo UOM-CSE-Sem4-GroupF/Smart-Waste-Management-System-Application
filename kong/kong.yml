@@ -164,3 +164,22 @@ services:
       - name:       ui
         paths:      ["/"]
         strip_path: false
+
+  # ── Data Analysis Core API ────────────────────────────────────────────────
+  - name: data-analysis-api
+    url: http://host.docker.internal:8001
+    connect_timeout: 5000
+    read_timeout:    10000
+    write_timeout:   10000
+    routes:
+      - name:       data-analysis-proxy
+        paths:      ["/data-analysis"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: true
+    plugins:
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "OPTIONS"]
+          headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
+          max_age: 3600

@@ -49,13 +49,13 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
   const now = new Date().toISOString();
 
   try {
-    // Step 1: Load bin metadata
-    // For now, we use what's in the message
-    // In production, this would query f2.bins to get cluster_id, volume_litres, category mapping
+    // Step 1 & 5: Load bin metadata for enrichment
+    const meta = await getBinMetadata(bin_id);
+    
+    const volume_litres = meta?.volume_litres ?? 240;
+    const waste_category = meta?.waste_category ?? 'general';
 
     // Step 2: Recalculate weight
-    const volume_litres = 240; // From metadata in production
-    const waste_category = 'general'; // From metadata in production
     const estimated_weight_kg = calculateBinWeightByCategory(
       payload.fill_level_pct,
       volume_litres,
@@ -96,15 +96,15 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
     // Step 5: Enrich payload
     const enriched: BinUpdatePayload = {
       bin_id,
-      cluster_id: 'CLUSTER-001', // From metadata
-      cluster_name: 'Main Depot', // From metadata
-      zone_id: 1, // From metadata
+      cluster_id: meta?.cluster_id ?? 'CLUSTER-001',
+      cluster_name: meta?.cluster_name ?? 'Main Depot',
+      zone_id: meta?.zone_id ?? 1,
       fill_level_pct: payload.fill_level_pct,
       status,
       urgency_score: payload.urgency_score,
       estimated_weight_kg,
       waste_category,
-      waste_category_colour: '#FF5733', // From category mapping
+      waste_category_colour: meta?.waste_category_colour ?? '#808080',
       fill_rate_pct_per_hour: payload.fill_rate_pct_per_hour,
       predicted_full_at: payload.predicted_full_at,
       battery_level_pct: payload.battery_level_pct,
@@ -194,17 +194,18 @@ async function processZoneStatisticsMessage(event: ZoneStatisticsEvent): Promise
       return;
     }
 
-    // Step 2: Enrich with job context
+    // Step 2: Enrich with job context and metadata
+    const meta = await getZoneMetadata(zone_id);
     const active_jobs_count = store.getActiveJobsCountForZone(zone_id);
     const unassigned_urgent_bins = store.getUnassignedUrgentBinsInZone(zone_id);
 
     const enriched: ZoneStatsPayload = {
       zone_id,
-      zone_name: `Zone ${zone_id}`, // From metadata
+      zone_name: meta?.zone_name ?? `Zone ${zone_id}`,
       avg_fill_level_pct: payload.avg_fill_level_pct,
       urgent_bin_count: payload.urgent_bin_count,
       critical_bin_count: payload.critical_bin_count,
-      total_bins: payload.total_bins,
+      total_bins: meta?.total_bins ?? payload.total_bins,
       total_estimated_weight_kg: payload.total_estimated_weight_kg,
       dominant_waste_category: payload.dominant_waste_category,
       category_breakdown: payload.category_breakdown,
