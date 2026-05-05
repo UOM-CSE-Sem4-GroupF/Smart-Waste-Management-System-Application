@@ -5,6 +5,7 @@ let io: SocketServer | null = null;
 export function setSocketServer(server: SocketServer): void { io = server; }
 
 export function emitToRoom(room: string, event: string, data: unknown): void {
+  console.log(`[SocketIO] Emitting to ${room}: ${event}`, JSON.stringify(data).substring(0, 100) + '...');
   io?.to(room).emit(event, data);
 }
 
