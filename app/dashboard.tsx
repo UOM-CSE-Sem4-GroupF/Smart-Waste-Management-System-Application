@@ -1,0 +1,442 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { io as socketIo } from 'socket.io-client';
+import TopBar from '@/components/layout/TopBar';
+import Sidebar from '@/components/layout/Sidebar';
+import PulseDot from '@/components/ui/PulseDot';
+import MapView from '@/components/views/MapView';
+import BinsView from '@/components/views/BinsView';
+import JobsView from '@/components/views/JobsView';
+import AlertsView from '@/components/views/AlertsView';
+import AnalyticsView from '@/components/views/AnalyticsView';
+import HistoryView from '@/components/views/HistoryView';
+import type {
+  Bin, Alert, Route, Job, AnalyticsData, Zone, Vehicle,
+  ViewId, BinStatus, WasteType, JobState, JobType,
+} from '@/lib/types';
+
+const VIEW_TITLES: Record<ViewId, string> = {
+  map:       'Live Map',
+  bins:      'Bins Overview',
+  jobs:      'Job Management',
+  alerts:    'Alerts & Notifications',
+  analytics: 'Analytics',
+  history:   'Historical Data',
+};
+
+const POLL_MS        = 10000;
+const API_BASE       = process.env.NEXT_PUBLIC_API_BASE_URL  ?? 'http://localhost:8000';
+const BIN_STATUS_URL = process.env.NEXT_PUBLIC_BIN_STATUS_URL ?? 'http://localhost:3002';
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}/api/v1${path}`, init);
+  if (!res.ok) throw new Error(`${res.status} ${path}`);
+  return res.json();
+}
+
+// ── Legacy API shape adapters ─────────────────────────────────────────────────
+
+type F3BinState = {
+  bin_id: string; fill_level_pct: number; urgency_status: string;
+  urgency_score: number; estimated_weight_kg: number;
+  waste_category: string; volume_litres: number; zone_id: string;
+  lat: number; lng: number; battery_pct: number; last_reading_at: string;
+};
+type F3Vehicle = {
+  vehicle_id: string; lat: number; lng: number; heading: number;
+  speed_kmh: number; current_job_id?: string; last_update: string;
+};
+type F3Zone = {
+  zone_id: string; bin_count: number; avg_fill_pct: number;
+};
+type F3Job = {
+  job_id: string; state: string; zone_id: string; waste_category: string;
+  bin_ids: string[]; driver_id?: string; vehicle_id?: string;
+  job_type?: string; created_at?: string;
+};
+
+const ZONE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
+
+function mapUrgencyToStatus(urgency: string): BinStatus {
+  if (urgency === 'critical') return 'critical';
+  if (urgency === 'normal')   return 'ok';
+  return 'warning';
+}
+
+function adaptBins(raw: { data?: F3BinState[] } | F3BinState[]): Bin[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(b => ({
+    id:                  b.bin_id,
+    label:               b.bin_id,
+    zone:                b.zone_id,
+    lat:                 b.lat,
+    lng:                 b.lng,
+    fill:                b.fill_level_pct,
+    capacity:            b.volume_litres,
+    type:                (b.waste_category ?? 'general') as WasteType,
+    status:              mapUrgencyToStatus(b.urgency_status),
+    urgency_score:       b.urgency_score       ?? 0,
+    estimated_weight_kg: b.estimated_weight_kg ?? 0,
+    battery:             80,
+    offline:             false,
+    lastPing:            Date.parse(b.last_reading_at),
+  }));
+}
+
+function adaptZones(raw: { data?: F3Zone[] } | F3Zone[]): Zone[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map((z, i) => ({
+    id:       z.zone_id,
+    name:     z.zone_id,
+    color:    ZONE_COLORS[i % ZONE_COLORS.length],
+    binCount: z.bin_count,
+    avgFill:  z.avg_fill_pct,
+  }));
+}
+
+function adaptVehicles(raw: { data?: F3Vehicle[] } | F3Vehicle[]): Vehicle[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(v => ({
+    id:         v.vehicle_id,
+    lat:        v.lat,
+    lng:        v.lng,
+    heading:    v.heading,
+    speed:      v.speed_kmh,
+    routeId:    v.current_job_id,
+    lastUpdate: Date.parse(v.last_update),
+  }));
+}
+
+function adaptRoutes(raw: { data?: F3Job[] } | F3Job[]): Route[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(j => ({
+    id:          j.job_id,
+    label:       `${j.waste_category} – ${j.zone_id}`,
+    driver:      j.driver_id ?? '—',
+    vehicle:     j.vehicle_id ?? '—',
+    stops:       j.bin_ids.map((binId, order) => ({ binId, order, eta: '—' })),
+    distanceKm:  0,
+    durationMin: 0,
+    status:      (['COMPLETED','CLOSED'].includes(j.state) ? 'complete'
+                 : ['IN_PROGRESS','COLLECTING','DRIVER_ACCEPTED'].includes(j.state) ? 'active'
+                 : 'pending') as Route['status'],
+  }));
+}
+
+function adaptJobs(raw: { data?: F3Job[] } | F3Job[]): Job[] {
+  const items = Array.isArray(raw) ? raw : (raw.data ?? []);
+  return items.map(j => ({
+    id:               j.job_id,
+    job_type:         (j.job_type ?? 'routine') as JobType,
+    state:            (j.state ?? 'CREATED') as JobState,
+    zone_id:          j.zone_id,
+    zone_name:        `Zone ${j.zone_id}`,
+    vehicle_id:       j.vehicle_id ?? '—',
+    driver_id:        j.driver_id  ?? '—',
+    total_bins:       j.bin_ids.length,
+    bins_collected:   0,
+    planned_weight_kg:0,
+    cargo_weight_kg:  0,
+    cargo_limit_kg:   2000,
+    clusters:         [],
+    created_at:       j.created_at ?? new Date().toISOString(),
+    state_history:    [{ state: j.state ?? 'CREATED', ts: j.created_at ?? new Date().toISOString() }],
+  }));
+}
+
+function makeAlert(type: Alert['type'], e: Record<string, unknown>): Alert {
+  return {
+    id:           `alert-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    type,
+    message:      String(e.message ?? `${type} alert`),
+    bin_id:       e.bin_id      ? String(e.bin_id)      : undefined,
+    vehicle_id:   e.vehicle_id  ? String(e.vehicle_id)  : undefined,
+    job_id:       e.job_id      ? String(e.job_id)      : undefined,
+    zone_id:      e.zone_id     ? Number(e.zone_id)     : undefined,
+    received_at:  new Date().toISOString(),
+    acknowledged: false,
+  };
+}
+
+const EMPTY_ANALYTICS: AnalyticsData = {
+  weeklyCollections: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({ day, count: 0 })),
+  fillRateByZone: [],
+  alertsByType: [
+    { type: 'urgent',    count: 0 },
+    { type: 'deviation', count: 0 },
+    { type: 'escalated', count: 0 },
+  ],
+  totalCollectionsThisMonth: 0,
+  avgFillOnCollection: 0,
+  fuelSavedLitres: 0,
+  co2SavedKg: 0,
+};
+
+export default function Dashboard() {
+  const [view, setView]             = useState<ViewId>('map');
+  const [bins, setBins]             = useState<Bin[]>([]);
+  const [alerts, setAlerts]         = useState<Alert[]>([]);
+  const [routes, setRoutes]         = useState<Route[]>([]);
+  const [jobs, setJobs]             = useState<Job[]>([]);
+  const [analytics]                  = useState<AnalyticsData>(EMPTY_ANALYTICS);
+  const [zones, setZones]           = useState<Zone[]>([]);
+  const [vehicles, setVehicles]     = useState<Vehicle[]>([]);
+  const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'error'>('connecting');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    const [binsRes, jobsRes, zonesRes, vehiclesRes] = await Promise.allSettled([
+      apiFetch<unknown>('/bins'),
+      apiFetch<unknown>('/collection-jobs'),
+      apiFetch<unknown>('/zones'),
+      apiFetch<unknown>('/vehicles/active'),
+    ]);
+
+    let anyOk = false;
+
+    if (binsRes.status === 'fulfilled') {
+      setBins(adaptBins(binsRes.value as Parameters<typeof adaptBins>[0]));
+      anyOk = true;
+    }
+    if (jobsRes.status === 'fulfilled') {
+      const raw = jobsRes.value as Parameters<typeof adaptRoutes>[0];
+      setRoutes(adaptRoutes(raw));
+      setJobs(prev => {
+        // Merge: keep socket-updated jobs, fill gaps from REST
+        const existing = new Map(prev.map(j => [j.id, j]));
+        adaptJobs(raw).forEach(j => { if (!existing.has(j.id)) existing.set(j.id, j); });
+        return Array.from(existing.values());
+      });
+      anyOk = true;
+    }
+    if (zonesRes.status === 'fulfilled') {
+      setZones(adaptZones(zonesRes.value as Parameters<typeof adaptZones>[0]));
+      anyOk = true;
+    }
+    if (vehiclesRes.status === 'fulfilled') {
+      setVehicles(adaptVehicles(vehiclesRes.value as Parameters<typeof adaptVehicles>[0]));
+      anyOk = true;
+    }
+
+    if (anyOk) setConnStatus('live');
+    else setConnStatus(prev => prev === 'live' ? 'error' : 'connecting');
+  }, []);
+
+  // REST polling
+  useEffect(() => {
+    fetchAll();
+    pollRef.current = setInterval(fetchAll, POLL_MS);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [fetchAll]);
+
+  // Socket.IO — bin-status service
+  useEffect(() => {
+    const socket = socketIo(BIN_STATUS_URL, { path: '/socket.io', transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => socket.emit('join', ['dashboard-all']));
+
+    socket.on('bin:update', (raw: Record<string, unknown>) => {
+      const bin_id = String(raw.bin_id ?? '');
+      if (!bin_id) return;
+      setBins(prev => prev.map(b => b.id === bin_id ? {
+        ...b,
+        fill:                Number(raw.fill_level_pct        ?? b.fill),
+        status:              mapUrgencyToStatus(String(raw.urgency_status ?? 'normal')),
+        type:                (raw.waste_category              ?? b.type)   as WasteType,
+        urgency_score:       Number(raw.urgency_score         ?? b.urgency_score),
+        estimated_weight_kg: Number(raw.estimated_weight_kg   ?? b.estimated_weight_kg),
+        lastPing:            Date.parse(String(raw.timestamp  ?? new Date().toISOString())),
+      } : b));
+    });
+
+    return () => { socket.disconnect(); };
+  }, []);
+
+  // Socket.IO — orchestrator / notification service
+  useEffect(() => {
+    const socket = socketIo(API_BASE, { path: '/socket.io', transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => socket.emit('join', ['dashboard-all', 'fleet-ops']));
+
+    socket.on('vehicle:position', (e: Record<string, unknown>) => {
+      const v: Vehicle = {
+        id:                   String(e.vehicle_id ?? ''),
+        lat:                  Number(e.lat),
+        lng:                  Number(e.lng),
+        heading:              Number(e.heading ?? 0),
+        speed:                Number(e.speed_kmh ?? 0),
+        routeId:              e.job_id ? String(e.job_id) : undefined,
+        lastUpdate:           Date.now(),
+        cargo_utilisation_pct:Number(e.cargo_utilisation_pct ?? 0),
+        bins_collected:       Number(e.bins_collected ?? 0),
+        bins_total:           Number(e.bins_total ?? 0),
+      };
+      if (!v.id) return;
+      setVehicles(prev => {
+        const idx = prev.findIndex(x => x.id === v.id);
+        return idx === -1 ? [...prev, v] : prev.map((x, i) => i === idx ? v : x);
+      });
+    });
+
+    socket.on('job:created', (e: Record<string, unknown>) => {
+      const job: Job = {
+        id:               String(e.job_id ?? ''),
+        job_type:         (String(e.job_type ?? 'routine')) as JobType,
+        state:            'CREATED',
+        zone_id:          String(e.zone_id ?? ''),
+        zone_name:        String(e.zone_name ?? `Zone ${e.zone_id}`),
+        vehicle_id:       String(e.vehicle_id ?? '—'),
+        driver_id:        String(e.driver_id  ?? '—'),
+        total_bins:       Number(e.total_bins ?? 0),
+        bins_collected:   0,
+        planned_weight_kg:Number(e.planned_weight_kg ?? 0),
+        cargo_weight_kg:  0,
+        cargo_limit_kg:   2000,
+        clusters:         Array.isArray(e.clusters) ? e.clusters.map(String) : [],
+        created_at:       new Date().toISOString(),
+        state_history:    [{ state: 'CREATED', ts: new Date().toISOString() }],
+      };
+      if (!job.id) return;
+      setJobs(prev => prev.find(j => j.id === job.id) ? prev : [job, ...prev]);
+    });
+
+    socket.on('job:progress', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state:          (String(e.state ?? j.state)) as JobState,
+        bins_collected: Number(e.bins_collected ?? j.bins_collected),
+        cargo_weight_kg:Number(e.cargo_weight_kg ?? j.cargo_weight_kg),
+        state_history:  [...j.state_history, { state: String(e.state ?? j.state), ts: new Date().toISOString() }],
+      }));
+    });
+
+    socket.on('job:completed', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state:            'COMPLETED',
+        bins_collected:   Number(e.bins_collected ?? j.bins_collected),
+        bins_skipped:     Number(e.bins_skipped ?? 0),
+        actual_weight_kg: Number(e.actual_weight_kg ?? 0),
+        duration_minutes: Number(e.duration_minutes ?? 0),
+        completed_at:     new Date().toISOString(),
+        state_history:    [...j.state_history, { state: 'COMPLETED', ts: new Date().toISOString() }],
+      }));
+      setRoutes(prev => prev.map(r => r.id === job_id ? { ...r, status: 'complete' } : r));
+    });
+
+    socket.on('job:cancelled', (e: Record<string, unknown>) => {
+      const job_id = String(e.job_id ?? '');
+      if (!job_id) return;
+      setJobs(prev => prev.map(j => j.id !== job_id ? j : {
+        ...j,
+        state: 'CANCELLED',
+        state_history: [...j.state_history, { state: 'CANCELLED', ts: new Date().toISOString() }],
+      }));
+      setRoutes(prev => prev.filter(r => r.id !== job_id));
+    });
+
+    socket.on('alert:urgent', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('urgent', e), ...prev]);
+    });
+
+    socket.on('alert:deviation', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('deviation', e), ...prev]);
+    });
+
+    socket.on('alert:escalated', (e: Record<string, unknown>) => {
+      setAlerts(prev => [makeAlert('escalated', e), ...prev]);
+    });
+
+    return () => { socket.disconnect(); };
+  }, []);
+
+  const acknowledgeAlert = useCallback(async (id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
+    try { await apiFetch(`/alerts/${id}/read`, { method: 'PATCH' }); } catch { /* optimistic */ }
+  }, []);
+
+  const acknowledgeAll = useCallback(async () => {
+    setAlerts(prev => prev.map(a => ({ ...a, acknowledged: true })));
+    try { await apiFetch('/alerts/read-all', { method: 'PATCH' }); } catch { /* optimistic */ }
+  }, []);
+
+  const statusLabel = connStatus === 'live' ? '● Live'
+    : connStatus === 'error' ? '◌ Reconnecting…' : '◌ Connecting…';
+  const statusColor = connStatus === 'live' ? 'var(--ok)' : 'var(--text-muted)';
+  const hasData = bins.length > 0 || jobs.length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <TopBar bins={bins} alerts={alerts}/>
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <Sidebar active={view} onNav={setView} alerts={alerts}/>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Breadcrumb + status bar */}
+          <div style={{
+            height: 40, display: 'flex', alignItems: 'center', padding: '0 20px',
+            borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', flexShrink: 0,
+          }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Dashboard</span>
+            <span style={{ color: 'var(--border-hi)', margin: '0 8px' }}>›</span>
+            <span style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>{VIEW_TITLES[view]}</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {view === 'map' && hasData && (
+                <><PulseDot color="var(--ok)"/><span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Live feed</span></>
+              )}
+              <span style={{ fontSize: 10, color: statusColor }}>{statusLabel}</span>
+            </span>
+          </div>
+
+          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+            {!hasData && view !== 'history' ? (
+              <EmptyKafkaState status={connStatus}/>
+            ) : (
+              <>
+                {view === 'map'       && <div style={{ height: '100%' }}><MapView bins={bins} vehicles={vehicles} routes={routes} zones={zones}/></div>}
+                {view === 'bins'      && <BinsView bins={bins}/>}
+                {view === 'jobs'      && <JobsView jobs={jobs}/>}
+                {view === 'alerts'    && <AlertsView alerts={alerts} onAcknowledge={acknowledgeAlert} onAcknowledgeAll={acknowledgeAll}/>}
+                {view === 'analytics' && <AnalyticsView analytics={analytics} zones={zones} bins={bins} jobs={jobs}/>}
+                {view === 'history'   && <HistoryView/>}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyKafkaState({ status }: { status: 'connecting' | 'live' | 'error' }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      height: '100%', gap: 16,
+    }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: '50%',
+        border: '3px solid var(--border)',
+        borderTopColor: status === 'error' ? 'var(--critical)' : 'var(--accent)',
+        animation: status !== 'error' ? 'spin 1s linear infinite' : 'none',
+      }}/>
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+        {status === 'connecting' && 'Connecting to backend…'}
+        {status === 'live'       && 'Waiting for Kafka data…'}
+        {status === 'error'      && 'Cannot reach backend'}
+      </div>
+      <div style={{ fontSize: 12, maxWidth: 340, textAlign: 'center', lineHeight: 1.7, color: 'var(--text-muted)' }}>
+        {status === 'error'
+          ? 'Check that the Fastify server is running on port 3001.'
+          : 'Dashboard populates as messages arrive on the Kafka topics.'}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}

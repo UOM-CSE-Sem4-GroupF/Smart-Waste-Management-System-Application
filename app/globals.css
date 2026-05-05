@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --bg-app:       #080D18;
+  --bg-surface:   #0C1420;
+  --bg-card:      #0F1624;
+  --bg-input:     #131D30;
+  --border:       #1E2B3F;
+  --border-hi:    #2A3B55;
+  --text-primary: #E4EBF5;
+  --text-secondary: #8494A8;
+  --text-muted:   #4D5F75;
+  --accent:       #22D3C5;
+  --accent-dim:   #0F766E;
+  --ok:           #34D399;
+  --info:         #60A5FA;
+  --warning:      #FBBF24;
+  --critical:     #F87171;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #__next { height: 100%; width: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+
+button, select, input { font-family: inherit; }
+input::placeholder { color: var(--text-muted); }
+
+@keyframes ping {
+  0%   { transform: scale(1); opacity: 0.4; }
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
