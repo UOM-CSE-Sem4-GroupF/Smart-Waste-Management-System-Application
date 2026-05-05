@@ -22,18 +22,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <MSWProvider>
+    // <MSWProvider>
       <SessionProvider>
         <SocketProvider>
           <QueryClientProvider client={queryClient}>
             {/* The injector simulates real-time events in the browser during dev */}
-            <MockSocketInjector />
+            {/* <MockSocketInjector /> */}
             {children}
             <ReactQueryDevtools initialIsOpen={false} />
           </QueryClientProvider>
         </SocketProvider>
       </SessionProvider>
-    </MSWProvider>
+    // </MSWProvider>
   )
 }
 

@@ -14,8 +14,7 @@ export function useBins(params?: {
   const { data: session } = useSession()
   return useQuery({
     queryKey: ['bins', params],
-    queryFn: () => getBins(createClientApiClient(session!.accessToken), params),
-    enabled: !!session?.accessToken,
+    queryFn: () => getBins(createClientApiClient(session?.accessToken), params),
     staleTime: 30_000,
   })
 }
