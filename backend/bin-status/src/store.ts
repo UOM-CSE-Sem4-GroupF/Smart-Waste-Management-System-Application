@@ -19,36 +19,8 @@ const zoneCache = new Map<number, ZoneCacheEntry>();
 // Mock data for collection jobs (in production, comes from orchestrator service)
 const activeJobs = new Map<string, { job_id: string; bin_ids: string[]; zone_id: number }>();
 
-// Seed data so the dashboard shows something without Kafka
-const SEED_BINS: BinState[] = [
-  {
-    bin_id: 'BIN-001',
-    fill_level_pct: 87,
-    urgency_score: 87,
-    status: 'critical',
-    estimated_weight_kg: 62.6,
-    waste_category: 'general',
-    volume_litres: 240,
-    zone_id: 'Zone-1',
-    lat: 6.9271,
-    lng: 79.8612,
-    last_reading_at: new Date().toISOString(),
-  },
-  {
-    bin_id: 'BIN-002',
-    fill_level_pct: 62,
-    urgency_score: 62,
-    status: 'monitor',
-    estimated_weight_kg: 14.9,
-    waste_category: 'plastic',
-    volume_litres: 120,
-    zone_id: 'Zone-1',
-    lat: 6.9285,
-    lng: 79.8640,
-    last_reading_at: new Date().toISOString(),
-  },
-];
-SEED_BINS.forEach((b) => bins.set(b.bin_id, b));
+// Clean store start — no seeded bins
+
 
 /**
  * Weight calculation

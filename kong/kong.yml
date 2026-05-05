@@ -153,9 +153,9 @@ services:
     write_timeout:   10000
     routes:
       - name:       websocket
-        paths:      ["/ws"]
+        paths:      ["/socket.io"]
         methods:    ["GET", "POST", "OPTIONS"]
-        strip_path: true
+        strip_path: false
 
   # ── Next.js frontend (running on host) ──────────────────────────────────
   - name: nextjs-ui
