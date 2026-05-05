@@ -1,0 +1,243 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["f2", "f3"]
+}
+
+model CollectionJob {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("id")
+  job_type            String               @db.VarChar(20)
+  zone_id             Int
+  state               String               @default("CREATED") @db.VarChar(50)
+  priority            Int                  @default(5)
+  assigned_vehicle_id String?              @db.VarChar(20)
+  assigned_driver_id  String?              @db.VarChar(20)
+  route_plan_id       String?              @db.Uuid
+  planned_weight_kg   Decimal?             @db.Decimal(8, 2)
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  
+  driver              Driver?              @relation(fields: [assigned_driver_id], references: [id])
+  emergency_details   EmergencyJobDetails?
+  routine_details     RoutineJobDetails?
+  execution_metrics   JobExecutionMetrics?
+  collection_records  BinCollectionRecord[]
+  state_transitions   JobStateTransition[]
+  step_results        JobStepResult[]
+  assignment_history  DriverAssignmentHistory[]
+  weight_logs         VehicleWeightLog[]
+
+  @@map("collection_jobs")
+  @@schema("f3")
+}
+
+model Driver {
+  id                    String               @id @db.VarChar(20)
+  name                  String               @db.VarChar(100)
+  phone                 String?              @db.VarChar(20)
+  email                 String?              @db.VarChar(200)
+  keycloak_user_id      String               @unique @db.VarChar(100)
+  zone_id               Int
+  current_vehicle_id    String?              @db.VarChar(20)
+  status                String               @default("off_duty") @db.VarChar(20)
+  shift_start           DateTime?            @db.Time(6)
+  shift_end             DateTime?            @db.Time(6)
+  total_jobs_completed  Int                  @default(0)
+  total_bins_collected  Int                  @default(0)
+  total_weight_kg       Decimal              @default(0) @db.Decimal(10, 2)
+  created_at            DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime             @default(now()) @db.Timestamptz(6)
+  
+  jobs                  CollectionJob[]
+  assignments           DriverAssignmentHistory[]
+
+  @@map("drivers")
+  @@schema("f3")
+}
+
+model EmergencyJobDetails {
+  job_id                 String         @id @db.Uuid
+  trigger_bin_id         String         @db.VarChar(20)
+  trigger_cluster_id     String         @db.VarChar(20)
+  trigger_urgency_score  Int
+  trigger_waste_category String         @db.VarChar(50)
+  cluster_ids            String[]
+  bin_ids                String[]
+  wait_window_applied    Boolean        @default(false)
+  wait_window_start_at   DateTime?      @db.Timestamptz(6)
+  wait_window_end_at     DateTime?      @db.Timestamptz(6)
+  additional_clusters_found Int         @default(0)
+  failure_reason         String?
+  escalated_reason       String?
+  driver_rejection_count Int            @default(0)
+  created_at             DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job                    CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@map("emergency_job_details")
+  @@schema("f3")
+}
+
+model RoutineJobDetails {
+  job_id             String         @id @db.Uuid
+  schedule_id        String?        @db.Uuid
+  scheduled_date     DateTime       @db.Date
+  scheduled_time     DateTime       @db.Time(6)
+  zone_coverage      String         @default("full_zone") @db.VarChar(20)
+  waste_category_id  Int?
+  bin_ids            String[]
+  cluster_ids        String[]
+  failure_reason     String?
+  escalated_reason   String?
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job                CollectionJob @relation(fields: [job_id], references: [id])
+  schedule           RoutineSchedule? @relation(fields: [schedule_id], references: [id])
+
+  @@map("routine_job_details")
+  @@schema("f3")
+}
+
+model RoutineSchedule {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zone_id           Int
+  waste_category_id Int?
+  frequency         String               @db.VarChar(20)
+  day_of_week       String?              @db.VarChar(10)
+  time_of_day       DateTime             @db.Time(6)
+  active            Boolean              @default(true)
+  notes             String?
+  created_at        DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime             @default(now()) @db.Timestamptz(6)
+  
+  routine_jobs      RoutineJobDetails[]
+
+  @@map("routine_schedules")
+  @@schema("f3")
+}
+
+model JobExecutionMetrics {
+  job_id                  String         @id @db.Uuid
+  actual_weight_kg        Decimal?       @db.Decimal(8, 2)
+  planned_distance_km     Decimal?       @db.Decimal(8, 2)
+  actual_distance_km      Decimal?       @db.Decimal(8, 2)
+  planned_duration_min    Int?
+  actual_duration_min     Int?
+  bins_collected_count    Int            @default(0)
+  bins_skipped_count      Int            @default(0)
+  bins_total_count        Int            @default(0)
+  vehicle_utilisation_pct Decimal?       @db.Decimal(5, 2)
+  distance_efficiency_pct Decimal?       @db.Decimal(5, 2)
+  duration_efficiency_pct Decimal?       @db.Decimal(5, 2)
+  hyperledger_tx_id       String?        @db.VarChar(200)
+  kafka_offset            BigInt?
+  recorded_at             DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job                     CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@map("job_execution_metrics")
+  @@schema("f3")
+}
+
+model BinCollectionRecord {
+  id                    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id                String         @db.Uuid
+  bin_id                String         @db.VarChar(20)
+  cluster_id            String         @db.VarChar(20)
+  sequence_number       Int
+  planned_arrival_at    DateTime?      @db.Timestamptz(6)
+  arrived_at            DateTime?      @db.Timestamptz(6)
+  collected_at          DateTime?      @db.Timestamptz(6)
+  skipped_at            DateTime?      @db.Timestamptz(6)
+  skip_reason           String?        @db.VarChar(30)
+  skip_notes            String?
+  fill_level_at_collection Decimal?    @db.Decimal(5, 2)
+  estimated_weight_kg   Decimal?       @db.Decimal(8, 2)
+  actual_weight_kg      Decimal?       @db.Decimal(8, 2)
+  driver_notes          String?
+  photo_url             String?
+  gps_lat               Decimal?       @db.Decimal(10, 7)
+  gps_lng               Decimal?       @db.Decimal(10, 7)
+  gps_accuracy_m        Decimal?       @db.Decimal(6, 2)
+  created_at            DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job                   CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@unique([job_id, bin_id])
+  @@map("bin_collection_records")
+  @@schema("f3")
+}
+
+model JobStateTransition {
+  id              BigInt         @id @default(autoincrement())
+  job_id          String         @db.Uuid
+  from_state      String?        @db.VarChar(50)
+  to_state        String         @db.VarChar(50)
+  reason          String?
+  actor           String?        @db.VarChar(100)
+  metadata        Json?
+  transitioned_at DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job             CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@map("job_state_transitions")
+  @@schema("f3")
+}
+
+model JobStepResult {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id           String         @db.Uuid
+  step_name        String         @db.VarChar(100)
+  attempt_number   Int            @default(1)
+  success          Boolean
+  service_called   String?        @db.VarChar(100)
+  request_payload  Json?
+  response_payload Json?
+  error_message    String?
+  duration_ms      Int?
+  executed_at      DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job              CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@map("job_step_results")
+  @@schema("f3")
+}
+
+model DriverAssignmentHistory {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id           String         @db.Uuid
+  driver_id        String?        @db.VarChar(20)
+  vehicle_id       String?        @db.VarChar(20)
+  assignment_type  String         @db.VarChar(20)
+  rejection_reason String?        @db.VarChar(100)
+  offered_at       DateTime       @default(now()) @db.Timestamptz(6)
+  responded_at     DateTime?      @db.Timestamptz(6)
+  
+  job              CollectionJob @relation(fields: [job_id], references: [id])
+  driver           Driver?       @relation(fields: [driver_id], references: [id])
+
+  @@map("driver_assignment_history")
+  @@schema("f3")
+}
+
+model VehicleWeightLog {
+  id               BigInt         @id @default(autoincrement())
+  job_id           String         @db.Uuid
+  vehicle_id       String         @db.VarChar(20)
+  max_cargo_kg     Decimal        @db.Decimal(8, 2)
+  weight_before_kg Decimal?       @db.Decimal(8, 2)
+  weight_after_kg  Decimal?       @db.Decimal(8, 2)
+  recorded_at      DateTime       @default(now()) @db.Timestamptz(6)
+  
+  job              CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@unique([job_id, vehicle_id])
+  @@map("vehicle_weight_logs")
+  @@schema("f3")
+}
