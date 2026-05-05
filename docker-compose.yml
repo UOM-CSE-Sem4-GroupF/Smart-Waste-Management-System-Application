@@ -136,6 +136,8 @@ services:
     restart: unless-stopped
     environment:
       <<: *kafka-env
+      BIN_STATUS_URL:   http://bin-status:3002
+      NOTIFICATION_URL: http://notification:3004
     depends_on:
       bin-status:
         condition: service_healthy

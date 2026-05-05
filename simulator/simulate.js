@@ -21,9 +21,26 @@ const { Kafka, logLevel } = require('kafkajs');
 // ── Connection ────────────────────────────────────────────────────────────────
 // Local:  KAFKA_BROKER=localhost:9092 (no KAFKA_USER/KAFKA_PASS → plain)
 // Remote: DOKS external load balancer (default)
-const BROKER     = process.env.KAFKA_BROKER || '163.47.8.3:9094';
-const KAFKA_USER = process.env.KAFKA_USER   || 'user1';
-const KAFKA_PASS = process.env.KAFKA_PASS   || 'QA7aKGtPHV';
+const BROKER          = process.env.KAFKA_BROKER     || '163.47.8.3:9094';
+const KAFKA_USER      = process.env.KAFKA_USER        || 'user1';
+const KAFKA_PASS      = process.env.KAFKA_PASS        || 'QA7aKGtPHV';
+const BIN_STATUS_URL  = process.env.BIN_STATUS_URL    || 'http://bin-status:3002';
+const NOTIFICATION_URL = process.env.NOTIFICATION_URL || 'http://notification:3004';
+
+// HTTP helper — Node 20 has fetch built-in; errors are non-fatal (Kafka is primary)
+async function postJSON(url, body) {
+  try {
+    const res = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+      signal:  AbortSignal.timeout(4000),
+    });
+    if (!res.ok) log('http-warn', `POST ${url} → ${res.status}`);
+  } catch (e) {
+    log('http-err', `POST ${url}: ${e.message}`);
+  }
+}
 
 // Safe partitions for 6-partition topics (Broker 0 partitions 1,3,4 are unreachable
 // on the remote AWS cluster; irrelevant for local single-broker Kafka).
@@ -69,7 +86,7 @@ const BINS = [
 // Each vehicle loops through zone waypoints; progress advances each 3s tick.
 const VEHICLES = [
   {
-    vehicle_id: 'LORRY-01', driver_id: 'DRV-001', wpIdx: 0, progress: 0,
+    vehicle_id: 'LORRY-01', driver_id: 'DRV-001', zone_id: 1, cargo_kg: 320, wpIdx: 0, progress: 0,
     waypoints: [
       { lat: 14.5995, lng: 120.9842 },
       { lat: 14.6020, lng: 120.9900 },
@@ -78,7 +95,7 @@ const VEHICLES = [
     ],
   },
   {
-    vehicle_id: 'LORRY-02', driver_id: 'DRV-002', wpIdx: 0, progress: 0,
+    vehicle_id: 'LORRY-02', driver_id: 'DRV-002', zone_id: 2, cargo_kg: 150, wpIdx: 0, progress: 0,
     waypoints: [
       { lat: 14.5921, lng: 120.9763 },
       { lat: 14.5905, lng: 120.9737 },
@@ -87,7 +104,7 @@ const VEHICLES = [
     ],
   },
   {
-    vehicle_id: 'LORRY-03', driver_id: 'DRV-003', wpIdx: 0, progress: 0,
+    vehicle_id: 'LORRY-03', driver_id: 'DRV-003', zone_id: 3, cargo_kg: 500, wpIdx: 0, progress: 0,
     waypoints: [
       { lat: 14.6110, lng: 121.0050 },
       { lat: 14.6145, lng: 121.0085 },
@@ -228,6 +245,22 @@ async function main() {
       } catch (e) {
         log('ERROR', `bin.processed ${bin.bin_id}: ${e.message}`);
       }
+
+      // Direct HTTP bypass — dashboard sees updates even if Kafka consumers are down
+      await postJSON(BIN_STATUS_URL + '/internal/bins/ingest', {
+        bin_id:              bin.bin_id,
+        fill_level_pct:      bin.fill,
+        urgency_score:       score,
+        urgency_status:      status,
+        estimated_weight_kg: weight,
+        waste_category:      bin.category,
+        volume_litres:       bin.volume,
+        zone_id:             bin.zone_id,
+        latitude:            bin.lat,
+        longitude:           bin.lng,
+        battery_pct:         Math.round(rand(20, 99)),
+        timestamp:           envelope.timestamp,
+      });
     }
 
     const fills = BINS.map(b => b.fill);
@@ -235,9 +268,17 @@ async function main() {
   }, 5_000);
 
   // ── Periodic: vehicle GPS → waste.vehicle.location (every 3s) ────────────
+  const CARGO_LIMIT_KG = 5000;
+
   setInterval(async () => {
     for (const v of VEHICLES) {
       const pos = advanceVehicle(v);
+
+      // Cargo grows ~10–30 kg per 3s tick; reset when lorry "offloads" above 4500 kg
+      v.cargo_kg += rand(10, 30);
+      if (v.cargo_kg > 4500) v.cargo_kg = rand(150, 500);
+      const utilisation = parseFloat((v.cargo_kg / CARGO_LIMIT_KG * 100).toFixed(1));
+
       const envelope = {
         version:        '1.0-sim',
         source_service: 'garabadge-simulator',
@@ -260,6 +301,23 @@ async function main() {
       } catch (e) {
         log('ERROR', `vehicle.location ${v.vehicle_id}: ${e.message}`);
       }
+
+      // Direct HTTP bypass — sends vehicle position to dashboard via Socket.IO
+      await postJSON(NOTIFICATION_URL + '/internal/notify/vehicle-position', {
+        vehicle_id:            v.vehicle_id,
+        driver_id:             v.driver_id,
+        job_id:                `JOB-SIM-${v.vehicle_id}`,
+        zone_id:               v.zone_id,
+        lat:                   pos.lat,
+        lng:                   pos.lng,
+        speed_kmh:             pos.speed_kmh,
+        cargo_weight_kg:       Math.round(v.cargo_kg),
+        cargo_limit_kg:        CARGO_LIMIT_KG,
+        cargo_utilisation_pct: utilisation,
+        bins_collected:        Math.floor(v.cargo_kg / 80),
+        bins_total:            BINS.filter(b => b.zone_id === v.zone_id).length,
+        weight_limit_warning:  utilisation >= 90,
+      });
     }
   }, 3_000);
 
@@ -292,6 +350,17 @@ async function main() {
     } catch (e) {
       log('ERROR', `vehicle.deviation ${v.vehicle_id}: ${e.message}`);
     }
+
+    // Direct HTTP bypass — sends deviation alert to dashboard
+    await postJSON(NOTIFICATION_URL + '/internal/notify/alert-deviation', {
+      vehicle_id:       v.vehicle_id,
+      driver_id:        v.driver_id,
+      job_id:           `JOB-SIM-${v.vehicle_id}`,
+      zone_id:          v.zone_id,
+      deviation_metres: dev,
+      duration_seconds: dur,
+      message:          `Vehicle ${v.vehicle_id} deviated ${dev}m from planned route for ${dur}s`,
+    });
   }, 45_000);
 
   log('init', 'Simulator running. Ctrl-C to stop.');
