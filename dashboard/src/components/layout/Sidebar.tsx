@@ -39,7 +39,7 @@ export function Sidebar() {
 
   const initials = session?.user?.name
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : '??'
+    : 'AS'
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href)
@@ -87,8 +87,8 @@ export function Sidebar() {
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{session?.user?.name ?? 'User'}</p>
-            <p className="truncate text-xs text-muted-foreground capitalize">{role}</p>
+            <p className="truncate text-sm font-medium">{session?.user?.name ?? 'Alex Supervisor'}</p>
+            <p className="truncate text-xs text-muted-foreground capitalize">{session?.user?.role ?? 'supervisor'}</p>
           </div>
           <TooltipProvider>
             <Tooltip>

@@ -12,11 +12,15 @@ const statusConfig: Record<Status, { label: string; className: string }> = {
 
 export function ConnectionBadge() {
   const socket = useSocket()
+  const isMock = !socket?.connected
+  
   const status: Status = socket?.connected ? 'connected' : 'disconnected'
   const cfg = statusConfig[status]
+  
   return (
-    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', cfg.className)}>
-      {cfg.label}
+    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', isMock ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400' : cfg.className)}>
+      {isMock ? '● Demo Mode' : cfg.label}
     </span>
   )
 }
+
