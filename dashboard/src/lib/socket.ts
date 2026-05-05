@@ -3,16 +3,6 @@ import { io, type Socket } from 'socket.io-client'
 let socket: Socket | null = null
 
 export function getSocket(token: string): Socket {
-  // Disconnected for Demo Mode
-  return { 
-    connected: false, 
-    on: () => {}, 
-    off: () => {}, 
-    emit: () => {},
-    disconnect: () => {} 
-  } as unknown as Socket
-
-  /*
   if (socket?.connected) return socket
 
   socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
@@ -22,8 +12,6 @@ export function getSocket(token: string): Socket {
     reconnectionAttempts: 10,
     reconnectionDelay: 2000,
   })
-  */
-
 
   socket.on('connect_error', (err) => {
     console.error('[Socket.IO] connect error:', err.message)
