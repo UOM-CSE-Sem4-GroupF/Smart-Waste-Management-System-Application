@@ -162,6 +162,15 @@ chmod +x scripts/setup-local.sh && ./scripts/setup-local.sh
 
 This starts Kafka, Kong (port 30080), Keycloak (port 30180), Vault, and EMQX in Minikube.
 
+> **Windows (Minikube) — port-forwards required**
+>
+> NodePorts are not reachable via `localhost` on Windows with Minikube. Run these two commands in separate terminals (or in the background) before starting the dashboard:
+>
+> ```bash
+> kubectl port-forward svc/keycloak 30180:80 -n auth
+> kubectl port-forward svc/kong-kong-proxy 30080:80 -n gateway
+> ```
+
 ---
 
 ## Environment Variables
