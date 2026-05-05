@@ -123,8 +123,8 @@ export async function updateJob(
   Object.assign(job, patch);
 
   await prisma.$transaction(async (tx) => {
-    // Core job columns
-    const coreUpdate: Prisma.CollectionJobUpdateInput = {};
+    // Core job columns — use UncheckedUpdateInput so FK scalars (assigned_driver_id) can be set directly
+    const coreUpdate: Prisma.CollectionJobUncheckedUpdateInput = {};
     if (patch.assigned_vehicle_id !== undefined) coreUpdate.assigned_vehicle_id = patch.assigned_vehicle_id;
     if (patch.assigned_driver_id  !== undefined) coreUpdate.assigned_driver_id  = patch.assigned_driver_id;
     if (patch.route_plan_id       !== undefined) coreUpdate.route_plan_id        = patch.route_plan_id;

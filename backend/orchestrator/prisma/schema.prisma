@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -198,7 +199,7 @@ model JobStepResult {
   service_called   String?        @db.VarChar(100)
   request_payload  Json?
   response_payload Json?
-  error_message    TEXT?
+  error_message    String?
   duration_ms      Int?
   executed_at      DateTime       @default(now()) @db.Timestamptz(6)
   

@@ -1,7 +1,7 @@
-import { Kafka, logLevel } from 'kafkajs';
 import { RoutineScheduleTrigger } from '../types';
 import { insertJob } from '../db/queries';
 import { executeRoutineWorkflow, handleWorkflowFailure } from '../core/orchestrator';
+import { startManualConsumer } from './manualConsumer';
 
 const slog = (level: string, msg: string, job_id?: string): void => {
   process.stdout.write(JSON.stringify({
@@ -9,38 +9,19 @@ const slog = (level: string, msg: string, job_id?: string): void => {
   }) + '\n');
 };
 
-function buildKafka(): Kafka {
-  const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
-  const user    = process.env.KAFKA_USER;
-  const pass    = process.env.KAFKA_PASS;
-  return new Kafka({
-    clientId: 'workflow-orchestrator-routine-consumer',
-    brokers,
-    logLevel: logLevel.ERROR,
-    ...(user && pass ? {
-      sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass },
-    } : {}),
-  });
-}
-
 export async function startRoutineScheduleConsumer(): Promise<void> {
-  const kafka    = buildKafka();
-  const consumer = kafka.consumer({ groupId: 'workflow-orchestrator-routine' });
-
-  await consumer.connect();
-  await consumer.subscribe({ topic: 'waste.routine.schedule.trigger', fromBeginning: false });
-
-  await consumer.run({
-    eachMessage: async ({ message }) => {
-      if (!message.value) return;
+  await startManualConsumer(
+    'workflow-orchestrator-routine-consumer',
+    'waste.routine.schedule.trigger',
+    async (value) => {
       try {
-        const envelope = JSON.parse(message.value.toString());
+        const envelope = JSON.parse(value.toString());
         const trigger  = (envelope.payload ?? envelope) as RoutineScheduleTrigger;
 
-        const zone_id      = String(trigger.zone_id);
-        const waste_cat    = trigger.waste_category
+        const zone_id       = String(trigger.zone_id);
+        const waste_cat     = trigger.waste_category
           ?? (trigger.waste_category_id ? String(trigger.waste_category_id) : 'general');
-        const bin_ids      = trigger.bin_ids ?? [];
+        const bin_ids       = trigger.bin_ids ?? [];
         const route_plan_id = trigger.route_plan_id;
 
         slog('INFO', `Routine trigger: zone=${zone_id} bins=${bin_ids.length}`);
@@ -59,7 +40,8 @@ export async function startRoutineScheduleConsumer(): Promise<void> {
         slog('ERROR', `routineScheduleConsumer error: ${e}`);
       }
     },
-  });
+    (level, msg) => slog(level, msg),
+  );
 
   slog('INFO', 'Kafka consumer ready — subscribed to waste.routine.schedule.trigger');
 }

@@ -24,7 +24,7 @@ services:
     expose:
       - "3001"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:${KAFKA_HOST:-163.47.8.3}"
     networks:
       - garabadge
     depends_on:
@@ -53,7 +53,7 @@ services:
     expose:
       - "3002"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:${KAFKA_HOST:-163.47.8.3}"
     networks:
       - garabadge
     healthcheck:
@@ -75,7 +75,7 @@ services:
     expose:
       - "3003"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:${KAFKA_HOST:-163.47.8.3}"
     networks:
       - garabadge
     healthcheck:
@@ -97,7 +97,7 @@ services:
     expose:
       - "3004"
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:${KAFKA_HOST:-163.47.8.3}"
     networks:
       - garabadge
     healthcheck:
@@ -118,7 +118,7 @@ services:
       BIN_STATUS_URL:   http://bin-status:3002
       NOTIFICATION_URL: http://notification:3004
     extra_hosts:
-      - "controller.internal:13.50.152.18"
+      - "controller.internal:${KAFKA_HOST:-163.47.8.3}"
     depends_on:
       bin-status:
         condition: service_healthy
