@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { emitToRoom } from '../socket';
 import { findConnectedSocket } from '../socket';
 import { sendPush } from '../fcm';
+import { handle } from '../kafka/consumer';
 import {
   JobAssignedBody,
   JobCreatedBody,
@@ -13,6 +14,16 @@ import {
 } from '../types';
 
 export default async function internalRoutes(app: FastifyInstance) {
+  // POST /internal/notify/bin-update
+  // Called by bin-status service instead of Kafka (avoids KRaft topic-leader issues)
+  app.post('/internal/notify/bin-update', async (req) => {
+    const event = req.body as any;
+    const timestamp = String(event.timestamp ?? new Date().toISOString());
+    handle('waste.bin.dashboard.updates', event, timestamp);
+    return { delivered: true, ts: timestamp };
+  });
+
+
   // POST /internal/notify/job-assigned
   // Called by scheduler when driver is dispatched
   app.post<{ Body: JobAssignedBody }>('/internal/notify/job-assigned', async (req) => {

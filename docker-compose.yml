@@ -1,9 +1,9 @@
 # ── Shared env snippet ─────────────────────────────────────────────────────────
 x-kafka-env: &kafka-env
-  KAFKA_BROKER: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_BROKERS: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_USER:   ${KAFKA_USER:-}
-  KAFKA_PASS:   ${KAFKA_PASS:-}
+  KAFKA_BROKER: 163.47.8.3:9094
+  KAFKA_BROKERS: 163.47.8.3:9094
+  KAFKA_USER:   ${KAFKA_USER:-user1}
+  KAFKA_PASS:   ${KAFKA_PASS:-QA7aKGtPHV}
 
 services:
 

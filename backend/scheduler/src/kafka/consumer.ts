@@ -1,54 +1,43 @@
-import { Kafka, logLevel, Producer } from 'kafkajs';
 import { vehicles, drivers, activeJobs, binCollectionRecords, routePlans } from '../store';
 import { VehicleLocationEvent, VehicleDeviationEvent, VehiclePositionUpdate } from '../types';
+import { startManualConsumer } from './manualConsumer';
+import { createManualProducer, ManualProducer } from './manualProducer';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
 
-function buildKafka() {
-  const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
-  const user    = process.env.KAFKA_USER;
-  const pass    = process.env.KAFKA_PASS;
-
-  return new Kafka({
-    clientId: 'scheduler-service',
-    brokers,
-    logLevel: logLevel.ERROR,
-    ...(user && pass ? {
-      sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass },
-    } : {}),
-  });
-}
-
-let producer: Producer;
+let producer: ManualProducer;
 
 export async function startKafkaConsumer(): Promise<void> {
-  const kafka = buildKafka();
-  producer = kafka.producer();
-  await producer.connect();
+  producer = await createManualProducer('scheduler-service-publisher');
 
-  const consumer = kafka.consumer({ groupId: 'scheduler-vehicle-tracker' });
-
-  await consumer.connect();
-  await consumer.subscribe({ topic: 'waste.vehicle.location', fromBeginning: false });
-  await consumer.subscribe({ topic: 'waste.vehicle.deviation', fromBeginning: false });
-
-  await consumer.run({
-    eachMessage: async ({ topic, message }) => {
-      if (!message.value) return;
+  await startManualConsumer(
+    'scheduler-service-location',
+    'waste.vehicle.location',
+    async (value) => {
       try {
-        const envelope = JSON.parse(message.value.toString());
-
-        if (topic === 'waste.vehicle.location') {
-          await handleVehicleLocation(envelope as VehicleLocationEvent);
-        } else if (topic === 'waste.vehicle.deviation') {
-          await handleVehicleDeviation(envelope as VehicleDeviationEvent);
-        }
+        const envelope = JSON.parse(value.toString());
+        await handleVehicleLocation(envelope as VehicleLocationEvent);
       } catch (e) {
-        slog('ERROR', `Message handler error: ${e}`);
+        slog('ERROR', `Location handler error: ${e}`);
       }
     },
-  });
+    slog
+  );
+
+  await startManualConsumer(
+    'scheduler-service-deviation',
+    'waste.vehicle.deviation',
+    async (value) => {
+      try {
+        const envelope = JSON.parse(value.toString());
+        await handleVehicleDeviation(envelope as VehicleDeviationEvent);
+      } catch (e) {
+        slog('ERROR', `Deviation handler error: ${e}`);
+      }
+    },
+    slog
+  );
 }
 
 async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void> {
@@ -158,10 +147,7 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
   };
 
   // Publish to waste.vehicle.dashboard.updates
-  await producer.send({
-    topic: 'waste.vehicle.dashboard.updates',
-    messages: [{ value: JSON.stringify(update) }]
-  });
+  await producer.send('waste.vehicle.dashboard.updates', vehicle_id, JSON.stringify(update));
 
   // In real system, would also write to InfluxDB
   slog('INFO', `Published position update for ${vehicle_id}`);

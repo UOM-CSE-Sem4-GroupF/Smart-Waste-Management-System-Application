@@ -32,10 +32,9 @@ export async function startManualConsumer(
   const admin = kafka.admin();
   await admin.connect();
 
-  const [topicMeta, topicOffsets] = await Promise.all([
-    admin.fetchTopicMetadata({ topics: [topic] }),
-    admin.fetchTopicOffsets(topic),
-  ]);
+  // Topics are pre-provisioned on the cluster — just fetch metadata and latest offsets.
+  const topicMeta = await admin.fetchTopicMetadata({ topics: [topic] });
+  const topicOffsets = await admin.fetchTopicOffsets(topic).catch(() => []);
 
   await admin.disconnect();
 
@@ -91,7 +90,21 @@ export async function startManualConsumer(
       for (const { partitionId, leader } of partitions) {
         if (!running) break;
         try {
-          const broker    = await cluster.findBroker({ nodeId: leader });
+          let broker;
+          try {
+            broker = await cluster.findBroker({ nodeId: leader });
+          } catch (err: any) {
+            // Fallback: If the DigitalOcean load balancer rewrote the broker list to only contain Node 0,
+            // we'll get a KafkaJSBrokerNotFound for the actual leader. We just route to the LB.
+            const pool = (cluster as any).brokerPool?.brokers || {};
+            const availableNodes = Object.keys(pool);
+            if (availableNodes.length > 0) {
+              broker = pool[availableNodes[0]];
+            } else {
+              throw err;
+            }
+          }
+
           const fetchResp = await broker.fetch({
             replicaId:   -1,
             maxWaitTime: 500,
@@ -118,9 +131,7 @@ export async function startManualConsumer(
         } catch (err: any) {
           if (!running) break;
           log('WARN', `${clientId} fetch ${topic}[${partitionId}]: ${err?.message ?? String(err)}`);
-          if (err?.type === 'LEADER_NOT_AVAILABLE' || err?.type === 'NOT_LEADER_FOR_PARTITION') {
-            await cluster.refreshMetadata().catch(() => {});
-          }
+          await cluster.refreshMetadata().catch(() => {});
           await new Promise(r => setTimeout(r, 1_000));
         }
       }
