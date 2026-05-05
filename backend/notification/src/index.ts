@@ -66,6 +66,9 @@ async function start() {
       return next();
     }
 
+    // If somehow it gets past here but isn't handled (shouldn't happen with the catch below)
+    // next(new Error('[ANTIGRAVITY-DEBUG] Authentication required'));
+
     try {
       const decoded = verifyKeycloakToken(token);
       socket.data.userId = decoded.sub;
