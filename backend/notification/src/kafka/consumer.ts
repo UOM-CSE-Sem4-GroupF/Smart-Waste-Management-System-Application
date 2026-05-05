@@ -1,24 +1,8 @@
-import { Kafka, logLevel } from 'kafkajs';
+import { startManualConsumer } from './manualConsumer';
 import { emitToRoom } from '../socket';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'notification', message: msg }) + '\n');
-
-
-function buildKafka() {
-  const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(',');
-  const user    = process.env.KAFKA_USER;
-  const pass    = process.env.KAFKA_PASS;
-
-  return new Kafka({
-    clientId: 'notification-service',
-    brokers,
-    logLevel: logLevel.ERROR,
-    ...(user && pass ? {
-      sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass },
-    } : {}),
-  });
-}
 
 export function handle(topic: string, event: DashboardUpdateEvent | VehicleUpdateEvent, timestamp: string): void {
   switch (topic) {
@@ -117,39 +101,50 @@ interface JobProgressPayload {
 interface DashboardUpdateEvent {
   event_type: 'bin:update' | 'zone:stats' | 'alert:urgent';
   payload: BinUpdatePayload | ZoneStatsPayload | AlertPayload;
+  timestamp?: string;
 }
 
 interface VehicleUpdateEvent {
   event_type: 'vehicle:position' | 'job:progress';
   payload: VehiclePositionPayload | JobProgressPayload;
-}
-
-function makeRunner(kafka: ReturnType<typeof buildKafka>, groupId: string, topic: string) {
-  return async () => {
-    const consumer = kafka.consumer({ groupId });
-    await consumer.connect();
-    await consumer.subscribe({ topic, fromBeginning: false });
-    await consumer.run({
-      eachMessage: async ({ topic: t, message }) => {
-        if (!message.value) return;
-        try {
-          const envelope = JSON.parse(message.value.toString());
-          const event = envelope as DashboardUpdateEvent | VehicleUpdateEvent;
-          const timestamp = String(envelope.timestamp ?? new Date().toISOString());
-          handle(t, event, timestamp);
-        } catch (e) {
-          slog('ERROR', `Handler error on ${t}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      },
-    });
-    slog('INFO', `Kafka consumer ready — group=${groupId} topic=${topic}`);
-  };
+  timestamp?: string;
 }
 
 export async function startKafkaConsumer(): Promise<void> {
-  const kafka = buildKafka();
-  // Spec §6.1 — separate group IDs for each topic
-  await makeRunner(kafka, 'notification-bin-updates',     'waste.bin.dashboard.updates')();
-  await makeRunner(kafka, 'notification-vehicle-updates', 'waste.vehicle.dashboard.updates')();
+  // 1. Bin Dashboard Updates
+  await startManualConsumer(
+    'notification-service-bin-updates',
+    'waste.bin.dashboard.updates',
+    async (value) => {
+      try {
+        const envelope = JSON.parse(value.toString());
+        const event = envelope as DashboardUpdateEvent;
+        const timestamp = String(envelope.timestamp ?? new Date().toISOString());
+        handle('waste.bin.dashboard.updates', event, timestamp);
+      } catch (e) {
+        slog('ERROR', `Handler error on waste.bin.dashboard.updates: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    slog
+  );
+
+  // 2. Vehicle Dashboard Updates
+  await startManualConsumer(
+    'notification-service-vehicle-updates',
+    'waste.vehicle.dashboard.updates',
+    async (value) => {
+      try {
+        const envelope = JSON.parse(value.toString());
+        const event = envelope as VehicleUpdateEvent;
+        const timestamp = String(envelope.timestamp ?? new Date().toISOString());
+        handle('waste.vehicle.dashboard.updates', event, timestamp);
+      } catch (e) {
+        slog('ERROR', `Handler error on waste.vehicle.dashboard.updates: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    slog
+  );
+
+  slog('INFO', 'Kafka manual consumers started for notification service');
 }
 

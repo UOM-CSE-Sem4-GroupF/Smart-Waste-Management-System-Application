@@ -100,6 +100,10 @@ services:
     build:
       context: ./backend/notification
       dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    volumes:
+      - ./backend/notification/src:/app/src
     container_name: f3-notification
     restart: unless-stopped
     environment:
