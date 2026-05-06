@@ -4,14 +4,17 @@ import type { BinUpdatePayload, ZoneStatsPayload } from '@/types'
 interface BinStore {
   bins:  Map<string, BinUpdatePayload>
   zones: Map<number, ZoneStatsPayload>
+  selectedBinId: string | null
   updateBin:  (payload: BinUpdatePayload) => void
   updateZone: (payload: ZoneStatsPayload) => void
   setBins:    (bins: BinUpdatePayload[]) => void // called on initial REST load
+  setSelectedBinId: (id: string | null) => void
 }
 
 export const useBinStore = create<BinStore>((set) => ({
   bins:  new Map(),
   zones: new Map(),
+  selectedBinId: null,
 
   updateBin: (payload) =>
     set((state) => {
@@ -31,4 +34,7 @@ export const useBinStore = create<BinStore>((set) => ({
     set(() => ({
       bins: new Map(bins.map((b) => [b.bin_id, b])),
     })),
+
+  setSelectedBinId: (id) => set({ selectedBinId: id }),
 }))
+

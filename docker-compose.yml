@@ -1,9 +1,9 @@
 # ── Shared env snippet ─────────────────────────────────────────────────────────
 x-kafka-env: &kafka-env
-  KAFKA_BROKER: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_BROKERS: ${KAFKA_BROKER:-localhost:9092}
-  KAFKA_USER:   ${KAFKA_USER:-}
-  KAFKA_PASS:   ${KAFKA_PASS:-}
+  KAFKA_BROKER: 163.47.8.3:9094
+  KAFKA_BROKERS: 163.47.8.3:9094
+  KAFKA_USER:   ${KAFKA_USER:-user1}
+  KAFKA_PASS:   ${KAFKA_PASS:-QA7aKGtPHV}
 
 services:
 
@@ -78,6 +78,10 @@ services:
     build:
       context: ./backend/scheduler
       dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    volumes:
+      - ./backend/scheduler/src:/app/src
     container_name: f3-scheduler
     restart: unless-stopped
     environment:
@@ -142,22 +146,6 @@ services:
     networks:
       - garabadge
 
-  # ── Next.js dashboard ──────────────────────────────────────────────────────
-  nextjs:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-    container_name: garabadge-nextjs
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-    expose:
-      - "3000"
-    networks:
-      - garabadge
-
   # ── Kong API Gateway (DB-less) ─────────────────────────────────────────────
   kong:
     image: kong:3.7
@@ -173,20 +161,18 @@ services:
       KONG_ADMIN_LISTEN:      "0.0.0.0:8001"
     ports:
       - "8000:8000"   # public API proxy
-      - "8001:8001"   # Kong admin
+      - "8002:8001"   # Kong admin (moved from 8001 to avoid conflict with core-api)
     volumes:
       - ./kong/kong.yml:/kong/kong.yml:ro
     depends_on:
       orchestrator:
         condition: service_healthy
       bin-status:
-        condition: service_healthy
+        condition: service_started
       scheduler:
         condition: service_healthy
       notification:
         condition: service_healthy
-      nextjs:
-        condition: service_started
     networks:
       - garabadge
     healthcheck:

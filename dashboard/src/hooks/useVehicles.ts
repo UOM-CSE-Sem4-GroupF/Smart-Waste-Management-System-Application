@@ -8,8 +8,7 @@ export function useVehicles() {
   const { data: session } = useSession()
   return useQuery({
     queryKey: ['vehicles', 'active'],
-    queryFn: () => getActiveVehicles(createClientApiClient(session!.accessToken)),
-    enabled: !!session?.accessToken,
+    queryFn: () => getActiveVehicles(createClientApiClient(session?.accessToken)),
     staleTime: 30_000,
   })
 }

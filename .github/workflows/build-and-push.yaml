@@ -1,0 +1,68 @@
+name: Build and Push Backend Services
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - 'dashboard/**'
+
+env:
+  REGISTRY: ghcr.io
+  ORG_NAME: uom-cse-sem4-groupf
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [bin-status, notification, orchestrator, scheduler]
+        include:
+          - service: bin-status
+            context: ./backend/bin-status
+            image: bin-status
+          - service: notification
+            context: ./backend/notification
+            image: notification
+          - service: orchestrator
+            context: ./backend/orchestrator
+            image: orchestrator
+          - service: scheduler
+            context: ./backend/scheduler
+            image: scheduler
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://api.swms.live
+            NEXT_PUBLIC_SOCKET_URL=https://api.swms.live

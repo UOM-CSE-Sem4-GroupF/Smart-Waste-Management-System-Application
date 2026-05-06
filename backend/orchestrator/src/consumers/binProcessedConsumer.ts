@@ -32,8 +32,34 @@ export async function startBinProcessedConsumer(): Promise<void> {
 
         const bin_id    = p.bin_id;
         const urgency   = Number(p.urgency_score);
-        const zone_id   = p.zone_id      ?? 'unknown';
+        let zone_id   = p.zone_id      ?? 'unknown';
         const waste_cat = p.waste_category ?? 'general';
+
+        if (zone_id === 'unknown') {
+          for (let attempt = 1; attempt <= 10; attempt++) {
+            try {
+              const allBinsRes = await fetch(`${process.env.BIN_STATUS_URL ?? 'http://bin-status:3002'}/api/v1/bins`);
+              if (allBinsRes.ok) {
+                 const { data } = await allBinsRes.json() as any;
+                 const found = data.find((b: any) => b.bin_id === bin_id);
+                 if (found && found.zone_id) {
+                   zone_id = String(found.zone_id);
+                   slog('INFO', `Resolved zone_id for ${bin_id}: ${zone_id}`);
+                   break;
+                 }
+              }
+            } catch (e) {
+              // Ignore fetch errors during startup
+            }
+            slog('INFO', `Waiting for bin-status to sync bin ${bin_id} (attempt ${attempt}/10)...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          if (zone_id === 'unknown') {
+            slog('WARN', `Failed to resolve zone for ${bin_id} after retries. Defaulting to zone 1.`);
+            zone_id = '1';
+          }
+        }
+
 
         pruneDedup();
         const lastSeen = recentlyProcessed.get(bin_id);

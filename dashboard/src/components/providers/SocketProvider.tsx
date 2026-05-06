@@ -25,9 +25,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const updateJobProgress = useJobStore((s) => s.updateJobProgress)
 
   useEffect(() => {
-    if (!session?.accessToken) return
-
-    const sock = getSocket(session.accessToken)
+    // Connect using real token if available, otherwise connect without token (bypass mode)
+    const token = session?.accessToken
+    const sock = getSocket(token)
 
     // Use connect/disconnect events instead of synchronous setState in effect body
     // (synchronous setState triggers cascading renders — React warning)

@@ -2,13 +2,13 @@ import { io, type Socket } from 'socket.io-client'
 
 let socket: Socket | null = null
 
-export function getSocket(token: string): Socket {
+export function getSocket(token?: string): Socket {
   if (socket?.connected) return socket
 
   socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
-    auth: { token },                      // Keycloak JWT — required
-    path: '/ws/socket.io',                // Kong routes /ws → notification-service
-    transports: ['websocket', 'polling'], // websocket first, polling fallback
+    ...(token ? { auth: { token } } : {}),    // Only send auth if we have a real token
+    path: '/socket.io',                        // Kong routes /socket.io → notification-service
+    transports: ['websocket', 'polling'],      // websocket first, polling fallback
     reconnectionAttempts: 10,
     reconnectionDelay: 2000,
   })

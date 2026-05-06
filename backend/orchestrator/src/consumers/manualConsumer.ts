@@ -91,7 +91,21 @@ export async function startManualConsumer(
       for (const { partitionId, leader } of partitions) {
         if (!running) break;
         try {
-          const broker    = await cluster.findBroker({ nodeId: leader });
+          let broker;
+          try {
+            broker = await cluster.findBroker({ nodeId: leader });
+          } catch (err: any) {
+            // Fallback: If the DigitalOcean load balancer rewrote the broker list to only contain Node 0,
+            // we'll get a KafkaJSBrokerNotFound for the actual leader. We just route to the LB.
+            const pool = (cluster as any).brokerPool?.brokers || {};
+            const availableNodes = Object.keys(pool);
+            if (availableNodes.length > 0) {
+              broker = pool[availableNodes[0]];
+            } else {
+              throw err;
+            }
+          }
+
           const fetchResp = await broker.fetch({
             replicaId:   -1,
             maxWaitTime: 500,

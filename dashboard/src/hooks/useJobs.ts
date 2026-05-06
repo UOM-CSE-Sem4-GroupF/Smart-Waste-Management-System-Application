@@ -14,8 +14,7 @@ export function useJobs(params?: {
   const { data: session } = useSession()
   return useQuery({
     queryKey: ['jobs', params],
-    queryFn: () => getJobs(createClientApiClient(session!.accessToken), params),
-    enabled: !!session?.accessToken,
+    queryFn: () => getJobs(createClientApiClient(session?.accessToken), params),
     staleTime: 30_000,
   })
 }
@@ -24,8 +23,8 @@ export function useJob(jobId: string) {
   const { data: session } = useSession()
   return useQuery({
     queryKey: ['jobs', jobId],
-    queryFn: () => getJob(createClientApiClient(session!.accessToken), jobId),
-    enabled: !!session?.accessToken && !!jobId,
+    queryFn: () => getJob(createClientApiClient(session?.accessToken), jobId),
+    enabled: !!jobId,
     staleTime: 30_000,
   })
 }

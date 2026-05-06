@@ -38,7 +38,7 @@ export function Topbar() {
 
   const initials = session?.user?.name
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : '??'
+    : 'AS'
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur-sm">
@@ -56,8 +56,8 @@ export function Topbar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel className="font-normal">
-              <p className="text-sm font-medium">{session?.user?.name ?? 'User'}</p>
-              <p className="text-xs text-muted-foreground capitalize">{session?.user?.role ?? 'viewer'}</p>
+              <p className="text-sm font-medium">{session?.user?.name ?? 'Alex Supervisor'}</p>
+              <p className="text-xs text-muted-foreground capitalize">{session?.user?.role ?? 'supervisor'}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem

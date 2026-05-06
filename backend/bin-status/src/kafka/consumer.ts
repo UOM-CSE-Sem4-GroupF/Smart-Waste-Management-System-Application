@@ -15,6 +15,7 @@ import { shouldPushToDashboard, updateFilterState } from '../rules/dashboardFilt
 import { classifyUrgency } from '../rules/urgencyClassifier';
 import { calculateBinWeightByCategory } from '../rules/weightCalculator';
 import { startManualConsumer } from './manualConsumer';
+import { getBinMetadata, getZoneMetadata } from '../clients/dataAnalysisClient';
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -123,6 +124,14 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
     };
 
     await publishToDashboard(dashboardEvent);
+    
+    // Step 7: Update local store state
+    store.upsertBin({
+      ...enriched,
+      zone_id: String(enriched.zone_id),
+      status: enriched.status as any,
+      waste_category: enriched.waste_category as any
+    });
 
     // Update filter state for next message
     store.setBinFilterState(
