@@ -43,6 +43,12 @@ async function start() {
     version: VERSION,
     timestamp: new Date().toISOString(),
   }));
+  app.get('/ready', async () => ({
+    status: 'ready',
+    service: SERVICE,
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+  }));
 
   // Register routes
   await app.register(binsRoutes);
