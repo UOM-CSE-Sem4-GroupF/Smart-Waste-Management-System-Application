@@ -59,7 +59,7 @@ services:
     environment:
       <<: *kafka-env
       PORT: 3002
-      DATA_ANALYSIS_URL: http://kong:8000/data-analysis
+      DATA_ANALYSIS_URL: http://host.docker.internal:8001
       NOTIFICATION_URL: http://notification:3004
     expose:
       - "3002"

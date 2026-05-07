@@ -2,10 +2,8 @@ import pino from 'pino';
 
 const logger = pino();
 // Since core-api is in the DataAnalysis network (waste-network), 
-// and kong is in the garabadge network, 
-// we assume Kong is configured to proxy to core-api.
-// BASE_URL will be the Kong endpoint for DataAnalysis.
-const BASE_URL = process.env.DATA_ANALYSIS_URL ?? 'http://kong:8000/data-analysis';
+// we call it directly via the host bridge to bypass the gateway.
+const BASE_URL = process.env.DATA_ANALYSIS_URL ?? 'http://host.docker.internal:8001';
 
 export interface BinMetadata {
   bin_id: string;
