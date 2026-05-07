@@ -1,6 +1,7 @@
 name: Build and Push Backend Services
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
@@ -66,3 +67,12 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=https://api.swms.live
             NEXT_PUBLIC_SOCKET_URL=https://api.swms.live
+
+      - name: Make package public
+        continue-on-error: true
+        run: |
+          gh api --method PATCH \
+            "/orgs/${{ env.ORG_NAME }}/packages/container/${{ matrix.image }}" \
+            -f visibility=public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
