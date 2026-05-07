@@ -24,6 +24,7 @@ async function start() {
   await app.register(cors, { origin: '*' });
 
   app.get('/health', async () => ({ status: 'ok', service: SERVICE, version: VERSION }));
+  app.get('/ready',  async () => ({ status: 'ready', service: SERVICE, version: VERSION }));
 
   await app.register(internalRoutes);
 
