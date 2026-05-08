@@ -34,10 +34,18 @@ function buildKafka() {
     logLevel: logLevel.ERROR,
     // Fix: Expand short hostnames for cross-namespace resolution
     socketFactory: (options: any) => {
-      const { host } = options;
+      const { host, port } = options;
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
+      
+      if (host !== fqdnHost) {
+        process.stdout.write(JSON.stringify({ 
+          level: 'DEBUG', 
+          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
+        }) + '\n');
+      }
+
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     ...(user && pass

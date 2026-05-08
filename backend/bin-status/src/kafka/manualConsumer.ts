@@ -16,10 +16,18 @@ export function buildKafka(clientId: string): Kafka {
     logLevel: logLevel.ERROR,
     // Fix: Expand short hostnames for cross-namespace resolution (Admin/Seed connection)
     socketFactory: (options: any) => {
-      const { host } = options;
+      const { host, port } = options;
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
+      
+      if (host !== fqdnHost) {
+        process.stdout.write(JSON.stringify({ 
+          level: 'DEBUG', 
+          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
+        }) + '\n');
+      }
+
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     ...(user && pass
@@ -88,6 +96,14 @@ export async function startManualConsumer(
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
+      
+      if (host !== fqdnHost) {
+        process.stdout.write(JSON.stringify({ 
+          level: 'DEBUG', 
+          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
+        }) + '\n');
+      }
+
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     connectionTimeout: 10000,

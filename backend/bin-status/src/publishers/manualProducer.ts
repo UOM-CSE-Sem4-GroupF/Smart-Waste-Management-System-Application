@@ -54,6 +54,14 @@ export async function createManualProducer(clientId: string): Promise<ManualProd
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
+      
+      if (host !== fqdnHost) {
+        process.stdout.write(JSON.stringify({ 
+          level: 'DEBUG', 
+          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
+        }) + '\n');
+      }
+
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     connectionTimeout: 10_000,
