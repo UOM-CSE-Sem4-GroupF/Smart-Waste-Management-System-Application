@@ -9,7 +9,7 @@ import {
   AlertPayload,
 } from '../types';
 import { store } from '../store';
-import { publishToDashboard } from '../publishers/dashboardPublisher';
+import { publishToDashboard, initPublisher } from '../publishers/dashboardPublisher';
 import { shouldTriggerCollection } from '../rules/collectionTrigger';
 import { shouldPushToDashboard, updateFilterState } from '../rules/dashboardFilter';
 import { classifyUrgency } from '../rules/urgencyClassifier';
@@ -263,6 +263,10 @@ export async function startKafkaConsumer(): Promise<void> {
     else if (level === 'WARN') logger.warn(msg);
     else logger.info(msg);
   };
+
+  logger.info('Initializing publisher connection before starting consumers...');
+  await initPublisher();
+  logger.info('Publisher connected successfully.');
 
   // 1. Bin Processed Consumer
   await startManualConsumer(
