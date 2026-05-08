@@ -48,7 +48,14 @@ export async function createManualProducer(clientId: string): Promise<ManualProd
       addListener: () => {},
       removeListener: () => {},
     },
-    socketFactory: require('kafkajs/src/network/socketFactory')(),
+    // Fix: Expand short hostnames (like kafka-broker-0) to FQDNs for cross-namespace resolution
+    socketFactory: (options: any) => {
+      const { host, port } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     connectionTimeout: 10_000,
     authenticationTimeout: 10_000,
     requestTimeout: 30_000,
