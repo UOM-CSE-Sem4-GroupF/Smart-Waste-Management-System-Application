@@ -31,21 +31,13 @@ function buildKafka() {
   return new Kafka({
     clientId: 'bin-status-service',
     brokers,
-    logLevel: logLevel.DEBUG,
+    logLevel: logLevel.ERROR,
     // Fix: Expand short hostnames for cross-namespace resolution
     socketFactory: (options: any) => {
-      const { host, port } = options;
+      const { host } = options;
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
-      
-      if (host !== fqdnHost) {
-        process.stdout.write(JSON.stringify({ 
-          level: 'DEBUG', 
-          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
-        }) + '\n');
-      }
-
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     ...(user && pass
