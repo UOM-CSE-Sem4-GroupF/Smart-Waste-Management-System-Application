@@ -23,6 +23,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { StatCard } from '@/components/shared/StatCard'
+import { Trash2, AlertTriangle, Truck, Activity } from 'lucide-react'
 
 const FillRateHeatmap = dynamic(
   () => import('@/components/analytics/FillRateHeatmap').then((m) => m.FillRateHeatmap),
@@ -112,8 +114,27 @@ export default function AnalyticsPage() {
   })
 
   // ── Zone stats from Zustand ──────────────────────────────────────────────
-  const zones = useMapStore((s) => s.zoneStats)
-  const bins  = useMapStore((s) => s.bins)
+  const zones    = useMapStore((s) => s.zoneStats)
+  const bins     = useMapStore((s) => s.bins)
+  const vehicles = useMapStore((s) => s.vehicles)
+
+  // ── Summary KPI stats ────────────────────────────────────────────────────
+  const kpiStats = useMemo(() => {
+    const binList = Array.from(bins.values()).filter(
+      (b) => selectedZone === 'all' || String(b.zone_id) === selectedZone,
+    )
+    const criticalCount = binList.filter((b) => b.status === 'critical').length
+    const urgentCount   = binList.filter((b) => b.status === 'urgent').length
+    const avgFill       = binList.length > 0
+      ? binList.reduce((s, b) => s + b.fill_level_pct, 0) / binList.length
+      : 0
+    return {
+      totalBins:    binList.length,
+      criticalCount,
+      urgentCount,
+      avgFill,
+    }
+  }, [bins, selectedZone])
 
   // Waste category bar chart
   const categoryData = useMemo(() => {
@@ -297,6 +318,37 @@ export default function AnalyticsPage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* KPI summary cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Bins Monitored"
+          value={kpiStats.totalBins}
+          sublabel={selectedZone === 'all' ? 'all zones' : 'selected zone'}
+          icon={<Trash2 className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Critical Bins"
+          value={kpiStats.criticalCount}
+          sublabel="require immediate collection"
+          urgent={kpiStats.criticalCount > 0}
+          trend={kpiStats.criticalCount > 0 ? 'down' : 'neutral'}
+          icon={<AlertTriangle className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Urgent Bins"
+          value={kpiStats.urgentCount}
+          sublabel="fill level above threshold"
+          urgent={kpiStats.urgentCount > 5}
+          icon={<Activity className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Active Vehicles"
+          value={vehicles.size}
+          sublabel="live GPS positions"
+          icon={<Truck className="h-5 w-5" />}
+        />
       </div>
 
       {/* Chart 1 — Zone fill level over time */}

@@ -10,19 +10,23 @@ import {
   Recycle,
   LogOut,
   History,
+  LayoutDashboard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAlertStore } from '@/store/alertStore'
 
 interface NavItem {
   icon:    React.ElementType
   label:   string
   href:    string
   roles?:  string[]  // undefined = visible to all
+  exact?:  boolean   // match exactly (not prefix)
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { icon: LayoutDashboard, label: 'Overview',  href: '/dashboard',           exact: true },
   { icon: Map,             label: 'Live Map',  href: '/dashboard/map' },
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
@@ -39,7 +43,10 @@ export function Sidebar() {
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??'
 
-  const isActive = (href: string) => pathname.startsWith(href)
+  const unreadAlerts = useAlertStore((s) => s.unacknowledgedCount)
+
+  const isActive = (href: string, exact?: boolean) =>
+    exact ? pathname === href : pathname.startsWith(href)
 
   const visibleItems = NAV_ITEMS.filter((item) =>
     !item.roles || item.roles.includes(role)
@@ -60,19 +67,25 @@ export function Sidebar() {
         <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           General
         </p>
-        {visibleItems.map(({ icon: Icon, label, href }) => (
+        {visibleItems.map(({ icon: Icon, label, href, exact }) => (
           <Link
             key={href}
             href={href}
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors w-full',
-              isActive(href)
+              isActive(href, exact)
                 ? 'bg-green-50 text-green-700 font-medium dark:bg-green-950/40 dark:text-green-400'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
             {label}
+            {/* Alert dot on Overview when there are unread alerts */}
+            {label === 'Overview' && unreadAlerts > 0 && (
+              <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {unreadAlerts > 9 ? '9+' : unreadAlerts}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

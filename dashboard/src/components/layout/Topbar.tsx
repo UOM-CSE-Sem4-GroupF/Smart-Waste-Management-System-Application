@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { LogOut } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 import { ConnectionBadge } from './ConnectionBadge'
+import { AlertBell } from './AlertBell'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard':           'Live Map',
+  '/dashboard':           'Overview',
   '/dashboard/map':       'Live Map',
   '/dashboard/bins':      'Bins',
   '/dashboard/jobs':      'Collection Jobs',
@@ -45,6 +46,7 @@ export function Topbar() {
       <h1 className="text-lg font-semibold">{getTitle(pathname)}</h1>
       <div className="ml-auto flex items-center gap-2">
         <ConnectionBadge />
+        <AlertBell />
         <ThemeToggle />
         {/* User avatar dropdown */}
         <DropdownMenu>

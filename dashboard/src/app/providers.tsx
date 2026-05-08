@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
 import { SocketProvider } from '@/components/providers/SocketProvider'
-//import { MSWProvider } from '@/mocks/MSWProvider'
-//import { MockSocketInjector } from '@/mocks/MockSocketInjector'
+import { MSWProvider } from '@/mocks/MSWProvider'
+import { MockSocketInjector } from '@/mocks/MockSocketInjector'
+import { MockSessionProvider } from '@/mocks/MockSessionProvider'
+
+const IS_DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -13,16 +16,26 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30 * 1000,     // 30 s
-            gcTime:    5 * 60 * 1000, // 5 min
+            staleTime: 30 * 1000,
+            gcTime:    5 * 60 * 1000,
           },
         },
       })
   )
 
-  // If you want to remove mock data simulation
-  // Remove or comment out these two lines importing MSWProvider and MockSocketInjector:
-  // And revert the JSX back to:
+  if (IS_DEV_BYPASS) {
+    return (
+      <MSWProvider>
+        <MockSessionProvider>
+          <QueryClientProvider client={queryClient}>
+            <MockSocketInjector />
+            {children}
+            <ReactQueryDevtools initialIsOpen={false} />
+          </QueryClientProvider>
+        </MockSessionProvider>
+      </MSWProvider>
+    )
+  }
 
   return (
     <SessionProvider>
@@ -34,19 +47,4 @@ export function Providers({ children }: { children: React.ReactNode }) {
       </SocketProvider>
     </SessionProvider>
   )
-
-  //   return (
-  //   <MSWProvider>
-  //     <SessionProvider>
-  //       <SocketProvider>
-  //         <QueryClientProvider client={queryClient}>
-  //           {process.env.NODE_ENV === 'development' && <MockSocketInjector />}
-  //           {children}
-  //           <ReactQueryDevtools initialIsOpen={false} />
-  //         </QueryClientProvider>
-  //       </SocketProvider>
-  //     </SessionProvider>
-  //   </MSWProvider>
-  // )
-
 }

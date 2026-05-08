@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useTransition } from 'react'
+import { Suspense, useMemo, useTransition, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useBins } from '@/hooks/useBins'
@@ -23,7 +23,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { formatDistanceToNow } from 'date-fns'
+import { Search, X } from 'lucide-react'
 import type { BinStatus } from '@/types'
 
 const STATUS_OPTIONS: BinStatus[] = ['normal', 'monitor', 'urgent', 'critical', 'offline']
@@ -35,10 +37,12 @@ function BinsContent() {
   const pathname   = usePathname()
   const params     = useSearchParams()
   const [,startTransition] = useTransition()
+  const [searchInput, setSearchInput] = useState('')
 
   const zoneId    = params.get('zone_id')   ? Number(params.get('zone_id'))   : undefined
   const status    = params.get('status')    ?? undefined
   const category  = params.get('category')  ?? undefined
+  const binIdFilter = params.get('bin_id')  ?? undefined
   const page      = params.get('page')      ? Number(params.get('page'))      : 1
 
   // Remote query for full list (pagination + filters)
@@ -53,15 +57,18 @@ function BinsContent() {
   // Live bin store — apply live updates to matching rows
   const liveBins = useMapStore((s) => s.bins)
 
-  // Merge REST data with live store updates
+  // Merge REST data with live store updates, apply client-side bin ID search
   const rows = useMemo(() => {
     if (!data?.data) return []
-    return data.data.map((bin) => {
+    const merged = data.data.map((bin) => {
       const live = liveBins.get(bin.bin_id)
       if (!live) return bin
       return { ...bin, status: live.status, fill_level_pct: live.fill_level_pct, urgency_score: live.urgency_score }
     })
-  }, [data, liveBins])
+    if (!binIdFilter) return merged
+    const q = binIdFilter.toLowerCase()
+    return merged.filter((b) => b.bin_id.toLowerCase().includes(q))
+  }, [data, liveBins, binIdFilter])
 
   function setParam(key: string, value: string | undefined) {
     const next = new URLSearchParams(params.toString())
@@ -74,14 +81,46 @@ function BinsContent() {
     startTransition(() => router.push(`${pathname}?${next.toString()}`))
   }
 
+  const handleSearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault()
+    setParam('bin_id', searchInput.trim() || undefined)
+  }, [searchInput])
+
+  const clearSearch = useCallback(() => {
+    setSearchInput('')
+    setParam('bin_id', undefined)
+  }, [])
+
+  const hasActiveFilters = !!(status || category || binIdFilter)
   const totalPages = Math.ceil((data?.total ?? 0) / PAGE_SIZE)
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold tracking-tight">Bin Status</h2>
 
-      {/* Filters */}
+      {/* Search + Filters */}
       <div className="flex flex-wrap items-center gap-3">
+        {/* Bin ID search */}
+        <form onSubmit={handleSearch} className="relative flex items-center">
+          <Search className="absolute left-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search bin ID…"
+            className="h-9 w-52 pl-8 pr-8 text-sm"
+          />
+          {(searchInput || binIdFilter) && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </form>
+
         <Select
           value={status ?? 'all'}
           onValueChange={(v) => setParam('status', v)}
@@ -112,12 +151,12 @@ function BinsContent() {
           </SelectContent>
         </Select>
 
-        {(status || category) && (
+        {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              const next = new URLSearchParams()
+              setSearchInput('')
               startTransition(() => router.push(pathname))
             }}
           >
@@ -127,7 +166,7 @@ function BinsContent() {
 
         {data && (
           <span className="ml-auto text-xs text-muted-foreground">
-            {data.total} bins
+            {binIdFilter ? `${rows.length} of ${data.total}` : data.total} bins
           </span>
         )}
       </div>
