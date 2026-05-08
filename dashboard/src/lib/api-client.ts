@@ -10,7 +10,7 @@ export async function createApiClient() {
   const token = session?.accessToken
 
   return ky.create({
-    prefix: process.env.NEXT_PUBLIC_API_BASE_URL,
+    prefix: typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : '',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -24,7 +24,7 @@ export async function createApiClient() {
  */
 export function createClientApiClient(token?: string) {
   return ky.create({
-    prefix: process.env.NEXT_PUBLIC_API_BASE_URL,
+    prefix: typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : '',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
