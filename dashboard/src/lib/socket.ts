@@ -6,7 +6,7 @@ export function getSocket(token?: string): Socket {
   if (socket?.connected) return socket
 
   socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
-    ...(token ? { auth: { token } } : {}),    // Only send auth if we have a real token
+    ...(token ? { auth: { token }, query: { token } } : {}), 
     path: '/socket.io',                        // Kong routes /socket.io → notification-service
     transports: ['websocket', 'polling'],      // websocket first, polling fallback
     reconnectionAttempts: 10,
