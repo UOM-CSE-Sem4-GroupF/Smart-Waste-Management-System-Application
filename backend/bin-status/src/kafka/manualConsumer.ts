@@ -21,12 +21,10 @@ export function buildKafka(clientId: string): Kafka {
         ? host 
         : `${host}.messaging.svc.cluster.local`;
       
-      if (host !== fqdnHost) {
-        process.stdout.write(JSON.stringify({ 
-          level: 'DEBUG', 
-          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
-        }) + '\n');
-      }
+      process.stdout.write(JSON.stringify({ 
+        level: 'DEBUG', 
+        message: `Kafka connection attempt: ${host}:${port} -> ${fqdnHost}:${port}` 
+      }) + '\n');
 
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
@@ -97,12 +95,10 @@ export async function startManualConsumer(
         ? host 
         : `${host}.messaging.svc.cluster.local`;
       
-      if (host !== fqdnHost) {
-        process.stdout.write(JSON.stringify({ 
-          level: 'DEBUG', 
-          message: `Expanding Kafka host: ${host} -> ${fqdnHost}:${port}` 
-        }) + '\n');
-      }
+      process.stdout.write(JSON.stringify({ 
+        level: 'DEBUG', 
+        message: `Kafka Cluster connection attempt: ${host}:${port} -> ${fqdnHost}:${port}` 
+      }) + '\n');
 
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
