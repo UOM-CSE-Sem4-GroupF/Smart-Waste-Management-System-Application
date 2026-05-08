@@ -26,6 +26,14 @@ export async function createManualProducer(clientId: string): Promise<ManualProd
     logLevel: logLevel.ERROR,
     connectionTimeout: 10_000,
     authenticationTimeout: 10_000,
+    // Fix: Expand short hostnames for cross-namespace resolution (Admin/Seed connection)
+    socketFactory: (options: any) => {
+      const { host } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     retry: { retries: 8, initialRetryTime: 300, maxRetryTime: 30_000 },
     ...(user && pass
       ? { sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass } }
@@ -43,7 +51,14 @@ export async function createManualProducer(clientId: string): Promise<ManualProd
       addListener: () => {},
       removeListener: () => {},
     },
-    socketFactory: require('kafkajs/src/network/socketFactory')(),
+    // Fix: Expand short hostnames for cross-namespace resolution
+    socketFactory: (options: any) => {
+      const { host } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     connectionTimeout: 10_000,
     authenticationTimeout: 10_000,
     requestTimeout: 30_000,

@@ -10,6 +10,14 @@ function buildKafka(): Kafka {
     clientId: 'workflow-orchestrator-producer',
     brokers,
     logLevel: logLevel.ERROR,
+    // Fix: Expand short hostnames for cross-namespace resolution
+    socketFactory: (options: any) => {
+      const { host } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     ...(user && pass ? {
       sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass },
     } : {}),

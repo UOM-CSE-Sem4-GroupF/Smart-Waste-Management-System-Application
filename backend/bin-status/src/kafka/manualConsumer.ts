@@ -14,6 +14,14 @@ export function buildKafka(clientId: string): Kafka {
     clientId,
     brokers,
     logLevel: logLevel.ERROR,
+    // Fix: Expand short hostnames for cross-namespace resolution (Admin/Seed connection)
+    socketFactory: (options: any) => {
+      const { host } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     ...(user && pass
       ? { sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass } }
       : {}),
@@ -74,7 +82,14 @@ export async function startManualConsumer(
       addListener: () => {},
       removeListener: () => {},
     },
-    socketFactory: require('kafkajs/src/network/socketFactory')(),
+    // Fix: Expand short hostnames (like kafka-broker-0) to FQDNs for cross-namespace resolution
+    socketFactory: (options: any) => {
+      const { host, port } = options;
+      const fqdnHost = (host.includes('.') || host === 'localhost') 
+        ? host 
+        : `${host}.messaging.svc.cluster.local`;
+      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
+    },
     connectionTimeout: 10000,
     authenticationTimeout: 10000,
     requestTimeout: 30000,
