@@ -31,7 +31,7 @@ function buildKafka() {
   return new Kafka({
     clientId: 'bin-status-service',
     brokers,
-    logLevel: logLevel.ERROR,
+    logLevel: logLevel.DEBUG,
     // Fix: Expand short hostnames for cross-namespace resolution
     socketFactory: (options: any) => {
       const { host, port } = options;

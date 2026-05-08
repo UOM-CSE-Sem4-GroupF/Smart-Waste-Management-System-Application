@@ -64,6 +64,7 @@ export async function createManualProducer(clientId: string): Promise<ManualProd
 
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
+    logLevel: logLevel.DEBUG,
     connectionTimeout: 10_000,
     authenticationTimeout: 10_000,
     requestTimeout: 30_000,
