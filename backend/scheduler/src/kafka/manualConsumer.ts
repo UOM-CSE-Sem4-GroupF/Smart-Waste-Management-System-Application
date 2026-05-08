@@ -13,7 +13,7 @@ export function buildKafka(clientId: string): Kafka {
   return new Kafka({
     clientId,
     brokers,
-    logLevel: logLevel.ERROR,
+    logLevel: logLevel.DEBUG,
     // Fix: Expand short hostnames for cross-namespace resolution (Admin/Seed connection)
     socketFactory: (options: any) => {
       const { host } = options;
@@ -89,6 +89,7 @@ export async function startManualConsumer(
         : `${host}.messaging.svc.cluster.local`;
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
+    logLevel: logLevel.DEBUG,
     connectionTimeout: 10000,
     authenticationTimeout: 10000,
     requestTimeout: 30000,

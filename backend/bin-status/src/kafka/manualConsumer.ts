@@ -16,16 +16,10 @@ export function buildKafka(clientId: string): Kafka {
     logLevel: logLevel.DEBUG,
     // Fix: Expand short hostnames for cross-namespace resolution (Admin/Seed connection)
     socketFactory: (options: any) => {
-      const { host, port } = options;
+      const { host } = options;
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
-      
-      process.stdout.write(JSON.stringify({ 
-        level: 'DEBUG', 
-        message: `Kafka connection attempt: ${host}:${port} -> ${fqdnHost}:${port}` 
-      }) + '\n');
-
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     ...(user && pass
@@ -90,16 +84,10 @@ export async function startManualConsumer(
     },
     // Fix: Expand short hostnames (like kafka-broker-0) to FQDNs for cross-namespace resolution
     socketFactory: (options: any) => {
-      const { host, port } = options;
+      const { host } = options;
       const fqdnHost = (host.includes('.') || host === 'localhost') 
         ? host 
         : `${host}.messaging.svc.cluster.local`;
-      
-      process.stdout.write(JSON.stringify({ 
-        level: 'DEBUG', 
-        message: `Kafka Cluster connection attempt: ${host}:${port} -> ${fqdnHost}:${port}` 
-      }) + '\n');
-
       return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
     },
     logLevel: logLevel.DEBUG,
