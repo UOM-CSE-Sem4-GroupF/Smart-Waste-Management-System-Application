@@ -37,22 +37,25 @@ export interface Bin {
 export interface BinUpdatePayload {
   bin_id:                 string
   cluster_id:             string
-  cluster_name:           string
+  cluster_name?:          string
   zone_id:                number
   fill_level_pct:         number
   status:                 BinStatus
   urgency_score:          number
   estimated_weight_kg:    number
   waste_category:         WasteCategory
-  waste_category_colour:  string
-  fill_rate_pct_per_hour: number
+  waste_category_colour?: string
+  fill_rate_pct_per_hour?: number
   predicted_full_at:      string | null
   battery_level_pct:      number
-  has_active_job:         boolean
-  collection_triggered:   boolean
-  last_collected_at:      string | null
+  has_active_job?:        boolean
+  collection_triggered?:  boolean
+  last_collected_at?:     string | null
+  // Kafka pipeline sends latitude/longitude; normalized to lat/lng in SocketProvider
   lat?:                   number
   lng?:                   number
+  latitude?:              number
+  longitude?:             number
 }
 
 // Shape returned by REST GET /api/v1/bins/:bin_id/history
