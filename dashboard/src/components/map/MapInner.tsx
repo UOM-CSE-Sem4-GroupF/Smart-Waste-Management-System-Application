@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState, useCallback } from 'react'
-import Map, { Marker, Popup } from 'react-map-gl/mapbox'
+import Map, { Marker, Popup } from 'react-map-gl/maplibre'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { useBinStore }     from '@/store/binStore'
 import { useVehicleStore } from '@/store/vehicleStore'
 import { cn } from '@/lib/utils'
@@ -14,8 +15,24 @@ const STATUS_COLORS = {
   offline:  '#94a3b8',
 } as const
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
-const MAPBOX_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE ?? 'mapbox://styles/mapbox/light-v11'
+// Inline style using free CARTO light tiles — no API key needed, maplibre-compatible
+const MAP_STYLE = {
+  version: 8 as const,
+  sources: {
+    carto: {
+      type: 'raster' as const,
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+      ],
+      tileSize: 256,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+      maxzoom: 20,
+    },
+  },
+  layers: [{ id: 'carto-tiles', type: 'raster' as const, source: 'carto' }],
+}
 
 export function MapInner() {
   const bins             = useBinStore((s) => s.bins)
@@ -60,12 +77,16 @@ export function MapInner() {
           padding: 8px !important;
           box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
         }
-        .mapboxgl-popup-tip { display: none !important; }
+        .maplibregl-popup-tip { display: none !important; }
+        .maplibregl-popup-content {
+          border-radius: 16px !important;
+          padding: 8px !important;
+          box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
+        }
       `}</style>
 
       <Map
-        mapboxAccessToken={MAPBOX_TOKEN}
-        mapStyle={MAPBOX_STYLE}
+        mapStyle={MAP_STYLE}
         initialViewState={initialViewState}
         style={{ width: '100%', height: '100%' }}
         onClick={handleMapClick}
