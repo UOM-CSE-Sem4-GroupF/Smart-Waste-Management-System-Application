@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "leaflet/dist/leaflet.css";
+@import "mapbox-gl/dist/mapbox-gl.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -133,11 +133,6 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* Prevent Tailwind v4 preflight from breaking Leaflet tile images */
-.leaflet-tile-container img {
-  max-width: none;
-  height: 256px;
-}
 
 @layer base {
   * {
