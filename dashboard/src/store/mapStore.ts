@@ -6,6 +6,8 @@ interface MapFilters {
   wasteCategory: string[]
   zoneId:        number | null
   clusterId:     string | null
+  showZones:     boolean
+  showClusters:  boolean
 }
 
 interface MapStore {
@@ -40,7 +42,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   selectedBinId:     null,
   selectedVehicleId: null,
   selectedZoneId:    null,
-  filters:           { status: [], wasteCategory: [], zoneId: null, clusterId: null },
+  filters:           { status: [], wasteCategory: [], zoneId: null, clusterId: null, showZones: false, showClusters: false },
 
   updateBin: (payload) =>
     set((state) => {
