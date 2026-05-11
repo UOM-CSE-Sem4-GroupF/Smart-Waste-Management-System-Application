@@ -1,6 +1,8 @@
 import ky from 'ky'
 import { auth } from '@/auth'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:30080'
+
 /**
  * Server-side ky instance — calls auth() to inject the Keycloak access token.
  * Only call this in Server Components or Route Handlers (never in 'use client' files).
@@ -10,7 +12,7 @@ export async function createApiClient() {
   const token = session?.accessToken
 
   return ky.create({
-    prefix: typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : '',
+    prefixUrl: API_BASE_URL,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -24,7 +26,7 @@ export async function createApiClient() {
  */
 export function createClientApiClient(token?: string) {
   return ky.create({
-    prefix: typeof window === 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : '',
+    prefixUrl: API_BASE_URL,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
