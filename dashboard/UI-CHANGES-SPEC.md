@@ -6,10 +6,9 @@
 
 > **Build authority hierarchy:**
 > 1. This document (UI/UX implementation detail)
-> 2. `CHANGES-NEEDED.md` (architectural change tracking)
-> 3. `spec.md` (core system spec)
+> 2. `spec.md` (core system spec)
 >
-> **Tech stack remains unchanged:** Next.js 14 App Router · TypeScript strict · Tailwind CSS · shadcn/ui · NextAuth v5 · ky · Socket.IO client · Zustand v4 · Recharts · react-hook-form + zod · date-fns · Lucide React  
+> **Tech stack change — map library replaced:** `mapbox-gl` replaces `leaflet` + `react-leaflet` + `@types/leaflet`. All other stack choices remain unchanged: Next.js 14 App Router · TypeScript strict · Tailwind CSS · shadcn/ui · NextAuth v5 · ky · Socket.IO client · Zustand v4 · Recharts · react-hook-form + zod · date-fns · Lucide React  
 >
 > **New dependency:** `mapbox-gl` + `@types/mapbox-gl`  
 > **Remove:** `leaflet` · `react-leaflet` · `@types/leaflet`
@@ -57,6 +56,9 @@ bin-offline  → bg-bin-offline / #6b7280
 ```
 
 ### Job state colours (new — add to tailwind.config.ts under extend.colors.job)
+
+> **Important:** Tailwind class keys are lowercase (`job.in_progress`). The `JobState` TS type uses uppercase (`'IN_PROGRESS'`). These Tailwind keys are only useful for *static* Tailwind classes like `bg-job-in_progress`. For **dynamic** colouring (e.g. `style={{ borderColor: ... }}`), use the `JOB_STATE_COLOURS` map from `src/lib/colours.ts` instead.
+
 ```typescript
 job: {
   created:            '#6B7280',   // slate
@@ -72,6 +74,50 @@ job: {
   bin_confirming:     '#8B5CF6',   // purple
   cluster_assembling: '#8B5CF6',
   driver_notified:    '#EAB308',   // amber
+}
+```
+
+### `src/lib/colours.ts` (new file)
+
+This file is the single source of truth for all runtime colour lookups.
+
+```typescript
+import type { BinStatus } from '@/types/bin'
+
+/** Maps BinStatus → hex colour (mirrors tailwind bin.* config) */
+export const STATUS_COLORS: Record<BinStatus, string> = {
+  normal:   '#22c55e',
+  monitor:  '#eab308',
+  urgent:   '#f97316',
+  critical: '#ef4444',
+  offline:  '#6b7280',
+}
+
+/** Palette for per-zone colouring in charts and overlays (cycles when > 7 zones) */
+export const ZONE_COLOURS = [
+  '#3B82F6', '#8B5CF6', '#F97316', '#10B981',
+  '#EF4444', '#EAB308', '#06B6D4',
+]
+
+/**
+ * Maps uppercase JobState values → hex colour.
+ * Use this for dynamic inline styles / canvas drawing.
+ * Do NOT use the lowercase Tailwind keys (job.in_progress) for dynamic colouring.
+ */
+export const JOB_STATE_COLOURS: Record<string, string> = {
+  CREATED:             '#6B7280',
+  DISPATCHING:         '#3B82F6',
+  DISPATCHED:          '#3B82F6',
+  IN_PROGRESS:         '#22C55E',
+  COMPLETING:          '#22C55E',
+  COLLECTION_DONE:     '#10B981',
+  COMPLETED:           '#6B7280',
+  ESCALATED:           '#EF4444',
+  FAILED:              '#EF4444',
+  CANCELLED:           '#6B7280',
+  BIN_CONFIRMING:      '#8B5CF6',
+  CLUSTER_ASSEMBLING:  '#8B5CF6',
+  DRIVER_NOTIFIED:     '#EAB308',
 }
 ```
 
@@ -161,6 +207,11 @@ interface DashboardMapProps {
   /** Initial viewport override (used by Overview mini-map) */
   initialCenter?: [number, number]
   initialZoom?: number
+  /**
+   * When set, the map renders ONLY the polyline and vehicle marker for this job.
+   * Used by JobDetailDrawer embedded map. Reads route from jobStore.
+   */
+  jobId?: string
 }
 ```
 
@@ -257,8 +308,10 @@ Side panel (right side, 360px wide) that slides in when a bin is selected.
 - Header: bin_id, cluster name, zone name, status badge (using `StatusBadge` component), `[X]` close button
 - `FillGauge` circular SVG component: fill_level_pct, status colour ring (see §10.1)
 - Stats row: estimated_weight_kg, battery_level_pct, predicted_full_at
-- 7-day fill history `LineChart` (Recharts, height 120px, no axis labels on compact view)
+- 7-day fill history `LineChart` (Recharts, height 120px)
+  - Data source: call `getBinHistory(api, bin.bin_id)` via `useQuery` inside the panel (only fetched when panel opens). Use `<ChartSkeleton className="h-[120px]" />` as loading state.
 - Recent collections list (last 3): date, driver, fill at collection
+  - Data source: `bin.recent_collections` from a `getBin(api, bin_id)` call (single bin detail endpoint — only the full detail response includes `recent_collections`). Also fetched lazily via `useQuery` when panel opens.
 - Footer: "View full detail →" link to `/dashboard/bins/[bin_id]`
 
 ### 1.12 Map filter panel (full-size map only)
@@ -404,6 +457,19 @@ export function AlertBell() {
 }
 ```
 
+**`ClearAllButton`** is a small inline component defined at the bottom of the same `AlertBell.tsx` file:
+```tsx
+function ClearAllButton() {
+  const clearAll = useAlertStore((s) => s.clearAll)
+  return (
+    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-auto py-1"
+      onClick={clearAll}>
+      Clear all
+    </Button>
+  )
+}
+```
+
 ### 3.3 `src/components/layout/NotificationList.tsx` (new — extracted from AlertFeed)
 
 Extract the alert rendering logic from `AlertFeed.tsx` into `NotificationList.tsx`. The standalone `AlertFeed` in the Overview page continues to use the original `AlertFeed.tsx`.
@@ -439,7 +505,9 @@ Only visible when alerts.filter(a => a.type === 'escalated' && !a.dismissed).len
 // Sliding in from top using animate-in slide-in-from-top
 // bg-red-500/10 border border-red-200 text-red-700 rounded-lg
 // Content: "⚠ {count} escalated alert(s) — {latest message}"
-// [View alerts] button → opens the NotificationDropdown (via a URL param or global state)
+// [View alerts] button → opens the NotificationDropdown via `?panel=alerts` URL search param.
+// AlertBell reads useSearchParams() and auto-opens its Popover when this param is present.
+// Example: router.push(`${pathname}?panel=alerts`) from the AlertBanner click handler.
 // [Dismiss all escalated] button
 ```
 
@@ -738,6 +806,8 @@ LORRY-01 | Garbage Truck | 8t | John Perera | 🟢 Active | Zone 3 | JOB-001 | [
 
 **Add/Edit Vehicle — `<VehicleFormDialog>`:**
 
+> **Type note:** `src/types/vehicle.ts` must be updated before implementing this form. The existing `Vehicle` interface does not include `registration` or `year` fields. Add a `VehicleAsset` interface (or extend `Vehicle`) with at minimum: `registration: string`, `year: number`.
+
 ```
 Vehicle ID*      [LORRY-NNN____]  (read-only on edit)
 Vehicle Type*    [Garbage Truck ▼]
@@ -759,6 +829,8 @@ DR-001 | John Perera | +94 77 123 4567 | Zone 3 | LORRY-01 | 🟢 On Job | [Edit
 ```
 
 **Add/Edit Driver — `<DriverFormDialog>`:**
+
+> **Type note:** `src/types/vehicle.ts` must be updated before implementing this form. The existing `Driver` interface does not include `email`, `phone`, or `license_no` fields. Add these to the `Driver` interface: `email: string`, `phone: string`, `license_no: string`.
 
 ```
 Driver ID*       [DR-NNN_____]   (read-only on edit)
@@ -866,6 +938,7 @@ interface MapStore {
   removeVehicle:   (vehicleId: string) => void
   updateZoneStats: (payload: ZoneStatsPayload) => void
   selectBin:       (binId: string | null) => void
+  selectZone:      (zoneId: number | null) => void
   setFilter:       (key: keyof MapFilters, value: MapFilters[keyof MapFilters]) => void
 
   // Computed
@@ -921,6 +994,8 @@ export const useMapStore = create<MapStore>((set, get) => ({
     }),
 
   selectBin: (binId) => set({ selectedBinId: binId }),
+
+  selectZone: (zoneId) => set({ selectedZoneId: zoneId }),
 
   setFilter: (key, value) =>
     set((state) => ({
@@ -1127,11 +1202,16 @@ export interface JobProgressEvent {
 }
 
 export interface JobCompletedEvent {
-  job_id:           string
-  bins_collected:   number
-  total_weight_kg:  number
-  completed_at:     string
-  blockchain_tx_id?: string
+  job_id:            string
+  zone_id:           number
+  vehicle_id:        string
+  driver_id:         string
+  bins_collected:    number   // bins_collected count
+  bins_skipped:      number
+  actual_weight_kg:  number   // NOT total_weight_kg
+  duration_minutes:  number
+  hyperledger_tx_id: string | null  // NOT blockchain_tx_id
+  timestamp:         string   // ISO 8601 — NOT completed_at
 }
 
 export interface JobCancelledEvent {
@@ -1200,27 +1280,29 @@ export const updateDriver = (api: KyInstance, driverId: string, body: Partial<Dr
 
 ### 12.3 `src/lib/api/jobs.ts` — additions
 
-```typescript
-export const getJobStats = (
-  api: KyInstance,
-  params: { date_from: string; date_to: string; zone_id?: number }
-) => api.get('api/v1/collection-jobs/stats', {
-  searchParams: params as Record<string, string>,
-}).json()
+> **Note on `getJobStats`:** There is no `/api/v1/collection-jobs/stats` endpoint in Kong or the orchestrator codebase. Analytics aggregate data must be derived client-side from the standard `getJobs()` paginated response, or this endpoint needs to be added to the orchestrator and Kong config first. **Do not call a non-existent endpoint.** The `CollectionEfficiencyChart` and `VehicleUtilisationChart` components should derive their data from the jobs list with date filtering until a stats endpoint exists.
 
-export const getJobProgress = (jobId: string, api: KyInstance) =>
-  api.get(`api/v1/jobs/${jobId}/progress`).json()
+> **Note on `getJobProgress`:** The correct Kong-exposed path is `/api/v1/collections` (scheduler-service), not `/api/v1/jobs`. The progress detail route is served by the scheduler.
+
+```typescript
+// api/v1/collections/:job_id/progress — served by scheduler-service via Kong /api/v1/collections
+export const getJobProgress = (
+  api: KyInstance,
+  jobId: string,
+) => api.get(`api/v1/collections/${jobId}/progress`).json<JobProgress>()
 ```
 
 ### 12.4 `src/lib/api/ml.ts` — addition
 
+> **Verify before calling:** `api/v1/ml/predict/zone-generation` is not in the existing `ml.ts` and is not explicitly documented in the ML service spec. Confirm the endpoint exists (check `Smart-Waste-Management-Docs/05-route-optimizer.md` and the FastAPI service routes) before implementing `ZoneForecastChart`. If unavailable, display an "endpoint not yet available" empty state.
+
 ```typescript
 export const getZoneForecast = (
   api: KyInstance,
-  params: { zone_id: number; date_range: string }
+  params: { zone_id: number; date_range: string },
 ) => api.get('api/v1/ml/predict/zone-generation', {
   searchParams: params as Record<string, string>,
-}).json()
+}).json<ZoneForecastData>()  // define ZoneForecastData type once endpoint contract is confirmed
 ```
 
 ---
@@ -1233,8 +1315,8 @@ Changes required (minimal — architecture unchanged):
 
 1. Replace `useBinStore` / `useVehicleStore` with `useMapStore`
 2. Remove `alert:weight-limit` handler and its cleanup
-3. Replace `updateJobProgress(payload)` → `updateJob(e.job_id, e)`
-4. Add `removeVehicle(event.vehicle_id)` call in `job:completed` handler (performance optimisation)
+3. Keep `updateJobProgress(payload)` for `job:progress` events — `JobDetailDrawer` reads from `jobStore.jobProgress` Map
+4. Add `removeVehicle(event.vehicle_id)` call in `job:completed` handler
 
 ```typescript
 // Replace store imports:
@@ -1246,18 +1328,19 @@ const updateBin     = useMapStore((s) => s.updateBin)
 const updateZone    = useMapStore((s) => s.updateZoneStats)
 const updateVehicle = useMapStore((s) => s.updateVehicle)
 const removeVehicle = useMapStore((s) => s.removeVehicle)
-// Remove: updateJobProgress from jobStore
 
-// job:completed handler:
-sock.on('job:completed', (e) => {
-  updateJob(e.job_id, { state: 'COMPLETED', ...e })
+// job:completed handler — use exact JobCompletedEvent field names (see §11.2):
+sock.on('job:completed', (e: JobCompletedEvent) => {
+  updateJob(e.job_id, { state: 'COMPLETED', actual_weight_kg: e.actual_weight_kg })
   removeVehicle(e.vehicle_id)  // remove vehicle marker when job done
 })
 
-// job:progress handler:
-sock.on('job:progress', (e) => updateJob(e.job_id, e))
+// job:progress handler — keep updateJobProgress (DO NOT change to updateJob):
+// JobDetailDrawer reads from jobStore.jobProgress Map (keyed by job_id).
+// Changing this to updateJob(e.job_id, e) would leave jobProgress empty.
+sock.on('job:progress', (e) => updateJobProgress(e))
 
-// Remove this handler entirely:
+// Remove this handler entirely (weight-limit alert type no longer exists):
 // sock.on('alert:weight-limit', ...)
 // sock.off('alert:weight-limit') in cleanup
 ```
@@ -1272,12 +1355,14 @@ src/components/map/MapInner.tsx
 src/components/map/CityMap.tsx
 src/store/binStore.ts
 src/store/vehicleStore.ts
-src/app/dashboard/fleet/          ← entire directory
+src/store/__tests__/binStore.test.ts     ← replaced by mapStore.test.ts
+src/app/dashboard/fleet/                ← entire directory
 ```
 
 ### Files to CREATE
 ```
 src/lib/mapbox.ts
+src/lib/colours.ts                        ← ZONE_COLOURS, STATUS_COLORS constants (see §0 below)
 src/lib/api/zones.ts
 src/lib/api/drivers.ts
 src/store/mapStore.ts
@@ -1327,6 +1412,8 @@ src/app/dashboard/operations/_components/VehicleFormDialog.tsx
 src/app/dashboard/operations/_components/DriverFormDialog.tsx
 src/app/dashboard/operations/_components/AccountFormDialog.tsx
 
+src/store/__tests__/mapStore.test.ts      ← replaces binStore.test.ts
+
 src/app/api/admin/accounts/route.ts   ← server-side Keycloak admin proxy
 
 dashboard/.env.local.example
@@ -1336,20 +1423,22 @@ dashboard/.env.local.example
 ```
 package.json                            ← uninstall leaflet/react-leaflet, install mapbox-gl
 tailwind.config.ts                      ← add job state colours
+src/types/vehicle.ts                    ← add email, phone, license_no, registration, year fields to Driver + Vehicle
 src/store/alertStore.ts                 ← dismissed→acknowledged, remove weight-limit
 src/store/jobStore.ts                   ← add completeJob(), removeJob()
 src/components/providers/SocketProvider.tsx  ← use mapStore, remove weight-limit
 src/components/layout/AlertBell.tsx     ← replace with Popover dropdown
 src/components/layout/Sidebar.tsx       ← add Operations nav item, remove Fleet
 src/components/layout/Topbar.tsx        ← update PAGE_TITLES, add /operations
+src/mocks/MockSocketInjector.tsx        ← update useBinStore/useVehicleStore → useMapStore
 src/app/dashboard/_components/OverviewClient.tsx  ← add mini-map, use mapStore
 src/app/dashboard/page.tsx             ← update to use mapStore
 src/app/dashboard/map/page.tsx         ← replace CityMap with DashboardMap
 src/app/dashboard/jobs/page.tsx        ← add JobDetailDrawer, click handler
 src/app/dashboard/analytics/page.tsx   ← replace inline charts with chart components
 src/lib/api/bins.ts                    ← add getCluster(), remove getZoneSummary()
-src/lib/api/jobs.ts                    ← add getJobStats(), getJobProgress()
-src/lib/api/ml.ts                      ← add getZoneForecast()
+src/lib/api/jobs.ts                    ← add getJobProgress() (getJobStats removed — see §12.3)
+src/lib/api/ml.ts                      ← add getZoneForecast() (verify endpoint first)
 ```
 
 ---
@@ -1384,10 +1473,23 @@ Implement in this order to keep the app buildable at each step:
 Following `dashboard-testing.instructions.md` patterns:
 
 ### Unit tests to add
-- `mapStore.test.ts` — updateBin preserves lat/lng, getFilteredBins filter logic
+- `mapStore.test.ts` — updateBin preserves lat/lng, getFilteredBins filter logic, selectZone sets selectedZoneId
 - `alertStore.test.ts` — acknowledgeAlert, no weight-limit type
 - `FillGauge.test.tsx` — renders correct arc for given fill value
 - `NotificationList.test.tsx` — renders alert items, dismiss action
+
+### Mock data updates required
+Before any component tests run:
+- `src/mocks/handlers.ts` — add MSW handlers for all new Kong routes:
+  - `GET /api/v1/zones`
+  - `GET /api/v1/drivers`, `POST /api/v1/drivers`, `PATCH /api/v1/drivers/:id`
+  - `GET /api/v1/bins/:id/history` (for BinDetailPanel 7-day chart)
+  - `GET /api/v1/collections/:id/progress` (for JobDetailDrawer progress)
+  - `POST /api/admin/accounts` (Keycloak proxy)
+- `src/mocks/MockSocketInjector.tsx` — update to import `useMapStore` instead of `useBinStore` / `useVehicleStore`. All injected socket payloads must call `updateBin`, `updateVehicle`, `updateZoneStats` on `useMapStore`.
+- Update existing MSW bin/vehicle/job handlers to produce payloads that match the types in `src/types/socket-events.ts` (i.e. use `actual_weight_kg`, `hyperledger_tx_id`, `timestamp` — not the old field names)
+
+> **Tip:** Missing MSW handlers cause ky requests to return a 404 from the service worker, which `useQuery` treats as an error — the component silently shows its error state. Always check the browser console for `[MSW] unhandled GET /api/v1/...` warnings when adding new API calls.
 
 ### E2E tests to add (Playwright)
 - `map.spec.ts` — map loads, fallback to UoM on missing token, bin click opens panel
