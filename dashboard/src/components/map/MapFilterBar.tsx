@@ -169,6 +169,47 @@ export function MapFilterBar() {
         </SelectContent>
       </Select>
 
+      <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
+
+      {/* Layer overlays */}
+      <div className="flex items-center gap-1">
+        <span className="mr-1 text-[10px] font-black uppercase tracking-widest text-slate-400 shrink-0">
+          Layers
+        </span>
+        <label
+          className={cn(
+            'flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors',
+            filters.showZones
+              ? 'border-emerald-500 bg-emerald-500 text-white'
+              : 'border-slate-200 bg-transparent text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400'
+          )}
+        >
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={filters.showZones}
+            onChange={(e) => setFilter('showZones', e.target.checked)}
+          />
+          Zones
+        </label>
+        <label
+          className={cn(
+            'flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors',
+            filters.showClusters
+              ? 'border-indigo-500 bg-indigo-500 text-white'
+              : 'border-slate-200 bg-transparent text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400'
+          )}
+        >
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={filters.showClusters}
+            onChange={(e) => setFilter('showClusters', e.target.checked)}
+          />
+          Clusters
+        </label>
+      </div>
+
       {/* Clear all */}
       {hasActiveFilters && (
         <Button
