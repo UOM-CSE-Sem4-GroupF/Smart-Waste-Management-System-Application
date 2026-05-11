@@ -12,7 +12,7 @@ export async function createApiClient() {
   const token = session?.accessToken
 
   return ky.create({
-    prefixUrl: API_BASE_URL,
+    prefix: API_BASE_URL,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -26,7 +26,7 @@ export async function createApiClient() {
  */
 export function createClientApiClient(token?: string) {
   return ky.create({
-    prefixUrl: API_BASE_URL,
+    prefix: API_BASE_URL,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
