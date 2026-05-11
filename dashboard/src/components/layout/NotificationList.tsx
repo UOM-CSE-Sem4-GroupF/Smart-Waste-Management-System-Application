@@ -1,7 +1,6 @@
 'use client'
 import { useAlertStore } from '@/store/alertStore'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, Check, Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -58,7 +57,7 @@ export function NotificationList() {
           <span className="text-sm">All caught up</span>
         </div>
       ) : (
-        <ScrollArea className="max-h-96">
+        <div className="overflow-y-auto max-h-96">
           <ul className="divide-y">
             {alerts.map((alert) => (
               <li
@@ -99,7 +98,7 @@ export function NotificationList() {
               </li>
             ))}
           </ul>
-        </ScrollArea>
+        </div>
       )}
     </div>
   )
