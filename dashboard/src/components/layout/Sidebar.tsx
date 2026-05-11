@@ -68,10 +68,10 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-            Garabadge
+            Dashboard
           </span>
           <span className="text-[10px] font-bold text-emerald-500 dark:text-emerald-400">
-            Intelligent Waste
+            SWMS Live
           </span>
         </div>
       </div>
