@@ -34,7 +34,7 @@ describe('mapStore', () => {
       zoneStats:     new Map(),
       selectedBinId: null,
       selectedZoneId: null,
-      filters:       { status: [], wasteCategory: [], zoneId: null },
+      filters:       { status: [], wasteCategory: [], zoneId: null, clusterId: null, showZones: false, showClusters: false },
     })
   })
 
