@@ -1,5 +1,5 @@
 import type { KyInstance } from 'ky'
-import type { CollectionJobListItem, CollectionJobDetail } from '@/types'
+import type { CollectionJobListItem, CollectionJobDetail, JobProgress } from '@/types'
 
 export async function getJobs(
   api: KyInstance,
@@ -24,4 +24,10 @@ export async function cancelJob(api: KyInstance, jobId: string, reason: string) 
   return api
     .post(`api/v1/collection-jobs/${jobId}/cancel`, { json: { reason } })
     .json()
+}
+
+export async function getJobProgress(api: KyInstance, collectionId: string) {
+  return api
+    .get(`api/v1/collections/${collectionId}/progress`)
+    .json<JobProgress>()
 }

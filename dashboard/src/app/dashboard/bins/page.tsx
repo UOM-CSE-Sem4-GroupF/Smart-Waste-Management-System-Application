@@ -4,7 +4,7 @@ import { Suspense, useMemo, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useBins } from '@/hooks/useBins'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { BinStatusBadge } from '@/components/bins/BinStatusBadge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -51,7 +51,7 @@ function BinsContent() {
   })
 
   // Live bin store — apply live updates to matching rows
-  const liveBins = useBinStore((s) => s.bins)
+  const liveBins = useMapStore((s) => s.bins)
 
   // Merge REST data with live store updates
   const rows = useMemo(() => {
@@ -78,7 +78,10 @@ function BinsContent() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold tracking-tight">Bin Status</h2>
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Bin Status</h2>
+        <p className="text-sm text-muted-foreground mt-1">Monitor fill levels and status for all collection points.</p>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -132,7 +135,7 @@ function BinsContent() {
         )}
       </div>
 
-      {/* Table */}
+      { /* Table */ }
       <div className="rounded-xl border border-border bg-background shadow-sm">
         <Table>
           <TableHeader>

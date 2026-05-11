@@ -4,21 +4,21 @@ import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends } from '@/lib/api/ml'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, Legend,
-  ResponsiveContainer,
-} from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-
-const ZONE_COLOURS = ['#22c55e', '#3b82f6', '#a855f7', '#f97316', '#eab308', '#14b8a6']
+import { ChartCard } from '@/components/analytics/ChartCard'
+import { ZoneFillTrendsChart } from '@/components/analytics/ZoneFillTrendsChart'
+import { WasteCategoryChart } from '@/components/analytics/WasteCategoryChart'
+import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
+import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEfficiencyChart'
+import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
+import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
 
 export default function AnalyticsPage() {
   const { data: session } = useSession()
@@ -27,16 +27,16 @@ export default function AnalyticsPage() {
   const { data: trendsRaw } = useQuery({
     queryKey: ['ml', 'waste-trends'],
     queryFn: () => getWasteGenerationTrends(
-      createClientApiClient(session!.accessToken),
+      createClientApiClient(session?.accessToken),
       { days: 7 },
     ) as Promise<unknown>,
-    enabled: !!session?.accessToken,
     staleTime: 5 * 60_000,
+    retry: false,
   })
 
   // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
-  const zones = useBinStore((s) => s.zones)
-  const bins  = useBinStore((s) => s.bins)
+  const zones = useMapStore((s) => s.zoneStats)
+  const bins  = useMapStore((s) => s.bins)
 
   // Waste category bar chart — sum totals across all zones
   const categoryData = useMemo(() => {
@@ -71,28 +71,39 @@ export default function AnalyticsPage() {
       .slice(0, 25)
   }, [bins])
 
-  // Collection efficiency from job store
+  // Collection efficiency from job store — derive from jobs list (no stats endpoint yet)
   const jobs = useJobStore((s) => s.jobs)
-  const efficiencyData = useMemo(() => {
-    const completedJobs = Array.from(jobs.values()).filter(
-      (j) => j.state === 'COMPLETED' || j.state === 'AUDIT_RECORDED',
-    )
-    return completedJobs.slice(-10).map((j) => ({
-      id:        j.job_id.slice(0, 6),
-      planned:   j.total_bins ?? 0,
-      collected: j.bins_collected ?? 0,
-      skipped:   j.bins_skipped ?? 0,
-    }))
-  }, [jobs])
+  const jobsList = useMemo(() => Array.from(jobs.values()), [jobs])
 
-  // Format trends data for recharts (expects array of time-series rows keyed by zone)
+  // Heatmap: group trendsRaw series by zone + hour
+  const heatmapData = useMemo(() => {
+    if (!trendsRaw || typeof trendsRaw !== 'object') return []
+    const raw = trendsRaw as {
+      series?: Array<{ timestamp: string; zone_id: number; zone_name?: string; avg_fill_pct: number }>
+    }
+    if (!Array.isArray(raw.series)) return []
+    return raw.series.map((pt) => ({
+      zone_id:   pt.zone_id,
+      zone_name: pt.zone_name ?? `Zone ${pt.zone_id}`,
+      hour:      new Date(pt.timestamp).getHours(),
+      avg_fill:  pt.avg_fill_pct,
+    }))
+  }, [trendsRaw])
+
+  // Zone names map for fill trends chart
+  const zoneNamesMap = useMemo(() => {
+    const m: Record<string, string> = {}
+    zones.forEach((z) => { m[`zone_${z.zone_id}`] = z.zone_name })
+    return m
+  }, [zones])
+
+  // Reshape trendsRaw into flat time-series rows keyed by zone (for ZoneFillTrendsChart)
   const trendsData = useMemo(() => {
     if (!trendsRaw || typeof trendsRaw !== 'object') return []
     const raw = trendsRaw as {
       series?: Array<{ timestamp: string; zone_id: number; avg_fill_pct: number }>
     }
     if (!Array.isArray(raw.series)) return []
-
     const byTime: Record<string, Record<string, number>> = {}
     raw.series.forEach((pt) => {
       const key = new Date(pt.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
@@ -102,78 +113,68 @@ export default function AnalyticsPage() {
     return Object.entries(byTime).map(([date, values]) => ({ date, ...values }))
   }, [trendsRaw])
 
-  const zoneIds = useMemo(() => Array.from(zones.keys()), [zones])
-
   return (
-    <div className="space-y-8">
-      <h2 className="text-2xl font-semibold tracking-tight">Analytics</h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Analytics</h2>
+        <p className="text-sm text-muted-foreground mt-1">Fill trends, collection efficiency and waste category breakdowns.</p>
+      </div>
 
-      {/* Chart 1 — Zone fill level over time */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Zone Fill Level — Last 7 Days
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {trendsData.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              No trend data yet — zone:stats events will populate this.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={trendsData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {zoneIds.map((zid, i) => (
-                  <Line
-                    key={zid}
-                    type="monotone"
-                    dataKey={`zone_${zid}`}
-                    name={zones.get(zid)?.zone_name ?? `Zone ${zid}`}
-                    stroke={ZONE_COLOURS[i % ZONE_COLOURS.length]}
-                    dot={false}
-                    strokeWidth={2}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+      {/* Row 1: Fill trends + Waste categories */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard
+          title="Zone Fill Level — Last 7 Days"
+          description="Average fill % per zone from trend data"
+        >
+          <ZoneFillTrendsChart
+            data={trendsData}
+            zoneNames={zoneNamesMap}
+            isLoading={false}
+          />
+        </ChartCard>
 
-      {/* Chart 2 — Waste category breakdown */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Waste Category Breakdown
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {categoryData.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              Waiting for live zone:stats data…
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={categoryData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="bins"  name="Bins"       fill="#22c55e" radius={[4,4,0,0]} />
-                <Bar dataKey="kg"    name="Weight (kg)" fill="#3b82f6" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+        <ChartCard
+          title="Waste Category Breakdown"
+          description="Weight and bin count by waste type across all zones"
+        >
+          <WasteCategoryChart data={categoryData} />
+        </ChartCard>
+      </div>
 
-      {/* Table — bins predicted urgent soon */}
+      {/* Row 2: Fill rate heatmap */}
+      <ChartCard
+        title="Fill Rate Heatmap"
+        description="Average fill % by zone and hour of day"
+      >
+        <FillRateHeatmap data={heatmapData} />
+      </ChartCard>
+
+      {/* Row 3: Collection efficiency + Vehicle utilisation */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard
+          title="Collection Efficiency"
+          description="Planned vs actual job duration across recent collections"
+        >
+          <CollectionEfficiencyChart jobs={jobsList} />
+        </ChartCard>
+
+        <ChartCard
+          title="Vehicle Utilisation"
+          description="Job load per vehicle — grey under-utilised, emerald optimal, orange over-utilised"
+        >
+          <VehicleUtilisationChart jobs={jobsList} />
+        </ChartCard>
+      </div>
+
+      {/* Row 4: Zone forecast (full width) */}
+      <ChartCard
+        title="7-Day Zone Forecast"
+        description="Predicted fill level for next 7 days with confidence intervals"
+      >
+        <ZoneForecastChart />
+      </ChartCard>
+
+      {/* Bins predicted urgent — keeps existing table */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -219,31 +220,6 @@ export default function AnalyticsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Chart 3 — Collection efficiency */}
-      {efficiencyData.length > 0 && (
-        <Card className="rounded-xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Collection Efficiency — Recent Jobs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={efficiencyData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="id" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="planned"   name="Planned"   fill="#6b7280" radius={[4,4,0,0]} stackId="a" />
-                <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[4,4,0,0]} stackId="b" />
-                <Bar dataKey="skipped"   name="Skipped"   fill="#f97316" radius={[4,4,0,0]} stackId="b" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }
