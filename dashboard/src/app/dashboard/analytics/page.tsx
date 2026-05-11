@@ -115,7 +115,10 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold tracking-tight">Analytics</h2>
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Analytics</h2>
+        <p className="text-sm text-muted-foreground mt-1">Fill trends, collection efficiency and waste category breakdowns.</p>
+      </div>
 
       {/* Row 1: Fill trends + Waste categories */}
       <div className="grid gap-4 lg:grid-cols-2">

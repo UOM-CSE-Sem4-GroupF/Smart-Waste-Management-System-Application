@@ -147,7 +147,10 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
+        <p className="text-sm text-muted-foreground mt-1">Track active, completed and escalated collection jobs.</p>
+      </div>
 
       <Tabs defaultValue="active">
         <TabsList>
