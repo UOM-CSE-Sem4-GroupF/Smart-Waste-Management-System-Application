@@ -4,18 +4,22 @@ import type { CollectionJob, CollectionJobListItem, JobProgress } from '@/types'
 interface JobStore {
   jobs:        Map<string, CollectionJob>
   jobProgress: Map<string, JobProgress>
+  /** Flat list used by the jobs page as fallback when REST is unavailable */
+  jobsList:    CollectionJobListItem[]
   addJob:             (job: CollectionJob) => void
   updateJob:          (jobId: string, patch: Partial<CollectionJob>) => void
   completeJob:        (jobId: string, patch?: Partial<CollectionJob>) => void
   removeJob:          (jobId: string) => void
   setJobs:            (jobs: CollectionJob[]) => void
   setJobsFromList:    (jobs: CollectionJobListItem[]) => void
+  setJobsList:        (jobs: CollectionJobListItem[]) => void
   updateJobProgress:  (payload: JobProgress) => void
 }
 
 export const useJobStore = create<JobStore>((set) => ({
   jobs:        new Map(),
   jobProgress: new Map(),
+  jobsList:    [],
 
   addJob: (job) =>
     set((state) => {
@@ -43,6 +47,8 @@ export const useJobStore = create<JobStore>((set) => ({
       // REST GET /api/v1/collection-jobs returns CollectionJobListItem with .id (not .job_id)
       jobs: new Map(list.map((j) => [j.id, j as unknown as CollectionJob])),
     })),
+
+  setJobsList: (list) => set({ jobsList: list }),
 
   updateJobProgress: (payload) =>
     set((state) => {

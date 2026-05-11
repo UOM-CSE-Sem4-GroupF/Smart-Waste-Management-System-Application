@@ -2,12 +2,12 @@
 
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
-import { X, MapPin, Truck, User, Package, ExternalLink } from 'lucide-react'
+import { MapPin, Truck, User, Package } from 'lucide-react'
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { useJobStore } from '@/store/jobStore'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -40,16 +40,23 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
   const { data: session } = useSession()
   const open = !!jobId
 
-  const { data: job, isLoading: jobLoading } = useQuery({
+  // Store fallback: find the job in the seeded list when REST is unavailable
+  const storeJobsList = useJobStore((s) => s.jobsList)
+  const storeJob = storeJobsList.find((j) => j.id === jobId) ?? null
+
+  const { data: restJob, isLoading: jobLoading } = useQuery({
     queryKey: ['job', jobId],
-    queryFn: () => getJob(createClientApiClient(session!.accessToken), jobId!),
-    enabled: !!jobId && !!session?.accessToken,
+    queryFn: () => getJob(createClientApiClient(session?.accessToken), jobId!),
+    enabled: !!jobId,
     staleTime: 30_000,
   })
 
+  // Prefer REST response; fall back to store entry (cast so template's detail fields remain optional)
+  const job = (restJob ?? (storeJob as unknown as CollectionJobDetail | null))
+
   const { data: progress } = useQuery({
     queryKey: ['job-progress', jobId],
-    queryFn: () => getJobProgress(createClientApiClient(session!.accessToken), jobId!),
+    queryFn: () => getJobProgress(createClientApiClient(session?.accessToken), jobId!),
     enabled: !!jobId && !!session?.accessToken,
     staleTime: 15_000,
     retry: false,
@@ -61,17 +68,10 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
     .map((s) => ({ state: s.step_name.toUpperCase(), entered_at: s.executed_at })) ?? []
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <SheetContent side="right" className="w-full max-w-130 p-0 flex flex-col">
-        <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
-          <div className="flex items-start justify-between">
-            <SheetTitle className="text-base font-semibold">
-              Job Detail
-            </SheetTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} className="-mr-2">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
+          <DialogTitle className="text-base font-semibold">Job Detail</DialogTitle>
           {job && (
             <div className="mt-1 flex flex-wrap gap-2">
               <JobStateBadge state={job.state} />
@@ -81,16 +81,16 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
               </span>
             </div>
           )}
-        </SheetHeader>
+        </DialogHeader>
 
         {jobLoading ? (
-          <div className="flex-1 px-6 space-y-3">
+          <div className="flex-1 px-6 py-4 space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-5 w-full" />
             ))}
           </div>
         ) : !job ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+          <div className="flex-1 flex items-center justify-center py-12 text-sm text-muted-foreground">
             Job not found.
           </div>
         ) : (
@@ -208,7 +208,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
             </div>
           </ScrollArea>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
