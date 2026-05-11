@@ -49,7 +49,8 @@ export interface VehicleAsset {
 
 export interface Driver {
   driver_id:    string
-  driver_name:  string
+  name:         string
+  driver_name?: string  // alias kept for backward compat
   vehicle_id:   string
   vehicle_type: string
   zone_id:      number

@@ -112,4 +112,66 @@ export const handlers = [
       model_version: 'v2.1',
     })
   }),
+
+  // POST /api/v1/bins
+  http.post('http://localhost:30080/api/v1/bins', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ ...body, bin_id: body.bin_id ?? `BIN-${Date.now()}` }, { status: 201 })
+  }),
+
+  // PATCH /api/v1/bins/:binId
+  http.patch('http://localhost:30080/api/v1/bins/:binId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ bin_id: params.binId, ...body })
+  }),
+
+  // GET /api/v1/vehicles
+  http.get('http://localhost:30080/api/v1/vehicles', () => {
+    return HttpResponse.json({ data: [], total: 0 })
+  }),
+
+  // POST /api/v1/vehicles
+  http.post('http://localhost:30080/api/v1/vehicles', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
+  }),
+
+  // PATCH /api/v1/vehicles/:vehicleId
+  http.patch('http://localhost:30080/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
+  }),
+
+  // GET /api/v1/drivers
+  http.get('http://localhost:30080/api/v1/drivers', () => {
+    return HttpResponse.json({ data: [], total: 0 })
+  }),
+
+  // POST /api/v1/drivers
+  http.post('http://localhost:30080/api/v1/drivers', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
+  }),
+
+  // PATCH /api/v1/drivers/:driverId
+  http.patch('http://localhost:30080/api/v1/drivers/:driverId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ driver_id: params.driverId, ...body })
+  }),
+
+  // GET /api/v1/zones
+  http.get('http://localhost:30080/api/v1/zones', () => {
+    return HttpResponse.json({ data: [], total: 0 })
+  }),
+
+  // GET /api/v1/collections/:id/progress
+  http.get('http://localhost:30080/api/v1/collections/:id/progress', ({ params }) => {
+    return HttpResponse.json({
+      collection_id: params.id,
+      completed_stops: 3,
+      total_stops: 8,
+      collected_weight_kg: 112,
+      current_location: null,
+    })
+  }),
 ]
