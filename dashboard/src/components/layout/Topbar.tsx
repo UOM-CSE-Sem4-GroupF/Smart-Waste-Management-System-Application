@@ -1,4 +1,5 @@
 'use client'
+import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import { LogOut } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
@@ -13,7 +14,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard':            'Overview',
+  '/dashboard/map':        'Live Map',
+  '/dashboard/bins':       'Bins',
+  '/dashboard/jobs':       'Collection Jobs',
+  '/dashboard/operations': 'Operations',
+  '/dashboard/analytics':  'Analytics',
+}
+
+function getTitle(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/dashboard/bins/')) return 'Bin Detail'
+  if (pathname.startsWith('/dashboard/jobs/')) return 'Job Detail'
+  return 'Dashboard'
+}
+
 export function Topbar() {
+  const pathname = usePathname()
   const { data: session } = useSession()
 
   const initials = session?.user?.name
@@ -22,6 +40,7 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background/95 px-6 backdrop-blur-sm">
+      <h1 className="text-lg font-semibold">{getTitle(pathname)}</h1>
       <div className="ml-auto flex items-center gap-2">
         <ConnectionBadge />
         <AlertBell />

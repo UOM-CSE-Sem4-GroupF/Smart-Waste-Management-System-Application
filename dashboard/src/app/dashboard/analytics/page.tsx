@@ -27,11 +27,11 @@ export default function AnalyticsPage() {
   const { data: trendsRaw } = useQuery({
     queryKey: ['ml', 'waste-trends'],
     queryFn: () => getWasteGenerationTrends(
-      createClientApiClient(session!.accessToken),
+      createClientApiClient(session?.accessToken),
       { days: 7 },
     ) as Promise<unknown>,
-    enabled: !!session?.accessToken,
     staleTime: 5 * 60_000,
+    retry: false,
   })
 
   // ── Zone stats from Zustand (populated via zone:stats socket events) ──────

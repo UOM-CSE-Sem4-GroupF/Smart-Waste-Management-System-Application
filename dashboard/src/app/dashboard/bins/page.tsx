@@ -83,7 +83,7 @@ function BinsContent() {
         <p className="text-sm text-muted-foreground mt-1">Monitor fill levels and status for all collection points.</p>
       </div>
 
-      {/* Filters */
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <Select
           value={status ?? 'all'}
@@ -135,7 +135,7 @@ function BinsContent() {
         )}
       </div>
 
-      {/* Table */}
+      { /* Table */ }
       <div className="rounded-xl border border-border bg-background shadow-sm">
         <Table>
           <TableHeader>
