@@ -1,5 +1,6 @@
 # Node / Next.js (dashboard artifacts)
 dashboard/node_modules/
+.next/
 dashboard/.next/
 dashboard/out/
 dashboard/build/
@@ -41,4 +42,4 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+next-env.d.ts
