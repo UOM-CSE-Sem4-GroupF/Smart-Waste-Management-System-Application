@@ -1,22 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import { useJobs } from '@/hooks/useJobs'
-import { useJobStore } from '@/store/jobStore'
 import { cancelJob } from '@/lib/api/jobs'
 import { createClientApiClient } from '@/lib/api-client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '@/components/ui/dialog'
 import { Card, CardContent } from '@/components/ui/card'
+import { JobStateBadge } from '@/components/jobs/JobStateBadge'
+import { JobTypeBadge } from '@/components/jobs/JobTypeBadge'
+import { JobProgressBar } from '@/components/jobs/JobProgressBar'
+import { JobDetailDrawer } from '@/components/jobs/JobDetailDrawer'
 import type { CollectionJobListItem, JobState } from '@/types'
 
 const ACTIVE_STATES: JobState[] = [
@@ -29,45 +30,27 @@ const COMPLETED_STATES: JobState[] = ['COMPLETED', 'AUDIT_RECORDED']
 const ESCALATED_STATES: JobState[] = ['ESCALATED']
 const CANCELLED_STATES: JobState[] = ['CANCELLED', 'FAILED', 'AUDIT_FAILED']
 
-const STATE_BADGE: Record<string, string> = {
-  CREATED:          'bg-blue-100 text-blue-800',
-  BIN_CONFIRMING:   'bg-blue-100 text-blue-800',
-  IN_PROGRESS:      'bg-green-100 text-green-800',
-  COMPLETING:       'bg-green-100 text-green-800',
-  DISPATCHED:       'bg-indigo-100 text-indigo-800',
-  COMPLETED:        'bg-green-100 text-green-800',
-  ESCALATED:        'bg-orange-100 text-orange-800',
-  CANCELLED:        'bg-gray-100 text-gray-700',
-  FAILED:           'bg-red-100 text-red-800',
-}
-
-function stateBadgeClass(state: string) {
-  return STATE_BADGE[state] ?? 'bg-gray-100 text-gray-700'
-}
-
-function JobCard({ job, onCancel }: { job: CollectionJobListItem; onCancel?: (id: string) => void }) {
+function JobCard({
+  job,
+  onSelect,
+  onCancel,
+}: {
+  job:       CollectionJobListItem
+  onSelect?: (id: string) => void
+  onCancel?: (id: string) => void
+}) {
   return (
-    <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="p-4">
+    <Card
+      className="rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      onClick={() => onSelect?.(job.id)}
+    >
+      <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/dashboard/jobs/${job.id}`}
-                className="font-medium text-green-600 hover:underline dark:text-green-400"
-              >
-                {job.id.slice(0, 8)}…
-              </Link>
-              <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${
-                job.job_type === 'emergency'
-                  ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
-                  : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
-              }`}>
-                {job.job_type}
-              </span>
-              <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${stateBadgeClass(job.state)}`}>
-                {job.state.replace(/_/g, ' ')}
-              </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm font-mono">{job.id.slice(0, 8)}…</span>
+              <JobTypeBadge type={job.job_type.toUpperCase()} />
+              <JobStateBadge state={job.state} />
             </div>
             <p className="text-xs text-muted-foreground">
               {job.zone_name} · Priority {job.priority} ·{' '}
@@ -86,13 +69,22 @@ function JobCard({ job, onCancel }: { job: CollectionJobListItem; onCancel?: (id
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={() => onCancel(job.id)}
+                onClick={(e) => { e.stopPropagation(); onCancel(job.id) }}
               >
                 Cancel
               </Button>
             )}
           </div>
         </div>
+        {/* Inline progress bar for active jobs */}
+        {ACTIVE_STATES.includes(job.state) && (
+          <JobProgressBar
+            binsCollected={job.bins_collected}
+            binsTotal={job.bins_total}
+            cargoKg={job.actual_weight_kg ?? undefined}
+            capacityKg={job.planned_weight_kg ?? undefined}
+          />
+        )}
       </CardContent>
     </Card>
   )
@@ -100,9 +92,11 @@ function JobCard({ job, onCancel }: { job: CollectionJobListItem; onCancel?: (id
 
 function JobList({
   filter,
+  onSelect,
   onCancel,
 }: {
-  filter: { state?: string }
+  filter:    { state?: string }
+  onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
   const { data, isLoading } = useJobs({ state: filter.state, limit: 50 })
@@ -125,7 +119,7 @@ function JobList({
   return (
     <div className="space-y-3">
       {jobs.map((job) => (
-        <JobCard key={job.id} job={job} onCancel={onCancel} />
+        <JobCard key={job.id} job={job} onSelect={onSelect} onCancel={onCancel} />
       ))}
     </div>
   )
@@ -134,9 +128,10 @@ function JobList({
 export default function JobsPage() {
   const { data: session }     = useSession()
   const queryClient           = useQueryClient()
-  const [cancelTarget, setCancelTarget] = useState<string | null>(null)
-  const [cancelReason, setCancelReason] = useState('')
-  const [cancelError,  setCancelError]  = useState<string | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [cancelTarget, setCancelTarget]   = useState<string | null>(null)
+  const [cancelReason, setCancelReason]   = useState('')
+  const [cancelError,  setCancelError]    = useState<string | null>(null)
 
   const { mutate: doCancel, isPending } = useMutation({
     mutationFn: (jobId: string) =>
@@ -165,22 +160,26 @@ export default function JobsPage() {
         <TabsContent value="active" className="mt-4">
           <JobList
             filter={{ state: ACTIVE_STATES.join(',') }}
+            onSelect={setSelectedJobId}
             onCancel={(id) => { setCancelTarget(id); setCancelError(null) }}
           />
         </TabsContent>
 
         <TabsContent value="completed" className="mt-4">
-          <JobList filter={{ state: COMPLETED_STATES.join(',') }} />
+          <JobList filter={{ state: COMPLETED_STATES.join(',') }} onSelect={setSelectedJobId} />
         </TabsContent>
 
         <TabsContent value="escalated" className="mt-4">
-          <JobList filter={{ state: ESCALATED_STATES.join(',') }} />
+          <JobList filter={{ state: ESCALATED_STATES.join(',') }} onSelect={setSelectedJobId} />
         </TabsContent>
 
         <TabsContent value="cancelled" className="mt-4">
-          <JobList filter={{ state: CANCELLED_STATES.join(',') }} />
+          <JobList filter={{ state: CANCELLED_STATES.join(',') }} onSelect={setSelectedJobId} />
         </TabsContent>
       </Tabs>
+
+      {/* Detail drawer */}
+      <JobDetailDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
 
       {/* Cancel confirmation dialog */}
       <Dialog open={cancelTarget !== null} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
@@ -221,3 +220,6 @@ export default function JobsPage() {
     </div>
   )
 }
+
+
+

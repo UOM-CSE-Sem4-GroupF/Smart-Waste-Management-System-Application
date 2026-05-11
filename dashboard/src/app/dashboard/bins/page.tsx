@@ -4,7 +4,7 @@ import { Suspense, useMemo, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useBins } from '@/hooks/useBins'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { BinStatusBadge } from '@/components/bins/BinStatusBadge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -51,7 +51,7 @@ function BinsContent() {
   })
 
   // Live bin store — apply live updates to matching rows
-  const liveBins = useBinStore((s) => s.bins)
+  const liveBins = useMapStore((s) => s.bins)
 
   // Merge REST data with live store updates
   const rows = useMemo(() => {

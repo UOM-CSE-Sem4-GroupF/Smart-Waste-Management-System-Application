@@ -37,6 +37,16 @@ export interface ActiveVehicle {
   bins_total:            number
 }
 
+/** Vehicle asset — used for Operations CRUD forms */
+export interface VehicleAsset {
+  vehicle_id:   string
+  vehicle_type: string
+  capacity_kg:  number
+  registration: string
+  year:         number
+  status:       'active' | 'inactive' | 'maintenance'
+}
+
 export interface Driver {
   driver_id:    string
   driver_name:  string
@@ -44,4 +54,9 @@ export interface Driver {
   vehicle_type: string
   zone_id:      number
   status:       'available' | 'on_job' | 'off_duty'
+  // Extended fields for Operations CRUD
+  email?:       string
+  phone?:       string
+  license_no?:  string
 }
+

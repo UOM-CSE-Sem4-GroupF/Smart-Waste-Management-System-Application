@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends } from '@/lib/api/ml'
@@ -35,8 +35,8 @@ export default function AnalyticsPage() {
   })
 
   // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
-  const zones = useBinStore((s) => s.zones)
-  const bins  = useBinStore((s) => s.bins)
+  const zones = useMapStore((s) => s.zoneStats)
+  const bins  = useMapStore((s) => s.bins)
 
   // Waste category bar chart — sum totals across all zones
   const categoryData = useMemo(() => {

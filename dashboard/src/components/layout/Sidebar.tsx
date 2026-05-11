@@ -9,11 +9,11 @@ import {
   Map,
   Trash2,
   Briefcase,
-  Truck,
   BarChart3,
   Recycle,
   LogOut,
   ChevronRight,
+  Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Map,             label: 'Live Map',  href: '/dashboard/map' },
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
-  { icon: Truck,           label: 'Fleet',     href: '/dashboard/fleet',     roles: ['fleet-operator', 'admin'] },
+  { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
 ]
 

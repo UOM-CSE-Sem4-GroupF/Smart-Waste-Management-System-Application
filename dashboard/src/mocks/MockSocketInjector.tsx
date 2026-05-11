@@ -1,15 +1,14 @@
 'use client'
 import { useEffect, useRef } from 'react'
-import { useBinStore } from '@/store/binStore'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { MOCK_BINS, MOCK_VEHICLE_POSITIONS } from './handlers'
 
 const IS_DEV = process.env.NODE_ENV === 'development'
 
 export function MockSocketInjector() {
-  const updateBin = useBinStore((s) => s.updateBin)
-  const updateVehicle = useVehicleStore((s) => s.updateVehicle)
+  const updateBin     = useMapStore((s) => s.updateBin)
+  const updateVehicle  = useMapStore((s) => s.updateVehicle)
   const addAlert = useAlertStore((s) => s.addAlert)
 
   // Track mutable vehicle positions between ticks without causing re-renders
@@ -71,19 +70,18 @@ export function MockSocketInjector() {
 
     // --- Random alerts every 30 s ---
     const alertInterval = setInterval(() => {
-      const types = ['urgent', 'escalated', 'deviation', 'weight-limit'] as const
+      const types = ['urgent', 'escalated', 'deviation'] as const
       const type = types[Math.floor(Math.random() * types.length)]
       const bin = MOCK_BINS[Math.floor(Math.random() * MOCK_BINS.length)]
 
       addAlert({
         type,
-        bin_id: type !== 'weight-limit' ? bin.bin_id : undefined,
-        zone_id: type !== 'weight-limit' ? bin.zone_id : undefined,
+        bin_id: bin.bin_id,
+        zone_id: bin.zone_id,
         message:
-          type === 'urgent' ? `Bin ${bin.bin_id} is at critical fill level (${bin.fill_level_pct}%)` :
+          type === 'urgent'    ? `Bin ${bin.bin_id} is at critical fill level (${bin.fill_level_pct}%)` :
           type === 'escalated' ? `Bin ${bin.bin_id} escalated — no collection in 48 h` :
-          type === 'deviation' ? `Vehicle VEH-001 deviated from planned route` :
-          `Vehicle VEH-002 approaching cargo limit (92%)`,
+          `Vehicle VEH-001 deviated from planned route`,
       })
     }, 30_000)
 

@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { Trash2, AlertTriangle, Briefcase, Truck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/shared/StatCard'
 import { ZoneCard } from '@/components/shared/ZoneCard'
 import { AlertFeed } from '@/components/shared/AlertFeed'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
-import { useVehicleStore } from '@/store/vehicleStore'
 import type { BinUpdatePayload, CollectionJob } from '@/types'
+
+const MiniMap = dynamic(() => import('@/components/map/DashboardMap'), { ssr: false })
 
 interface OverviewClientProps {
   initialBins:    BinUpdatePayload[]
@@ -27,10 +29,9 @@ const ACTIVE_STATES = new Set([
 ])
 
 export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps) {
-  const { setBins, bins, zones } = useBinStore()
-  const { setJobs }              = useJobStore()
-  const vehicles                 = useVehicleStore((s) => s.vehicles)
-  const jobs                     = useJobStore((s) => s.jobs)
+  const { setBins, bins, zoneStats, vehicles } = useMapStore()
+  const { setJobs }                            = useJobStore()
+  const jobs                                   = useJobStore((s) => s.jobs)
 
   // Seed stores once with initial SSR data
   useEffect(() => {
@@ -42,11 +43,11 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derived stats
-  const allBins       = useMemo(() => Array.from(bins.values()), [bins])
-  const allZones      = useMemo(() => Array.from(zones.values()), [zones])
-  const totalBins     = allBins.length
-  const urgentCount   = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
-  const activeJobs    = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
+  const allBins        = useMemo(() => Array.from(bins.values()), [bins])
+  const allZones       = useMemo(() => Array.from(zoneStats.values()), [zoneStats])
+  const totalBins      = allBins.length
+  const urgentCount    = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
+  const activeJobs     = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
   const activeVehicles = vehicles.size
 
   // Top 5 active jobs for the right column
@@ -87,31 +88,53 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
           label="Vehicles On Road"
           value={activeVehicles}
           icon={<Truck className="h-4 w-4" />}
-          href="/dashboard/fleet"
+          href="/dashboard/operations"
           sublabel="Active now"
         />
       </div>
 
-      {/* Row 2 — Zone Cards */}
-      {allZones.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {allZones.map((zone) => (
-            <ZoneCard
-              key={zone.zone_id}
-              zone={zone}
-              href={`/dashboard/bins?zone_id=${zone.zone_id}`}
-            />
-          ))}
+      {/* Row 2 — Zone Cards (3/5) + Mini-Map (2/5) */}
+      <div className="grid gap-4 lg:grid-cols-5">
+        {/* Zone cards — 3 columns */}
+        <div className="lg:col-span-3">
+          {allZones.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {allZones.map((zone) => (
+                <ZoneCard
+                  key={zone.zone_id}
+                  zone={zone}
+                  href={`/dashboard/bins?zone_id=${zone.zone_id}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card className="rounded-xl shadow-sm h-full">
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">
+                  Zone data will appear here once real-time updates arrive.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      ) : (
-        <Card className="rounded-xl shadow-sm">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              Zone data will appear here once real-time updates arrive.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+
+        {/* Mini-Map — 2 columns */}
+        <div className="lg:col-span-2">
+          <Card className="rounded-xl shadow-sm overflow-hidden h-64 lg:h-full min-h-[16rem]">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Live Map</CardTitle>
+                <Link href="/dashboard/map" className="text-xs text-green-600 hover:underline dark:text-green-400">
+                  Full map →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 h-[calc(100%-3rem)]">
+              <MiniMap compact className="w-full h-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Row 3 — Alerts + Active Jobs */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -147,7 +170,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               recentActiveJobs.map((job) => (
                 <Link
                   key={job.job_id}
-                  href={`/dashboard/jobs/${job.job_id}`}
+                  href={`/dashboard/jobs`}
                   className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
                 >
                   <div>
@@ -158,6 +181,17 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
                   </div>
                   <span className="text-xs text-muted-foreground capitalize">
                     {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
+                  </span>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
                   </span>
                 </Link>
               ))

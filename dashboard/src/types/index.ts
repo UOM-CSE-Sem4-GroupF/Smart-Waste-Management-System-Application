@@ -2,3 +2,4 @@
 export * from './bin'
 export * from './job'
 export * from './vehicle'
+export * from './cluster'
