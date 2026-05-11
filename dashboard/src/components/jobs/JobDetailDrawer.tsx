@@ -62,7 +62,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <SheetContent side="right" className="w-full max-w-[520px] p-0 flex flex-col">
+      <SheetContent side="right" className="w-full max-w-130 p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
           <div className="flex items-start justify-between">
             <SheetTitle className="text-base font-semibold">
@@ -160,7 +160,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
                   <DetailRow
                     label="Audit TX"
                     value={
-                      <span className="font-mono text-xs truncate max-w-[180px] block">
+                      <span className="font-mono text-xs truncate max-w-45 block">
                         {(job as CollectionJobDetail).hyperledger_tx_id}
                       </span>
                     }

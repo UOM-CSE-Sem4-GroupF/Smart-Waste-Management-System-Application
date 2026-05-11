@@ -1,4 +1,3 @@
-import { auth } from '@/auth'
 import { createApiClient } from '@/lib/api-client'
 import { getZones } from '@/lib/api/zones'
 import { getVehicles } from '@/lib/api/vehicles'
@@ -6,8 +5,7 @@ import { getDrivers } from '@/lib/api/drivers'
 import { OperationsClient } from './_components/OperationsClient'
 
 export default async function OperationsPage() {
-  const session = await auth()
-  const api     = createApiClient(session?.accessToken ?? '')
+  const api     = await createApiClient()
 
   const [zonesRes, vehiclesRes, driversRes] = await Promise.allSettled([
     getZones(api),

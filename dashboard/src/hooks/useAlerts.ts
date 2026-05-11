@@ -2,12 +2,12 @@
 import { useAlertStore } from '@/store/alertStore'
 import type { Alert } from '@/store/alertStore'
 
-/** Returns all non-dismissed alerts, newest first. */
+/** Returns all non-acknowledged alerts, newest first. */
 export function useAlerts(): Alert[] {
-  return useAlertStore((s) => s.alerts.filter((a) => !a.dismissed))
+  return useAlertStore((s) => s.alerts.filter((a) => !a.acknowledged))
 }
 
-/** Returns the count of non-dismissed alerts — lightweight for the bell badge. */
+/** Returns the count of non-acknowledged alerts — lightweight for the bell badge. */
 export function useUnreadAlertCount(): number {
-  return useAlertStore((s) => s.alerts.filter((a) => !a.dismissed).length)
+  return useAlertStore((s) => s.alerts.filter((a) => !a.acknowledged).length)
 }

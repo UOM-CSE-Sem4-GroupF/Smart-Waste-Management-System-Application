@@ -9,17 +9,15 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 const ALERT_ICON: Record<Alert['type'], React.ElementType> = {
-  urgent:        Bell,
-  escalated:     AlertTriangle,
-  deviation:     TriangleAlert,
-  'weight-limit': TriangleAlert,
+  urgent:    Bell,
+  escalated: AlertTriangle,
+  deviation: TriangleAlert,
 }
 
 const ALERT_STYLE: Record<Alert['type'], string> = {
-  urgent:        'border-rose-100 bg-rose-50/30 text-rose-700 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-400',
-  escalated:     'border-orange-100 bg-orange-50/30 text-orange-700 dark:border-orange-900/30 dark:bg-orange-950/20 dark:text-orange-400',
-  deviation:     'border-amber-100 bg-amber-50/30 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400',
-  'weight-limit': 'border-yellow-100 bg-yellow-50/30 text-yellow-700 dark:border-yellow-900/30 dark:bg-yellow-950/20 dark:text-yellow-400',
+  urgent:    'border-rose-100 bg-rose-50/30 text-rose-700 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-400',
+  escalated: 'border-orange-100 bg-orange-50/30 text-orange-700 dark:border-orange-900/30 dark:bg-orange-950/20 dark:text-orange-400',
+  deviation: 'border-amber-100 bg-amber-50/30 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400',
 }
 
 interface AlertFeedProps {
@@ -29,7 +27,7 @@ interface AlertFeedProps {
 
 export function AlertFeed({ limit = 20 }: AlertFeedProps) {
   const allAlerts  = useAlertStore((s) => s.alerts)
-  const dismiss    = useAlertStore((s) => s.dismissAlert)
+  const dismiss    = useAlertStore((s) => s.acknowledgeAlert)
   const clearAll   = useAlertStore((s) => s.clearAll)
   const alerts     = allAlerts.filter((a) => !a.acknowledged)
 
@@ -65,7 +63,7 @@ export function AlertFeed({ limit = 20 }: AlertFeedProps) {
         </Button>
       </div>
       
-      <ScrollArea className="max-h-[420px] px-4">
+      <ScrollArea className="max-h-105 px-4">
         <div className="flex flex-col gap-2 pb-4 pr-3">
           {visible.map((alert) => {
             const Icon = ALERT_ICON[alert.type]

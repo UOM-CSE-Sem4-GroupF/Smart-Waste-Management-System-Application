@@ -38,7 +38,8 @@ export function VehicleFormDialog({ open, onClose, vehicle }: Props) {
   const queryClient = useQueryClient()
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
     defaultValues: {
       vehicle_id:   vehicle?.vehicle_id   ?? '',
       vehicle_type: vehicle?.vehicle_type ?? '',

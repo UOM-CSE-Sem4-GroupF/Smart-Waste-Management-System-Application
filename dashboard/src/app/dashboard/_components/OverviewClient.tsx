@@ -120,7 +120,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
 
         {/* Mini-Map — 2 columns */}
         <div className="lg:col-span-2">
-          <Card className="rounded-xl shadow-sm overflow-hidden h-64 lg:h-full min-h-[16rem]">
+          <Card className="rounded-xl shadow-sm overflow-hidden h-64 lg:h-full min-h-64">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Live Map</CardTitle>
@@ -181,17 +181,6 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
                   </div>
                   <span className="text-xs text-muted-foreground capitalize">
                     {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
-                  </span>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
-
                   </span>
                 </Link>
               ))

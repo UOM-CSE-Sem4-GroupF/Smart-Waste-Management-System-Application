@@ -46,7 +46,7 @@ export function AccountsTab({ zoneOptions, driverOptions }: Props) {
           className="flex-1 min-w-48"
           placeholder="Name or email…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
         />
         <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Role" /></SelectTrigger>
@@ -138,7 +138,7 @@ export function AccountsTab({ zoneOptions, driverOptions }: Props) {
         driverOptions={driverOptions}
       />
 
-      <AlertDialog open={disable !== null} onOpenChange={(v) => { if (!v) setDisable(null) }}>
+      <AlertDialog open={disable !== null} onOpenChange={(v: boolean) => { if (!v) setDisable(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disable account?</AlertDialogTitle>

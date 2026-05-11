@@ -63,7 +63,7 @@ export function Sidebar() {
     <aside className="relative flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white/80 backdrop-blur-xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/80">
       {/* Branding */}
       <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6 dark:border-slate-900">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
           <Recycle className="h-5 w-5 text-white" />
         </div>
         <div className="flex flex-col">
@@ -117,7 +117,7 @@ export function Sidebar() {
       <div className="mt-auto border-t border-slate-100 p-4 dark:border-slate-900">
         <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-900/40">
           <div className="relative">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 text-xs font-black text-slate-600 shadow-inner select-none dark:from-slate-700 dark:to-slate-800 dark:text-slate-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-tr from-slate-200 to-slate-300 text-xs font-black text-slate-600 shadow-inner select-none dark:from-slate-700 dark:to-slate-800 dark:text-slate-300">
               {initials}
             </div>
             <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />

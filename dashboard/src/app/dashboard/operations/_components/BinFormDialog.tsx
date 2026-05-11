@@ -34,7 +34,7 @@ type FormValues = z.infer<typeof schema>
 interface Props {
   open:        boolean
   onClose:     () => void
-  bin?:        Partial<BinUpdatePayload>
+  bin?:        Partial<BinUpdatePayload> & { address?: string; capacity_kg?: number }
   zoneOptions: Array<{ id: number; name: string }>
 }
 
@@ -44,7 +44,8 @@ export function BinFormDialog({ open, onClose, bin, zoneOptions }: Props) {
   const queryClient = useQueryClient()
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
     defaultValues: {
       bin_id:         bin?.bin_id ?? '',
       zone_id:        bin?.zone_id ?? undefined,

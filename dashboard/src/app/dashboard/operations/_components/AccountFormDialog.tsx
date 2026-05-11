@@ -35,7 +35,8 @@ export function AccountFormDialog({ open, onClose, zoneOptions, driverOptions }:
   const queryClient = useQueryClient()
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
     defaultValues: { role: 'driver' },
   })
 

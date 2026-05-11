@@ -24,7 +24,8 @@ async function getAdminToken(): Promise<string> {
   return data.access_token
 }
 
-function requireAdmin(session: Awaited<ReturnType<typeof auth>>) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function requireAdmin(session: any) {
   if (!session) return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 })
   const roles: string[] = (session as { user?: { roles?: string[] } }).user?.roles ?? []
   if (!roles.includes('admin')) {

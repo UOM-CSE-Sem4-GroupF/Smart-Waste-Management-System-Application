@@ -37,7 +37,7 @@ export function BinStopList({ progress, className }: BinStopListProps) {
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium truncate">{wp.cluster_name}</span>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {wp.bins_collected_at_stop ?? 0}/{wp.bins.length} bins
+                {(wp as typeof wp & { bins_collected_at_stop?: number }).bins_collected_at_stop ?? 0}/{wp.bins.length} bins
               </span>
             </div>
             {wp.arrived_at && (

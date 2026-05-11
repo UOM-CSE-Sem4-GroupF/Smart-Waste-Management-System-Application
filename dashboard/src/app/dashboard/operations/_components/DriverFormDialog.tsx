@@ -41,7 +41,8 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
   const queryClient = useQueryClient()
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
     defaultValues: {
       driver_id:  driver?.driver_id  ?? '',
       name:       driver?.name       ?? '',

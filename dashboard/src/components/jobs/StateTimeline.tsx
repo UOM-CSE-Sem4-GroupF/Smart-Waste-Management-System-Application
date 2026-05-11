@@ -38,7 +38,7 @@ export function StateTimeline({ transitions, className }: StateTimelineProps) {
                   : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
               }
               {!isLast && (
-                <div className="mt-1 h-full min-h-[1.5rem] w-0.5 bg-border" />
+                <div className="mt-1 h-full min-h-6 w-0.5 bg-border" />
               )}
             </div>
             {/* Text */}

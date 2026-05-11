@@ -13,6 +13,13 @@ import { createClientApiClient } from '@/lib/api-client'
 import { BinFormDialog } from './BinFormDialog'
 import type { BinUpdatePayload } from '@/types'
 
+// Extended shape — REST list may include extra fields not in the socket payload type
+type BinRow = BinUpdatePayload & {
+  address?:      string
+  battery_pct?:  number
+  last_seen_at?: string
+}
+
 const STATUSES  = ['', 'normal', 'monitor', 'urgent', 'critical', 'offline']
 const CATS      = ['', 'food_waste', 'recyclable', 'general', 'hazardous', 'green_waste']
 const STATUS_DOT: Record<string, string> = {
@@ -23,7 +30,7 @@ const STATUS_DOT: Record<string, string> = {
   offline:  'bg-bin-offline',
 }
 
-interface BinListResponse { data: BinUpdatePayload[]; total: number; page: number; totalPages: number }
+interface BinListResponse { data: BinRow[]; total: number; page: number; totalPages: number }
 
 interface Props {
   zoneOptions: Array<{ id: number; name: string }>
@@ -38,7 +45,7 @@ export function BinsTab({ zoneOptions }: Props) {
   const [statusFilter, setStatusFilter] = useState('')
   const [catFilter,  setCatFilter]  = useState('')
   const [page,       setPage]       = useState(1)
-  const [editBin,    setEditBin]    = useState<Partial<BinUpdatePayload> | null>(null)
+  const [editBin,    setEditBin]    = useState<BinRow | null>(null)
   const [addOpen,    setAddOpen]    = useState(false)
   const [deactivate, setDeactivate] = useState<string | null>(null)
 
