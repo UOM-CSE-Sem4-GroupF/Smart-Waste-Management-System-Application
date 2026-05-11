@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useState } from 'react'
 import { X, Battery, Droplets, History, Activity, AlertCircle } from 'lucide-react'
-import { useBinStore } from '@/store/binStore'
+import { useMapStore } from '@/store/mapStore'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,9 +12,9 @@ import {
 } from 'recharts'
 
 export function BinDetailPanel() {
-  const selectedBinId = useBinStore((s) => s.selectedBinId)
-  const setSelectedBinId = useBinStore((s) => s.setSelectedBinId)
-  const bins = useBinStore((s) => s.bins)
+  const selectedBinId = useMapStore((s) => s.selectedBinId)
+  const selectBin     = useMapStore((s) => s.selectBin)
+  const bins          = useMapStore((s) => s.bins)
 
   const bin = useMemo(() => 
     selectedBinId ? bins.get(selectedBinId) : null
@@ -48,7 +48,7 @@ export function BinDetailPanel() {
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => setSelectedBinId(null)}
+          onClick={() => selectBin(null)}
           className="rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <X className="h-4 w-4" />

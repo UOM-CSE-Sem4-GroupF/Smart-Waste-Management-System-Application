@@ -61,6 +61,22 @@
   --color-waste-plastic: #FF6347;
   --color-waste-general: #808080;
   --color-waste-e-waste: #FFD700;
+
+  /* Job state colours */
+  --color-job-created:            #6B7280;
+  --color-job-dispatching:        #3B82F6;
+  --color-job-dispatched:         #3B82F6;
+  --color-job-driver-notified:    #EAB308;
+  --color-job-bin-confirming:     #8B5CF6;
+  --color-job-cluster-assembling: #8B5CF6;
+  --color-job-in-progress:        #22C55E;
+  --color-job-completing:         #22C55E;
+  --color-job-collection-done:    #10B981;
+  --color-job-recording-audit:    #10B981;
+  --color-job-completed:          #6B7280;
+  --color-job-escalated:          #EF4444;
+  --color-job-cancelled:          #6B7280;
+  --color-job-failed:             #EF4444;
 }
 
 :root {
