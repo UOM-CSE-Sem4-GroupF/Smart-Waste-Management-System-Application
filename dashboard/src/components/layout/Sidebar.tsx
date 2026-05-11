@@ -1,6 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
@@ -38,8 +37,6 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const pathname  = usePathname()
   const { data: session } = useSession()
-  const [isNavigating, setIsNavigating] = useState(false)
-  
   // BYPASS: Default to supervisor role if no session is present
   const role      = session?.user?.role ?? 'supervisor'
 
@@ -53,11 +50,6 @@ export function Sidebar() {
   const visibleItems = NAV_ITEMS.filter((item) =>
     !item.roles || item.roles.includes(role)
   )
-
-  // Reset navigation state when pathname changes
-  useEffect(() => {
-    setIsNavigating(false)
-  }, [pathname])
 
   return (
     <aside className="relative flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white/80 backdrop-blur-xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/80">
@@ -87,7 +79,6 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              onClick={() => setIsNavigating(true)}
               className={cn(
                 'group relative flex items-center justify-between rounded-xl px-4 py-3 text-sm transition-all duration-200',
                 active
@@ -149,14 +140,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation Loading Overlay */}
-      {isNavigating && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/20 backdrop-blur-[1px] dark:bg-black/20">
-          <div className="h-1 w-full absolute top-0">
-            <div className="h-full bg-emerald-500 animate-[progress_2s_ease-in-out_infinite]" style={{width: '30%'}} />
-          </div>
-        </div>
-      )}
     </aside>
   )
 }
