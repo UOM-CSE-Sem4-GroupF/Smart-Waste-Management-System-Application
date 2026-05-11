@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useTheme } from 'next-themes'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MAPBOX_TOKEN, DEFAULT_CENTER, DEFAULT_ZOOM, getMapboxStyle } from '@/lib/mapbox'
@@ -26,11 +27,21 @@ function BinMarkersLayer({
   map: mapboxgl.Map
   onSelect: (id: string) => void
 }) {
-  const bins = useMapStore((s) => s.getFilteredBins())
+  const rawBins  = useMapStore((s) => s.bins)
+  const filters  = useMapStore((s) => s.filters)
+  const bins = useMemo(() => {
+    return Array.from(rawBins.values()).filter((bin) => {
+      if (filters.zoneId && bin.zone_id !== filters.zoneId) return false
+      if (filters.clusterId && bin.cluster_id !== filters.clusterId) return false
+      if (filters.status.length && !filters.status.includes(bin.status)) return false
+      if (filters.wasteCategory.length && !filters.wasteCategory.includes(bin.waste_category)) return false
+      return true
+    })
+  }, [rawBins, filters])
 
   return (
     <>
-      {Array.from(bins.values()).map((bin) => (
+      {bins.map((bin) => (
         <BinMarkerItem key={bin.bin_id} map={map} bin={bin} onSelect={onSelect} />
       ))}
     </>
@@ -93,14 +104,16 @@ export default function DashboardMap({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const { resolvedTheme } = useTheme()
 
   const handleBinSelect   = useCallback((id: string) => {
     useMapStore.getState().selectBin(id)
     onBinSelect?.(id)
   }, [onBinSelect])
 
-  const handleVehicleSelect = useCallback((jid: string) => {
-    onVehicleSelect?.(jid)
+  const handleVehicleSelect = useCallback((vehicleId: string) => {
+    useMapStore.getState().selectVehicle(vehicleId)
+    onVehicleSelect?.(vehicleId)
   }, [onVehicleSelect])
 
   useEffect(() => {
@@ -113,8 +126,7 @@ export default function DashboardMap({
 
     mapboxgl.accessToken = MAPBOX_TOKEN
 
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    const style = getMapboxStyle(prefersDark ? 'dark' : 'light')
+    const style = getMapboxStyle(resolvedTheme === 'dark' ? 'dark' : 'light')
 
     const map = new mapboxgl.Map({
       container:    containerRef.current,
@@ -163,6 +175,12 @@ export default function DashboardMap({
     }
   }, [compact])
 
+  // Update map style reactively when dark/light theme changes
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return
+    mapRef.current.setStyle(getMapboxStyle(resolvedTheme === 'dark' ? 'dark' : 'light'))
+  }, [resolvedTheme]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className={`flex items-center justify-center bg-muted text-muted-foreground text-sm ${className}`}>
@@ -188,7 +206,7 @@ export default function DashboardMap({
       )}
 
       {/* Marker layers — only mount after Mapbox initialised */}
-      {mapLoaded && mapRef.current && !compact && (
+      {mapLoaded && mapRef.current && (
         <>
           <BinMarkersLayer    map={mapRef.current} onSelect={handleBinSelect} />
           <VehicleMarkersLayer map={mapRef.current} onSelect={handleVehicleSelect} />

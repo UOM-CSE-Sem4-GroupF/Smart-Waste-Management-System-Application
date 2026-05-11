@@ -49,7 +49,7 @@ export function useVehicleMarker({ map, vehicle, onSelect }: VehicleMarkerProps)
     `
 
     el.addEventListener('click', () => {
-      if (vehicle.job_id) onSelect(vehicle.job_id)
+      onSelect(vehicle.vehicle_id)
     })
 
     const popup = new mapboxgl.Popup({

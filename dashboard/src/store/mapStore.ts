@@ -5,16 +5,18 @@ interface MapFilters {
   status:        string[]
   wasteCategory: string[]
   zoneId:        number | null
+  clusterId:     string | null
 }
 
 interface MapStore {
   // State
-  bins:           Map<string, BinUpdatePayload>
-  vehicles:       Map<string, VehiclePositionPayload>
-  zoneStats:      Map<number, ZoneStatsPayload>
-  selectedBinId:  string | null
-  selectedZoneId: number | null
-  filters:        MapFilters
+  bins:              Map<string, BinUpdatePayload>
+  vehicles:          Map<string, VehiclePositionPayload>
+  zoneStats:         Map<number, ZoneStatsPayload>
+  selectedBinId:     string | null
+  selectedVehicleId: string | null
+  selectedZoneId:    number | null
+  filters:           MapFilters
 
   // Mutations
   updateBin:       (payload: BinUpdatePayload) => void
@@ -23,6 +25,7 @@ interface MapStore {
   removeVehicle:   (vehicleId: string) => void
   updateZoneStats: (payload: ZoneStatsPayload) => void
   selectBin:       (binId: string | null) => void
+  selectVehicle:   (vehicleId: string | null) => void
   selectZone:      (zoneId: number | null) => void
   setFilter:       (key: keyof MapFilters, value: MapFilters[keyof MapFilters]) => void
 
@@ -31,12 +34,13 @@ interface MapStore {
 }
 
 export const useMapStore = create<MapStore>((set, get) => ({
-  bins:          new Map(),
-  vehicles:      new Map(),
-  zoneStats:     new Map(),
-  selectedBinId: null,
-  selectedZoneId: null,
-  filters:       { status: [], wasteCategory: [], zoneId: null },
+  bins:              new Map(),
+  vehicles:          new Map(),
+  zoneStats:         new Map(),
+  selectedBinId:     null,
+  selectedVehicleId: null,
+  selectedZoneId:    null,
+  filters:           { status: [], wasteCategory: [], zoneId: null, clusterId: null },
 
   updateBin: (payload) =>
     set((state) => {
@@ -78,7 +82,9 @@ export const useMapStore = create<MapStore>((set, get) => ({
       return { zoneStats: next }
     }),
 
-  selectBin: (binId) => set({ selectedBinId: binId }),
+  selectBin: (binId) => set({ selectedBinId: binId, selectedVehicleId: null }),
+
+  selectVehicle: (vehicleId) => set({ selectedVehicleId: vehicleId, selectedBinId: null }),
 
   selectZone: (zoneId) => set({ selectedZoneId: zoneId }),
 
@@ -91,6 +97,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
     const { bins, filters } = get()
     return Array.from(bins.values()).filter((bin) => {
       if (filters.zoneId && bin.zone_id !== filters.zoneId) return false
+      if (filters.clusterId && bin.cluster_id !== filters.clusterId) return false
       if (filters.status.length && !filters.status.includes(bin.status)) return false
       if (
         filters.wasteCategory.length &&
