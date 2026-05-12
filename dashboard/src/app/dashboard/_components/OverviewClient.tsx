@@ -179,7 +179,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
       {/* Row 3 — Zone Cards (3/5) + right column (2/5) */}
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Zone cards */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 space-y-4">
           {allZones.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {allZones.map((zone) => (
@@ -191,7 +191,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               ))}
             </div>
           ) : (
-            <Card className="rounded-xl shadow-sm h-full">
+            <Card className="rounded-xl shadow-sm">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">
                   Zone data will appear here once real-time updates arrive.
@@ -199,23 +199,8 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               </CardContent>
             </Card>
           )}
-        </div>
 
-        {/* Right column — Alerts + Active Jobs */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Alert Feed */}
-          <Card className="rounded-xl shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Recent Alerts
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              <AlertFeed limit={8} />
-            </CardContent>
-          </Card>
-
-          {/* Active Jobs preview */}
+          {/* Active Jobs moved here to fill free space */}
           <Card className="rounded-xl shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -232,24 +217,41 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               {recentActiveJobs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No active jobs right now.</p>
               ) : (
-                recentActiveJobs.map((job) => (
-                  <Link
-                    key={job.job_id}
-                    href={`/dashboard/jobs`}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
-                  >
-                    <div>
-                      <span className="font-medium">{job.job_id.slice(0, 8)}…</span>
-                      <span className="ml-2 text-xs text-muted-foreground capitalize">
-                        {job.job_type} · {job.zone_name}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {recentActiveJobs.map((job) => (
+                    <Link
+                      key={job.job_id}
+                      href={`/dashboard/jobs`}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
+                    >
+                      <div>
+                        <span className="font-medium">{job.job_id.slice(0, 8)}…</span>
+                        <span className="ml-2 text-xs text-muted-foreground capitalize">
+                          {job.job_type} · {job.zone_name}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
                       </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
-                    </span>
-                  </Link>
-                ))
+                    </Link>
+                  ))}
+                </div>
               )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column — Alerts + Active Jobs */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Alert Feed */}
+          <Card className="rounded-xl shadow-sm h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Recent Alerts
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-0 pb-0 h-[calc(100%-4rem)] overflow-y-auto">
+              <AlertFeed limit={12} />
             </CardContent>
           </Card>
         </div>

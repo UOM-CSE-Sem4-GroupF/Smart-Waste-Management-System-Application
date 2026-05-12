@@ -39,21 +39,25 @@ function JobCard({
   onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
+  const binsTotal     = job.bins_total     ?? job.bins_to_collect?.length ?? 0
+  const binsCollected = job.bins_collected ?? 0
+  const zoneName      = job.zone_name      ?? `Zone ${job.zone_id}`
+
   return (
     <Card
       className="rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      onClick={() => onSelect?.(job.id)}
+      onClick={() => onSelect?.(job.job_id)}
     >
       <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm font-mono">{job.id.slice(0, 8)}…</span>
+              <span className="font-medium text-sm font-mono">{job.job_id.slice(0, 8)}…</span>
               <JobTypeBadge type={job.job_type.toUpperCase()} />
               <JobStateBadge state={job.state} />
             </div>
             <p className="text-xs text-muted-foreground">
-              {job.zone_name} · Priority {job.priority} ·{' '}
+              {zoneName}{job.priority != null ? ` · Priority ${job.priority}` : ''} ·{' '}
               {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -61,7 +65,7 @@ function JobCard({
             </p>
           </div>
           <div className="flex flex-col items-end gap-2 text-xs text-muted-foreground">
-            <span>{job.bins_collected}/{job.bins_total} bins</span>
+            <span>{binsCollected}/{binsTotal} bins</span>
             {job.planned_weight_kg != null && (
               <span>{job.planned_weight_kg.toFixed(0)} kg planned</span>
             )}
@@ -69,18 +73,17 @@ function JobCard({
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={(e) => { e.stopPropagation(); onCancel(job.id) }}
+                onClick={(e) => { e.stopPropagation(); onCancel(job.job_id) }}
               >
                 Cancel
               </Button>
             )}
           </div>
         </div>
-        {/* Inline progress bar for active jobs */}
         {ACTIVE_STATES.includes(job.state) && (
           <JobProgressBar
-            binsCollected={job.bins_collected}
-            binsTotal={job.bins_total}
+            binsCollected={binsCollected}
+            binsTotal={binsTotal}
             cargoKg={job.actual_weight_kg ?? undefined}
             capacityKg={job.planned_weight_kg ?? undefined}
           />
@@ -128,7 +131,7 @@ function JobList({
   return (
     <div className="space-y-3">
       {jobs.map((job) => (
-        <JobCard key={job.id} job={job} onSelect={onSelect} onCancel={onCancel} />
+        <JobCard key={job.job_id} job={job} onSelect={onSelect} onCancel={onCancel} />
       ))}
     </div>
   )
@@ -144,7 +147,7 @@ export default function JobsPage() {
 
   const { mutate: doCancel, isPending } = useMutation({
     mutationFn: (jobId: string) =>
-      cancelJob(createClientApiClient(session!.accessToken), jobId, cancelReason),
+      cancelJob(createClientApiClient(session?.accessToken), jobId, cancelReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setCancelTarget(null)
