@@ -5,7 +5,6 @@ import { formatDistanceToNow } from 'date-fns'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import { useJobs } from '@/hooks/useJobs'
-import { useJobStore } from '@/store/jobStore'
 import { cancelJob } from '@/lib/api/jobs'
 import { createClientApiClient } from '@/lib/api-client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -100,9 +99,15 @@ function JobList({
   onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
-  const { data, isLoading } = useJobs({ state: filter.state, limit: 50 })
-  // Fallback: use the store list seeded by MockSocketInjector when REST is unavailable
-  const storeJobsList = useJobStore((s) => s.jobsList)
+  const { data, isLoading, error } = useJobs({ state: filter.state, limit: 50 })
+
+  console.debug('[JobList] query state', {
+    filter: filter.state,
+    isLoading,
+    total: data?.total,
+    count: data?.data?.length,
+    error: error?.message,
+  })
 
   if (isLoading) {
     return (
@@ -114,11 +119,7 @@ function JobList({
     )
   }
 
-  const stateSet = filter.state ? new Set(filter.state.split(',')) : null
-  const restJobs = data?.data ?? []
-  const jobs = restJobs.length > 0
-    ? restJobs
-    : storeJobsList.filter((j) => !stateSet || stateSet.has(j.state))
+  const jobs = data?.data ?? []
 
   if (jobs.length === 0) {
     return <p className="text-sm text-muted-foreground py-4">No jobs in this category.</p>

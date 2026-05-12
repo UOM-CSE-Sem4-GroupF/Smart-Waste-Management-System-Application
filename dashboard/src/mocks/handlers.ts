@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Bin, ZoneSummary, BinHistory, ZoneStatsPayload } from '@/types'
 import type { ActiveVehicle, Driver, VehicleAsset, VehiclePositionPayload } from '@/types'
-import type { CollectionJobListItem } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Static mock data — exported so MockSocketInjector can use the same records
@@ -40,26 +39,6 @@ export const MOCK_BINS: Bin[] = [
 // Vehicle and Driver mock data removed
 
 
-export const MOCK_JOBS: CollectionJobListItem[] = [
-  // Active jobs
-  { id: 'JOB-001', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'IN_PROGRESS',    priority: 2, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A','CLU-B','CLU-C'], planned_weight_kg: 280,  actual_weight_kg: 108,  bins_total: 7, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 2   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-002', job_type: 'emergency', zone_id: 2, zone_name: 'Moratuwa South',  state: 'IN_PROGRESS',    priority: 1, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E','CLU-F'], planned_weight_kg: 320,  actual_weight_kg: 196,  bins_total: 7, bins_collected: 5, bins_skipped: 0, created_at: new Date(NOW - 3   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-003', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'DISPATCHED',     priority: 3, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-G','CLU-H','CLU-I'], planned_weight_kg: 240,  actual_weight_kg: 42,   bins_total: 6, bins_collected: 1, bins_skipped: 0, created_at: new Date(NOW - 1   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  // Completed jobs (feed CollectionEfficiencyChart + VehicleUtilisationChart)
-  { id: 'JOB-004', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A'],                planned_weight_kg: 150,  actual_weight_kg: 143,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 28  * 3600_000).toISOString(), completed_at: new Date(NOW - 24  * 3600_000).toISOString(), duration_minutes: 95  },
-  { id: 'JOB-005', job_type: 'routine',   zone_id: 2, zone_name: 'Moratuwa South',  state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E'],         planned_weight_kg: 200,  actual_weight_kg: 187,  bins_total: 5, bins_collected: 5, bins_skipped: 0, created_at: new Date(NOW - 50  * 3600_000).toISOString(), completed_at: new Date(NOW - 46  * 3600_000).toISOString(), duration_minutes: 78  },
-  { id: 'JOB-006', job_type: 'emergency', zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 1, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-B'],                planned_weight_kg: 120,  actual_weight_kg: 115,  bins_total: 3, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 72  * 3600_000).toISOString(), completed_at: new Date(NOW - 70  * 3600_000).toISOString(), duration_minutes: 42  },
-  { id: 'JOB-007', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'COMPLETED',      priority: 2, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-G','CLU-H'],         planned_weight_kg: 180,  actual_weight_kg: 172,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 96  * 3600_000).toISOString(), completed_at: new Date(NOW - 92  * 3600_000).toISOString(), duration_minutes: 110 },
-  { id: 'JOB-008', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-A','CLU-C'],         planned_weight_kg: 160,  actual_weight_kg: 154,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 120 * 3600_000).toISOString(), completed_at: new Date(NOW - 116 * 3600_000).toISOString(), duration_minutes: 88  },
-  { id: 'JOB-009', job_type: 'routine',   zone_id: 2, zone_name: 'Moratuwa South',  state: 'AUDIT_RECORDED', priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-F'],                planned_weight_kg: 100,  actual_weight_kg: 94,   bins_total: 3, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 144 * 3600_000).toISOString(), completed_at: new Date(NOW - 140 * 3600_000).toISOString(), duration_minutes: 55  },
-  { id: 'JOB-010', job_type: 'emergency', zone_id: 3, zone_name: 'Uyanwatta',       state: 'COMPLETED',      priority: 1, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-I'],                planned_weight_kg: 80,   actual_weight_kg: 76,   bins_total: 2, bins_collected: 2, bins_skipped: 0, created_at: new Date(NOW - 168 * 3600_000).toISOString(), completed_at: new Date(NOW - 167 * 3600_000).toISOString(), duration_minutes: 35  },
-  { id: 'JOB-011', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A','CLU-B','CLU-C'], planned_weight_kg: 290,  actual_weight_kg: 261,  bins_total: 7, bins_collected: 6, bins_skipped: 1, created_at: new Date(NOW - 192 * 3600_000).toISOString(), completed_at: new Date(NOW - 188 * 3600_000).toISOString(), duration_minutes: 125 },
-  // Escalated job
-  { id: 'JOB-012', job_type: 'emergency', zone_id: 2, zone_name: 'Moratuwa South',  state: 'ESCALATED',      priority: 1, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E','CLU-F'], planned_weight_kg: 340,  actual_weight_kg: null, bins_total: 8, bins_collected: 2, bins_skipped: 1, created_at: new Date(NOW - 4   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  // Cancelled / Failed jobs
-  { id: 'JOB-013', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'CANCELLED',      priority: 3, assigned_vehicle_id: null,       assigned_driver_id: null,       clusters: ['CLU-H','CLU-I'],         planned_weight_kg: 130,  actual_weight_kg: null, bins_total: 3, bins_collected: 0, bins_skipped: 0, created_at: new Date(NOW - 6   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-014', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'FAILED',         priority: 2, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-C'],                planned_weight_kg: 90,   actual_weight_kg: null, bins_total: 2, bins_collected: 0, bins_skipped: 0, created_at: new Date(NOW - 8   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-]
 
 const ZONE_SUMMARIES: Record<number, ZoneSummary> = {
   1: { zone_id: 1, zone_name: 'Katubedda',      total_bins: 7, total_clusters: 3, status_breakdown: { normal: 2, monitor: 1, urgent: 2, critical: 1, offline: 1 }, category_breakdown: { food_waste: { total_bins: 2, avg_fill_pct: 76, total_weight_kg: 76.5, urgent_count: 2 }, paper: { total_bins: 1, avg_fill_pct: 45, total_weight_kg: 22.5, urgent_count: 0 }, general: { total_bins: 1, avg_fill_pct: 95, total_weight_kg: 47.5, urgent_count: 1 }, plastic: { total_bins: 1, avg_fill_pct: 58, total_weight_kg: 29.0, urgent_count: 0 }, glass: { total_bins: 1, avg_fill_pct: 22, total_weight_kg: 11.0, urgent_count: 0 } }, total_estimated_weight_kg: 186.5, active_jobs_count: 1, last_updated: new Date(NOW - 300_000).toISOString() },
@@ -220,28 +199,7 @@ export const handlers = [
     return HttpResponse.json(summary)
   }),
 
-  // GET /api/v1/collection-jobs — supports ?state= (comma-separated), ?zone_id=, ?job_type=
-  http.get('http://localhost:30080/api/v1/collection-jobs', ({ request }) => {
-    const url      = new URL(request.url)
-    const stateRaw = url.searchParams.get('state')
-    const zoneId   = url.searchParams.get('zone_id')
-    const jobType  = url.searchParams.get('job_type')
-    const states   = stateRaw ? stateRaw.split(',').map((s) => s.trim()) : null
-    let filtered   = MOCK_JOBS
-    if (states)  filtered = filtered.filter((j) => states.includes(j.state))
-    if (zoneId)  filtered = filtered.filter((j) => j.zone_id  === Number(zoneId))
-    if (jobType) filtered = filtered.filter((j) => j.job_type === jobType)
-    return HttpResponse.json({ data: filtered, total: filtered.length, page: 1 })
-  }),
-
-  // GET /api/v1/collection-jobs/:jobId
-  http.get('http://localhost:30080/api/v1/collection-jobs/:jobId', ({ params }) => {
-    const job = MOCK_JOBS.find((j) => j.id === params.jobId)
-    if (!job) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
-    return HttpResponse.json(job)
-  }),
-
-  // Active vehicles handler removed
+  // collection-jobs handlers removed — real orchestrator API at /api/v1/collection-jobs
 
 
   // GET /api/v1/ml/waste-generation

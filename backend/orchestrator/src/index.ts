@@ -20,6 +20,24 @@ const slog = (level: string, msg: string): void => {
 async function start(): Promise<void> {
   const app = Fastify({ logger: false });
 
+  // Log every unhandled route error so 500s are visible in kubectl logs
+  app.setErrorHandler((error, request, reply) => {
+    process.stdout.write(JSON.stringify({
+      timestamp:  new Date().toISOString(),
+      level:      'ERROR',
+      service:    SERVICE,
+      message:    `Unhandled route error: ${error.message}`,
+      method:     request.method,
+      url:        request.url,
+      statusCode: error.statusCode ?? 500,
+      stack:      error.stack?.split('\n')[1]?.trim(),
+    }) + '\n');
+    reply.code(error.statusCode ?? 500).send({
+      error:   error.name ?? 'InternalError',
+      message: error.message,
+    });
+  });
+
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors,   { origin: '*' });
 
