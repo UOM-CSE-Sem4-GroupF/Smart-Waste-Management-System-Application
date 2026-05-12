@@ -43,6 +43,8 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
   // 1. Fetch Bins + Clusters → merge real coordinates → seed map store
   const { isLoading: isLoadingBins } = useQuery({
     queryKey: ['bins-overview-initial', session?.accessToken ?? 'unauthenticated'],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const api = createClientApiClient(session?.accessToken)
       const [binsRes, clustersRes] = await Promise.all([
@@ -138,7 +140,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
           </div>
         </CardHeader>
         <CardContent className="p-0 h-[calc(100%-3rem)]">
-          <MiniMap compact className="w-full h-full" />
+          <MiniMap className="w-full h-full" bins={allBins} />
         </CardContent>
       </Card>
 

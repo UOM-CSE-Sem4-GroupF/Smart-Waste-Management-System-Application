@@ -47,11 +47,11 @@ function BinMarkersLayer({
   onSelect: (id: string) => void
   bins?: BinUpdatePayload[]
 }) {
-  const rawBins  = useMapStore((s) => s.bins)
-  const filters  = useMapStore((s) => s.filters)
+  // Only subscribe to store when propBins is not provided — avoids re-renders on every setBins call
+  const rawBins = useMapStore((s) => propBins ? null : s.bins)
+  const filters = useMapStore((s) => s.filters)
   const bins = useMemo(() => {
-    // Use prop bins directly when provided (bypasses store)
-    const source = propBins ?? Array.from(rawBins.values())
+    const source = propBins ?? Array.from((rawBins as Map<string, BinUpdatePayload>).values())
     return source.filter((bin) => {
       if (filters.zoneId && bin.zone_id !== filters.zoneId) return false
       if (filters.clusterId && bin.cluster_id !== filters.clusterId) return false
@@ -122,6 +122,7 @@ const CLUSTER_COLORS = ['#6366f1', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '
 /** Renders zone and cluster boundary polygons as Mapbox GL fill/line layers */
 function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
   const bins         = useMapStore((s) => s.bins)
+  const binsSize     = useMapStore((s) => s.bins.size)
   const zoneStats    = useMapStore((s) => s.zoneStats)
   const showZones    = useMapStore((s) => s.filters.showZones)
   const showClusters = useMapStore((s) => s.filters.showClusters)
@@ -175,7 +176,8 @@ function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
       paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 
     return cleanup
-  }, [map, bins, zoneStats, showZones])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, binsSize, zoneStats, showZones])
 
   // Cluster overlay layers
   useEffect(() => {
@@ -226,7 +228,8 @@ function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
       paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 
     return cleanup
-  }, [map, bins, showClusters])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, binsSize, showClusters])
 
   return null
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
@@ -25,9 +26,15 @@ import {
   type HierarchyBin,
   type ZoneOption,
 } from '@/lib/api/metadata'
-import { BinFormDialog, type BinFormValues } from './BinFormDialog'
-import { ClusterFormDialog, type ClusterFormValues } from './ClusterFormDialog'
-import { ZoneFormDialog, type ZoneFormValues } from './ZoneFormDialog'
+import type { BinFormValues } from './BinFormDialog'
+import type { ClusterFormValues } from './ClusterFormDialog'
+import type { ZoneFormValues } from './ZoneFormDialog'
+
+// Lazy-load dialog components — they import zod + react-hook-form which are heavy.
+// They compile only when a dialog is first opened, not on page load.
+const BinFormDialog     = dynamic(() => import('./BinFormDialog').then(m => ({ default: m.BinFormDialog })))
+const ClusterFormDialog = dynamic(() => import('./ClusterFormDialog').then(m => ({ default: m.ClusterFormDialog })))
+const ZoneFormDialog    = dynamic(() => import('./ZoneFormDialog').then(m => ({ default: m.ZoneFormDialog })))
 
 const STATUS_DOT: Record<string, string> = {
   normal: 'bg-bin-normal',
@@ -490,42 +497,48 @@ export function BinsTab({ zoneOptions }: Props) {
         </section>
       </div>
 
-      <ZoneFormDialog
-        open={zoneDialogOpen}
-        onClose={() => { setZoneDialogOpen(false); setEditingZone(null); setZoneForm(emptyZone) }}
-        zone={editingZone ?? undefined}
-        value={zoneForm}
-        onChange={setZoneForm}
-        onSubmit={() => zoneMutation.mutate()}
-        isPending={zoneMutation.isPending}
-        error={zoneMutation.error ? new Error(zoneMutation.error.message) : null}
-      />
+      {zoneDialogOpen && (
+        <ZoneFormDialog
+          open
+          onClose={() => { setZoneDialogOpen(false); setEditingZone(null); setZoneForm(emptyZone) }}
+          zone={editingZone ?? undefined}
+          value={zoneForm}
+          onChange={setZoneForm}
+          onSubmit={() => zoneMutation.mutate()}
+          isPending={zoneMutation.isPending}
+          error={zoneMutation.error ? new Error(zoneMutation.error.message) : null}
+        />
+      )}
 
-      <ClusterFormDialog
-        open={clusterDialogOpen}
-        onClose={() => { setClusterDialogOpen(false); setEditingCluster(null); setClusterForm(emptyCluster(activeZoneId ?? 0)) }}
-        cluster={editingCluster ?? undefined}
-        zones={zones}
-        value={clusterForm}
-        onChange={setClusterForm}
-        onSubmit={() => clusterMutation.mutate()}
-        isPending={clusterMutation.isPending}
-        error={clusterMutation.error ? new Error(clusterMutation.error.message) : null}
-      />
+      {clusterDialogOpen && (
+        <ClusterFormDialog
+          open
+          onClose={() => { setClusterDialogOpen(false); setEditingCluster(null); setClusterForm(emptyCluster(activeZoneId ?? 0)) }}
+          cluster={editingCluster ?? undefined}
+          zones={zones}
+          value={clusterForm}
+          onChange={setClusterForm}
+          onSubmit={() => clusterMutation.mutate()}
+          isPending={clusterMutation.isPending}
+          error={clusterMutation.error ? new Error(clusterMutation.error.message) : null}
+        />
+      )}
 
-      <BinFormDialog
-        open={binDialogOpen}
-        onClose={() => { setBinDialogOpen(false); setEditingBin(null) }}
-        bin={editingBin ?? undefined}
-        zones={zones}
-        clusters={clusters}
-        wasteCategories={categoriesQuery.data ?? []}
-        initialZoneId={activeZoneId ?? undefined}
-        initialClusterId={activeClusterId ?? undefined}
-        onSubmit={(values, inline) => binMutation.mutate({ values, inline })}
-        isPending={binMutation.isPending}
-        error={binMutation.error ? new Error(binMutation.error.message) : null}
-      />
+      {binDialogOpen && (
+        <BinFormDialog
+          open
+          onClose={() => { setBinDialogOpen(false); setEditingBin(null) }}
+          bin={editingBin ?? undefined}
+          zones={zones}
+          clusters={clusters}
+          wasteCategories={categoriesQuery.data ?? []}
+          initialZoneId={activeZoneId ?? undefined}
+          initialClusterId={activeClusterId ?? undefined}
+          onSubmit={(values, inline) => binMutation.mutate({ values, inline })}
+          isPending={binMutation.isPending}
+          error={binMutation.error ? new Error(binMutation.error.message) : null}
+        />
+      )}
 
       <AlertDialog open={deactivate !== null} onOpenChange={(next) => { if (!next) setDeactivate(null) }}>
         <AlertDialogContent>

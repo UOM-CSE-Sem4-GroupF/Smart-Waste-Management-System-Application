@@ -6,11 +6,13 @@ import { useSession } from 'next-auth/react'
 import { Plus, Pencil, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
+import dynamic from 'next/dynamic'
 import { createClientApiClient } from '@/lib/api-client'
 import { getDrivers, deactivateDriver } from '@/lib/api/drivers'
-import { DriverFormDialog } from './DriverFormDialog'
 import type { Driver } from '@/types'
 import type { VehicleAsset } from '@/types'
+
+const DriverFormDialog = dynamic(() => import('./DriverFormDialog').then(m => ({ default: m.DriverFormDialog })))
 
 interface Props {
   zoneOptions:    Array<{ id: number; name: string }>
@@ -117,13 +119,15 @@ export function DriversTab({ zoneOptions, vehicleOptions }: Props) {
         </table>
       </div>
 
-      <DriverFormDialog
-        open={addOpen || editDriver !== null}
-        onClose={() => { setAddOpen(false); setEditDriver(null) }}
-        driver={editDriver ?? undefined}
-        zoneOptions={zoneOptions}
-        vehicleOptions={vehicleOptions}
-      />
+      {(addOpen || editDriver !== null) && (
+        <DriverFormDialog
+          open
+          onClose={() => { setAddOpen(false); setEditDriver(null) }}
+          driver={editDriver ?? undefined}
+          zoneOptions={zoneOptions}
+          vehicleOptions={vehicleOptions}
+        />
+      )}
 
       <AlertDialog open={deactivate !== null} onOpenChange={(v) => { if (!v) setDeactivate(null) }}>
         <AlertDialogContent>

@@ -53,13 +53,13 @@ export function MapPageClient({ initialBins }: MapPageClientProps) {
   const { data: binsData, isLoading: isLoadingBins, error: binsError } = useQuery({
     queryKey: ['bins-map-initial', session?.accessToken ?? 'unauthenticated'],
     queryFn: async () => {
-      console.log('[MapPageClient] fetching bins, token present:', !!session?.accessToken)
       const api = createClientApiClient(session?.accessToken)
       const res = await api.get('data-analysis/api/v1/bins', { searchParams: { limit: 500 } }).json<CoreListResponse<CoreBin>>()
-      console.log('[MapPageClient] bins response:', res.data?.length, 'bins, first:', res.data?.[0])
+      console.log('[MapPageClient] bins fetched:', res.data?.length, '| sample:', res.data?.[0] && { id: res.data[0].id, lat: res.data[0].lat, lng: res.data[0].lng })
       return res.data
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const { data: clustersData, error: clustersError } = useQuery({
@@ -67,10 +67,10 @@ export function MapPageClient({ initialBins }: MapPageClientProps) {
     queryFn: async () => {
       const api = createClientApiClient(session?.accessToken)
       const res = await api.get('data-analysis/api/v1/clusters', { searchParams: { limit: 200 } }).json<CoreListResponse<CoreCluster>>()
-      console.log('[MapPageClient] clusters response:', res.data?.length, 'clusters, first:', res.data?.[0])
       return res.data
     },
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   useEffect(() => {

@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
+import dynamic from 'next/dynamic'
 import { listAccounts, disableAccount } from '@/lib/api/admin'
-import { AccountFormDialog } from './AccountFormDialog'
+
+const AccountFormDialog = dynamic(() => import('./AccountFormDialog').then(m => ({ default: m.AccountFormDialog })))
 
 interface Props {
   zoneOptions:    Array<{ id: number; name: string }>
@@ -131,12 +133,14 @@ export function AccountsTab({ zoneOptions, driverOptions }: Props) {
         </table>
       </div>
 
-      <AccountFormDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        zoneOptions={zoneOptions}
-        driverOptions={driverOptions}
-      />
+      {addOpen && (
+        <AccountFormDialog
+          open
+          onClose={() => setAddOpen(false)}
+          zoneOptions={zoneOptions}
+          driverOptions={driverOptions}
+        />
+      )}
 
       <AlertDialog open={disable !== null} onOpenChange={(v: boolean) => { if (!v) setDisable(null) }}>
         <AlertDialogContent>

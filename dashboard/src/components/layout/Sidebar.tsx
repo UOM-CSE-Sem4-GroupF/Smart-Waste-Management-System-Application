@@ -31,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
   { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
+  { icon: Settings2,       label: 'Operations (New)', href: '/dashboard/operations-new', roles: ['supervisor', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
 ]
 

@@ -11,7 +11,7 @@ export async function createApiClient() {
   const token = session?.accessToken
 
   return ky.create({
-    prefixUrl: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://139.59.219.173',
+    prefix: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://139.59.219.173',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -28,7 +28,7 @@ export function createClientApiClient(token?: string) {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://139.59.219.173'
   
   return ky.create({
-    prefixUrl: baseUrl,
+    prefix: baseUrl,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
