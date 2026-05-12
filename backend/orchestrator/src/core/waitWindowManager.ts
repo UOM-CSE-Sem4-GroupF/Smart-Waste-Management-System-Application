@@ -1,5 +1,5 @@
 import { CollectionJob, ClusterSnapshot, AssembleResult } from '../types';
-import { getClusterSnapshot, scanNearby } from '../clients/binStatusClient';
+import { getZoneSnapshot } from '../clients/binStatusClient';
 
 const IMMEDIATE_CATEGORIES = ['e_waste', 'hazardous'];
 const SAFETY_MARGIN_MS     = 45 * 60 * 1000;
@@ -24,19 +24,19 @@ export async function assemble(params: {
   urgency_score:    number;
   waste_category:   string;
   zone_id:          string;
+  cluster_id:       string;
   initialSnapshot:  ClusterSnapshot;
 }): Promise<AssembleResult> {
-  const { urgency_score, waste_category, zone_id, initialSnapshot } = params;
+  const { urgency_score, waste_category, zone_id, cluster_id, initialSnapshot } = params;
   const WAIT_WINDOW_MAX_MS = Number(process.env.WAIT_WINDOW_MAX_MS ?? 30 * 60 * 1000);
 
-  const clusters: ClusterSnapshot[] = [initialSnapshot];
-
+  // Critical or special-handling waste → dispatch immediately with trigger cluster only
   const isImmediate = urgency_score >= 90 || IMMEDIATE_CATEGORIES.includes(waste_category);
   if (isImmediate) {
-    return buildResult(clusters);
+    return buildResult([initialSnapshot]);
   }
 
-  // Calculate wait window from predicted_full_at timestamps
+  // Calculate wait window from predicted_full_at of collectible bins
   const predictedFullTimestamps = initialSnapshot.bins
     .filter(b => b.should_collect && b.predicted_full_at)
     .map(b => new Date(b.predicted_full_at!).getTime())
@@ -51,41 +51,25 @@ export async function assemble(params: {
     Date.now() + WAIT_WINDOW_MAX_MS,
   );
 
-  const withinMinutes = Math.max(1, Math.round((waitUntil - Date.now()) / 60_000));
+  // First zone scan — find all clusters in zone approaching urgency (score >= 70)
+  const zoneClusters = await getZoneSnapshot(zone_id, 70);
 
-  // First scan — look for nearby clusters approaching urgency
-  const nearbyScan = await scanNearby({
-    zone_id,
-    urgency_threshold:   70,
-    within_minutes:      withinMinutes,
-    exclude_cluster_ids: clusters.map(c => c.cluster_id),
-  });
+  // Exclude the trigger cluster (already in initialSnapshot) and merge others
+  const additional = zoneClusters.filter(s => s.cluster_id !== cluster_id);
 
-  if (nearbyScan.clusters.length > 0) {
-    for (const nearby of nearbyScan.clusters) {
-      const snap = await getClusterSnapshot(nearby.cluster_id);
-      if (snap) clusters.push(snap);
-    }
-    return buildResult(clusters);
+  if (additional.length > 0) {
+    // Other clusters already approaching urgency — batch them now, don't wait
+    return buildResult([initialSnapshot, ...additional]);
   }
 
-  // Wait, then re-scan
+  // No other clusters approaching urgency yet — wait, then re-scan at higher threshold
   const remainingWaitMs = waitUntil - Date.now();
   if (remainingWaitMs > 0) {
     await sleep(remainingWaitMs);
   }
 
-  const laterScan = await scanNearby({
-    zone_id,
-    urgency_threshold:   80,
-    within_minutes:      15,
-    exclude_cluster_ids: clusters.map(c => c.cluster_id),
-  });
+  const laterZoneClusters = await getZoneSnapshot(zone_id, 80);
+  const laterAdditional = laterZoneClusters.filter(s => s.cluster_id !== cluster_id);
 
-  for (const later of laterScan.clusters) {
-    const snap = await getClusterSnapshot(later.cluster_id);
-    if (snap) clusters.push(snap);
-  }
-
-  return buildResult(clusters);
+  return buildResult([initialSnapshot, ...laterAdditional]);
 }

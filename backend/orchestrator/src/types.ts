@@ -100,6 +100,8 @@ export interface ClusterBin {
 
 export interface ClusterSnapshot {
   cluster_id:                  string;
+  lat?:                        number;
+  lng?:                        number;
   bins:                        ClusterBin[];
   collectible_bins_weight_kg:  number;
 }

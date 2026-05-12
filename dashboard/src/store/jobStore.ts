@@ -3,17 +3,23 @@ import type { CollectionJob, CollectionJobListItem, JobProgress } from '@/types'
 
 interface JobStore {
   jobs:        Map<string, CollectionJob>
-  jobProgress: Map<string, JobProgress> // live job progress keyed by job_id
+  jobProgress: Map<string, JobProgress>
+  /** Flat list used by the jobs page as fallback when REST is unavailable */
+  jobsList:    CollectionJobListItem[]
   addJob:             (job: CollectionJob) => void
   updateJob:          (jobId: string, patch: Partial<CollectionJob>) => void
+  completeJob:        (jobId: string, patch?: Partial<CollectionJob>) => void
+  removeJob:          (jobId: string) => void
   setJobs:            (jobs: CollectionJob[]) => void
-  setJobsFromList:    (jobs: CollectionJobListItem[]) => void // maps REST list (uses .id)
-  updateJobProgress:  (payload: JobProgress) => void         // from job:progress socket event
+  setJobsFromList:    (jobs: CollectionJobListItem[]) => void
+  setJobsList:        (jobs: CollectionJobListItem[]) => void
+  updateJobProgress:  (payload: JobProgress) => void
 }
 
 export const useJobStore = create<JobStore>((set) => ({
   jobs:        new Map(),
   jobProgress: new Map(),
+  jobsList:    [],
 
   addJob: (job) =>
     set((state) => {
@@ -42,10 +48,30 @@ export const useJobStore = create<JobStore>((set) => ({
       jobs: new Map(list.map((j) => [j.id, j as unknown as CollectionJob])),
     })),
 
+  setJobsList: (list) => set({ jobsList: list }),
+
   updateJobProgress: (payload) =>
     set((state) => {
       const next = new Map(state.jobProgress)
       next.set(payload.job_id, payload)
       return { jobProgress: next }
+    }),
+
+  completeJob: (jobId, patch = {}) =>
+    set((state) => {
+      const existing = state.jobs.get(jobId)
+      if (!existing) return state
+      const next = new Map(state.jobs)
+      next.set(jobId, { ...existing, ...patch, state: 'COMPLETED' })
+      return { jobs: next }
+    }),
+
+  removeJob: (jobId) =>
+    set((state) => {
+      const next = new Map(state.jobs)
+      next.delete(jobId)
+      const nextProgress = new Map(state.jobProgress)
+      nextProgress.delete(jobId)
+      return { jobs: next, jobProgress: nextProgress }
     }),
 }))

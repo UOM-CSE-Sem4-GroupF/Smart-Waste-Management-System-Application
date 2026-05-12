@@ -1,6 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
@@ -9,11 +8,11 @@ import {
   Map,
   Trash2,
   Briefcase,
-  Truck,
   BarChart3,
   Recycle,
   LogOut,
   ChevronRight,
+  Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,15 +30,13 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Map,             label: 'Live Map',  href: '/dashboard/map' },
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
-  { icon: Truck,           label: 'Fleet',     href: '/dashboard/fleet',     roles: ['fleet-operator', 'admin'] },
+  { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
 ]
 
 export function Sidebar() {
   const pathname  = usePathname()
   const { data: session } = useSession()
-  const [isNavigating, setIsNavigating] = useState(false)
-  
   // BYPASS: Default to supervisor role if no session is present
   const role      = session?.user?.role ?? 'supervisor'
 
@@ -54,24 +51,19 @@ export function Sidebar() {
     !item.roles || item.roles.includes(role)
   )
 
-  // Reset navigation state when pathname changes
-  useEffect(() => {
-    setIsNavigating(false)
-  }, [pathname])
-
   return (
     <aside className="relative flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white/80 backdrop-blur-xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/80">
       {/* Branding */}
       <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6 dark:border-slate-900">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
           <Recycle className="h-5 w-5 text-white" />
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-            Garabadge
+            Dashboard
           </span>
           <span className="text-[10px] font-bold text-emerald-500 dark:text-emerald-400">
-            Intelligent Waste
+            SWMS Live
           </span>
         </div>
       </div>
@@ -87,7 +79,6 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              onClick={() => setIsNavigating(true)}
               className={cn(
                 'group relative flex items-center justify-between rounded-xl px-4 py-3 text-sm transition-all duration-200',
                 active
@@ -117,7 +108,7 @@ export function Sidebar() {
       <div className="mt-auto border-t border-slate-100 p-4 dark:border-slate-900">
         <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-900/40">
           <div className="relative">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-slate-200 to-slate-300 text-xs font-black text-slate-600 shadow-inner select-none dark:from-slate-700 dark:to-slate-800 dark:text-slate-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-tr from-slate-200 to-slate-300 text-xs font-black text-slate-600 shadow-inner select-none dark:from-slate-700 dark:to-slate-800 dark:text-slate-300">
               {initials}
             </div>
             <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
@@ -149,14 +140,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation Loading Overlay */}
-      {isNavigating && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/20 backdrop-blur-[1px] dark:bg-black/20">
-          <div className="h-1 w-full absolute top-0">
-            <div className="h-full bg-emerald-500 animate-[progress_2s_ease-in-out_infinite]" style={{width: '30%'}} />
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

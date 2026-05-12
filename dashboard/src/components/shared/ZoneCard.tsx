@@ -39,7 +39,7 @@ export function ZoneCard({ zone, href }: ZoneCardProps) {
       {/* Accent Gradient Header */}
       <div className={cn(
         'absolute left-0 top-0 h-1 w-full',
-        urgentTotal > 0 ? 'bg-gradient-to-r from-rose-500 to-amber-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'
+        urgentTotal > 0 ? 'bg-linear-to-r from-rose-500 to-amber-500' : 'bg-linear-to-r from-emerald-500 to-teal-500'
       )} />
 
       <CardHeader className="pb-3 pt-5">

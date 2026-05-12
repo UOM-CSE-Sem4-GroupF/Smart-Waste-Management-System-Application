@@ -30,40 +30,19 @@ export async function startBinProcessedConsumer(): Promise<void> {
 
         if (Number(p.urgency_score) < 80) return;
 
-        const bin_id    = p.bin_id;
-        const urgency   = Number(p.urgency_score);
-        let zone_id   = p.zone_id      ?? 'unknown';
-        const waste_cat = p.waste_category ?? 'general';
+        const bin_id     = p.bin_id;
+        const cluster_id = p.cluster_id;
+        const zone_id    = String(p.zone_id ?? 'unknown');
+        const urgency    = Number(p.urgency_score);
+        const waste_cat  = p.waste_category ?? 'general';
 
-        if (zone_id === 'unknown') {
-          for (let attempt = 1; attempt <= 10; attempt++) {
-            try {
-              const allBinsRes = await fetch(`${process.env.BIN_STATUS_URL ?? 'http://bin-status:3002'}/api/v1/bins`);
-              if (allBinsRes.ok) {
-                 const { data } = await allBinsRes.json() as any;
-                 const found = data.find((b: any) => b.bin_id === bin_id);
-                 if (found && found.zone_id) {
-                   zone_id = String(found.zone_id);
-                   slog('INFO', `Resolved zone_id for ${bin_id}: ${zone_id}`);
-                   break;
-                 }
-              }
-            } catch (e) {
-              // Ignore fetch errors during startup
-            }
-            slog('INFO', `Waiting for bin-status to sync bin ${bin_id} (attempt ${attempt}/10)...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-          if (zone_id === 'unknown') {
-            slog('WARN', `Failed to resolve zone for ${bin_id} after retries. Defaulting to zone 1.`);
-            zone_id = '1';
-          }
+        if (!cluster_id) {
+          slog('WARN', `No cluster_id in processed event for bin ${bin_id} — skipping`);
+          return;
         }
 
-
         pruneDedup();
-        const lastSeen = recentlyProcessed.get(bin_id);
-        if (lastSeen && Date.now() - lastSeen < DEDUP_WINDOW_MS) {
+        if (recentlyProcessed.has(bin_id) && Date.now() - recentlyProcessed.get(bin_id)! < DEDUP_WINDOW_MS) {
           slog('INFO', `Dedup skip: bin ${bin_id} already processed recently`);
           return;
         }
@@ -82,9 +61,9 @@ export async function startBinProcessedConsumer(): Promise<void> {
           trigger_urgency_score: urgency,
           kafka_offset:          Number(offset),
         });
-        slog('INFO', `Emergency job created for bin ${bin_id} urgency=${urgency}`, job.job_id);
+        slog('INFO', `Emergency job created for bin ${bin_id} cluster=${cluster_id} urgency=${urgency}`, job.job_id);
 
-        executeEmergencyWorkflow(job, { bin_id, urgency_score: urgency, waste_category: waste_cat, zone_id })
+        executeEmergencyWorkflow(job, { bin_id, cluster_id, urgency_score: urgency, waste_category: waste_cat, zone_id })
           .catch(e => handleWorkflowFailure(job, e));
 
       } catch (e) {

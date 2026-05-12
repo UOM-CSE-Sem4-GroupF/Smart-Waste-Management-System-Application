@@ -157,7 +157,7 @@ export interface ClusterSnapshot {
   zone_id: number;
   lat: number;
   lng: number;
-  address: string;
+  address: string | null;
   total_bins: number;
   has_active_job: boolean;
   active_job_id: string | null;

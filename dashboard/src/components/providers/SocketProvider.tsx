@@ -3,10 +3,10 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { type Socket } from 'socket.io-client'
 import { getSocket } from '@/lib/socket'
 import { useSession } from 'next-auth/react'
-import { useBinStore } from '@/store/binStore'
-import { useVehicleStore } from '@/store/vehicleStore'
+import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { useJobStore } from '@/store/jobStore'
+import type { JobCompletedEvent, JobInitiatedEvent } from '@/types/socket-events'
 
 const SocketContext = createContext<Socket | null>(null)
 
@@ -16,9 +16,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   // useSocket() receive the live socket instance once it connects, not null.
   const [socket, setSocket] = useState<Socket | null>(null)
 
-  const updateBin         = useBinStore((s) => s.updateBin)
-  const updateZone        = useBinStore((s) => s.updateZone)
-  const updateVehicle     = useVehicleStore((s) => s.updateVehicle)
+  const updateBin         = useMapStore((s) => s.updateBin)
+  const updateZoneStats   = useMapStore((s) => s.updateZoneStats)
+  const updateVehicle     = useMapStore((s) => s.updateVehicle)
+  const removeVehicle     = useMapStore((s) => s.removeVehicle)
   const addAlert          = useAlertStore((s) => s.addAlert)
   const updateJob         = useJobStore((s) => s.updateJob)
   const addJob            = useJobStore((s) => s.addJob)
@@ -40,22 +41,43 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // ── Bin and zone events (from Bin Status Service via Kafka) ──
     sock.on('bin:update',   (payload) => updateBin(payload))
-    sock.on('zone:stats',   (payload) => updateZone(payload))
+    sock.on('zone:stats',   (payload) => updateZoneStats(payload))
     sock.on('alert:urgent', (payload) => addAlert({ ...payload, type: 'urgent' }))
 
     // ── Vehicle events (from Scheduler Service via Kafka) ──────
     sock.on('vehicle:position', (payload) => updateVehicle(payload))
+    // Keep updateJobProgress — JobDetailDrawer reads from jobStore.jobProgress Map
     sock.on('job:progress',     (payload) => updateJobProgress(payload))
 
     // ── Job lifecycle events (from Orchestrator via HTTP) ──────
+    sock.on('job:initiated', (e: JobInitiatedEvent) => {
+      const zoneId = typeof e.zone_id === 'number' ? e.zone_id : Number(e.zone_id)
+      addAlert({ type: 'initiated', job_id: e.job_id, zone_id: zoneId, message: e.message })
+      addJob({
+        job_id:           e.job_id,
+        job_type:         e.job_type as 'emergency',
+        zone_id:          zoneId,
+        zone_name:        String(e.zone_id),
+        clusters:         [e.cluster_id],
+        vehicle_id:       '',
+        driver_id:        null,
+        total_bins:       0,
+        planned_weight_kg: 0,
+        priority:         1,
+        route:            [],
+        state:            'CREATED',
+      })
+    })
     sock.on('job:created',   (payload) => addJob(payload))
-    sock.on('job:completed', (payload) => updateJob(payload.job_id, { state: 'COMPLETED', ...payload }))
+    sock.on('job:completed', (e: JobCompletedEvent) => {
+      updateJob(e.job_id, { state: 'COMPLETED', actual_weight_kg: e.actual_weight_kg })
+      removeVehicle(e.vehicle_id)
+    })
     sock.on('job:cancelled', (payload) => updateJob(payload.job_id, { state: 'CANCELLED', ...payload }))
     sock.on('alert:escalated', (payload) => addAlert({ ...payload, type: 'escalated' }))
 
     // ── Alert events (from Scheduler via HTTP) ─────────────────
-    sock.on('alert:deviation',    (payload) => addAlert({ ...payload, type: 'deviation' }))
-    sock.on('alert:weight-limit', (payload) => addAlert({ ...payload, type: 'weight-limit' }))
+    sock.on('alert:deviation', (payload) => addAlert({ ...payload, type: 'deviation' }))
 
     return () => {
       sock.off('connect',    onConnect)
@@ -65,12 +87,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       sock.off('alert:urgent')
       sock.off('vehicle:position')
       sock.off('job:progress')
+      sock.off('job:initiated')
       sock.off('job:created')
       sock.off('job:completed')
       sock.off('job:cancelled')
       sock.off('alert:escalated')
       sock.off('alert:deviation')
-      sock.off('alert:weight-limit')
     }
   // Zustand store actions are stable references (never change), so omitting them
   // from deps is intentional — we only want to reconnect when the token changes.

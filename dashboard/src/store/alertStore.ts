@@ -1,21 +1,22 @@
 import { create } from 'zustand'
 
 export interface Alert {
-  id:          string
-  type:        'urgent' | 'escalated' | 'deviation' | 'weight-limit'
-  bin_id?:     string
-  job_id?:     string
-  zone_id?:    number  // optional — not present on weight-limit alerts
-  message:     string
-  received_at: number  // Date.now()
-  dismissed:   boolean
+  id:           string
+  type:         'urgent' | 'escalated' | 'deviation' | 'initiated'
+  bin_id?:      string
+  job_id?:      string
+  zone_id?:     number
+  vehicle_id?:  string
+  message:      string
+  received_at:  string       // ISO 8601 from server
+  acknowledged: boolean
 }
 
 interface AlertStore {
   alerts: Alert[]
-  addAlert:     (payload: Omit<Alert, 'id' | 'received_at' | 'dismissed'>) => void
-  dismissAlert: (id: string) => void
-  clearAll:     () => void
+  addAlert:        (payload: Omit<Alert, 'id' | 'received_at' | 'acknowledged'>) => void
+  acknowledgeAlert:(id: string) => void
+  clearAll:        () => void
 }
 
 export const useAlertStore = create<AlertStore>((set) => ({
@@ -24,14 +25,19 @@ export const useAlertStore = create<AlertStore>((set) => ({
   addAlert: (payload) =>
     set((state) => ({
       alerts: [
-        { ...payload, id: crypto.randomUUID(), received_at: Date.now(), dismissed: false },
+        {
+          ...payload,
+          id: crypto.randomUUID(),
+          received_at: new Date().toISOString(),
+          acknowledged: false,
+        },
         ...state.alerts.slice(0, 49), // keep last 50
       ],
     })),
 
-  dismissAlert: (id) =>
+  acknowledgeAlert: (id) =>
     set((state) => ({
-      alerts: state.alerts.map((a) => (a.id === id ? { ...a, dismissed: true } : a)),
+      alerts: state.alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)),
     })),
 
   clearAll: () => set({ alerts: [] }),

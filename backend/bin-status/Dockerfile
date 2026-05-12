@@ -3,9 +3,8 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 COPY package*.json tsconfig.json ./
 RUN npm ci
-# Copy prisma from orchestrator if it's shared or needs to be provided
-# For now, I'll assume we need to copy it if it exists in the backend root or similar
-# Actually, I'll add the prisma generate step
+COPY prisma ./prisma
+RUN npx prisma generate
 COPY src ./src
 RUN npm run build
 
