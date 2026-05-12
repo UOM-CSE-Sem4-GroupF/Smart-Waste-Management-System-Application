@@ -81,7 +81,7 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent aria-describedby={undefined} className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit Driver ${driver?.driver_id}` : 'Add New Driver'}</DialogTitle>
         </DialogHeader>
