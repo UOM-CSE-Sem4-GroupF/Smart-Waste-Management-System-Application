@@ -14,7 +14,17 @@ export default async function OperationsPage() {
   ])
 
   const zoneOptions = zonesRes.status === 'fulfilled'
-    ? zonesRes.value.data.map((z) => ({ id: z.id, name: z.name }))
+    ? Array.from(
+        new Map(
+          zonesRes.value.data
+            .map((z) => ({
+              id: Number(z.id ?? z.zone_id),
+              name: z.name ?? z.zone_name ?? `Zone ${z.id ?? z.zone_id}`,
+            }))
+            .filter((z) => Number.isFinite(z.id))
+            .map((z) => [z.id, z])
+        ).values()
+      )
     : []
 
   const vehicleOptions = vehiclesRes.status === 'fulfilled'

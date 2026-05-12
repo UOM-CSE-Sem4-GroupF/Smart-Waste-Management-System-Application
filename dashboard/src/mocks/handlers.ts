@@ -76,6 +76,107 @@ const ZONE_SUMMARIES: Record<number, ZoneSummary> = {
   3: { zone_id: 3, zone_name: 'Uyanwatta',      total_bins: 6, total_clusters: 3, status_breakdown: { normal: 2, monitor: 2, urgent: 2, critical: 0, offline: 0 }, category_breakdown: { food_waste: { total_bins: 2, avg_fill_pct: 72, total_weight_kg: 72.0, urgent_count: 1 }, plastic: { total_bins: 1, avg_fill_pct: 29, total_weight_kg: 14.5, urgent_count: 0 }, e_waste: { total_bins: 1, avg_fill_pct: 55, total_weight_kg: 27.5, urgent_count: 0 }, general: { total_bins: 1, avg_fill_pct: 85, total_weight_kg: 42.5, urgent_count: 1 }, glass: { total_bins: 1, avg_fill_pct: 12, total_weight_kg: 6.0, urgent_count: 0 } }, total_estimated_weight_kg: 162.5, active_jobs_count: 1, last_updated: new Date(NOW - 420_000).toISOString() },
 }
 
+const MOCK_METADATA_ZONES = Object.values(ZONE_SUMMARIES).map((zone) => ({
+  id: zone.zone_id,
+  name: zone.zone_name,
+  code: `ZONE-${String(zone.zone_id).padStart(2, '0')}`,
+  active: true,
+}))
+
+const MOCK_WASTE_CATEGORIES = [
+  { id: 1, name: 'food_waste', colour_code: '#8B4513', recyclable: false, special_handling: false },
+  { id: 2, name: 'paper', colour_code: '#4169E1', recyclable: true, special_handling: false },
+  { id: 3, name: 'glass', colour_code: '#228B22', recyclable: true, special_handling: false },
+  { id: 4, name: 'plastic', colour_code: '#FF6347', recyclable: true, special_handling: false },
+  { id: 5, name: 'general', colour_code: '#808080', recyclable: false, special_handling: false },
+  { id: 6, name: 'e_waste', colour_code: '#FFD700', recyclable: false, special_handling: true },
+]
+
+type MetadataCluster = {
+  id: string
+  zone_id: number
+  name: string
+  lat: number
+  lng: number
+  address: string
+  cluster_type: string
+  active: boolean
+  zone: { id: number; name: string; code: string }
+  bins: Array<{ id: string; waste_category_id: number; volume_litres: number }>
+}
+
+const EXTRA_METADATA_CLUSTERS: MetadataCluster[] = []
+
+function metadataClusters(): MetadataCluster[] {
+  const byId = new Map<string, MetadataCluster>()
+
+  MOCK_BINS.forEach((bin) => {
+    const zone = MOCK_METADATA_ZONES.find((z) => z.id === bin.zone_id)
+    if (!byId.has(bin.cluster_id)) {
+      byId.set(bin.cluster_id, {
+        id: bin.cluster_id,
+        zone_id: bin.zone_id,
+        name: bin.cluster_name,
+        lat: bin.lat,
+        lng: bin.lng,
+        address: bin.address,
+        cluster_type: 'public_space',
+        active: true,
+        zone: {
+          id: bin.zone_id,
+          name: bin.zone_name,
+          code: zone?.code ?? `ZONE-${bin.zone_id}`,
+        },
+        bins: [],
+      })
+    }
+    byId.get(bin.cluster_id)!.bins.push({
+      id: bin.bin_id,
+      waste_category_id: MOCK_WASTE_CATEGORIES.find((category) => category.name === bin.waste_category)?.id ?? 5,
+      volume_litres: 240,
+    })
+  })
+
+  return [...byId.values(), ...EXTRA_METADATA_CLUSTERS]
+}
+
+function metadataBins() {
+  return MOCK_BINS.map((bin) => ({
+    id: bin.bin_id,
+    cluster_id: bin.cluster_id,
+    waste_category_id: MOCK_WASTE_CATEGORIES.find((category) => category.name === bin.waste_category)?.id ?? 5,
+    volume_litres: 240,
+    lat: bin.lat,
+    lng: bin.lng,
+    address: bin.address,
+    active: true,
+    depth_cm: 120,
+    cluster: {
+      id: bin.cluster_id,
+      name: bin.cluster_name,
+      zone_id: bin.zone_id,
+      lat: bin.lat,
+      lng: bin.lng,
+      zone: {
+        id: bin.zone_id,
+        name: bin.zone_name,
+        code: MOCK_METADATA_ZONES.find((zone) => zone.id === bin.zone_id)?.code,
+      },
+    },
+    waste_category: MOCK_WASTE_CATEGORIES.find((category) => category.name === bin.waste_category),
+    current_state: {
+      fill_level_pct: bin.fill_level_pct,
+      battery_level_pct: bin.battery_level_pct,
+      estimated_weight_kg: bin.estimated_weight_kg,
+      status: bin.status,
+      urgency_score: bin.urgency_score,
+      predicted_full_at: bin.predicted_full_at,
+      last_reading_at: bin.last_reading_at,
+      last_collected_at: bin.last_collected_at,
+    },
+  }))
+}
+
 // Zone stats in socket payload shape — used by MockSocketInjector to seed the Zustand store
 export const MOCK_ZONE_STATS: ZoneStatsPayload[] = [
   { zone_id: 1, zone_name: 'Katubedda',      avg_fill_level_pct: 61, urgent_bin_count: 2, critical_bin_count: 1, total_bins: 7, total_estimated_weight_kg: 186.5, dominant_waste_category: 'food_waste', category_breakdown: { food_waste: { count: 2, avg_fill: 76, total_kg: 76.5 }, paper: { count: 1, avg_fill: 45, total_kg: 22.5 }, general: { count: 1, avg_fill: 95, total_kg: 47.5 }, plastic: { count: 1, avg_fill: 58, total_kg: 29.0 }, glass: { count: 1, avg_fill: 22, total_kg: 11.0 } }, active_jobs_count: 1, unassigned_urgent_bins: 2 },
@@ -104,6 +205,132 @@ function makeBinHistory(binId: string): BinHistory {
 }
 
 export const handlers = [
+  http.get('/api/metadata/zones', () => {
+    return HttpResponse.json({ data: MOCK_METADATA_ZONES, total: MOCK_METADATA_ZONES.length })
+  }),
+
+  http.post('/api/metadata/city-zones', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    const zone = {
+      id: MOCK_METADATA_ZONES.length ? Math.max(...MOCK_METADATA_ZONES.map((z) => z.id)) + 1 : 1,
+      name: String(body.name),
+      code: String(body.code),
+      active: true,
+    }
+    MOCK_METADATA_ZONES.push(zone)
+    return HttpResponse.json({ data: zone }, { status: 201 })
+  }),
+
+  http.patch('/api/metadata/city-zones/:zoneId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    const zone = MOCK_METADATA_ZONES.find((z) => z.id === Number(params.zoneId))
+    if (!zone) return HttpResponse.json({ message: 'Zone not found' }, { status: 404 })
+    Object.assign(zone, body)
+    return HttpResponse.json({ data: zone })
+  }),
+
+  http.delete('/api/metadata/city-zones/:zoneId', ({ params }) => {
+    const index = MOCK_METADATA_ZONES.findIndex((z) => z.id === Number(params.zoneId))
+    if (index >= 0) MOCK_METADATA_ZONES.splice(index, 1)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.get('/api/metadata/clusters', ({ request }) => {
+    const url = new URL(request.url)
+    const zoneId = url.searchParams.get('zone_id')
+    let data = metadataClusters()
+    if (zoneId) data = data.filter((cluster) => cluster.zone_id === Number(zoneId))
+    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
+  }),
+
+  http.post('/api/metadata/clusters', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    const zone = MOCK_METADATA_ZONES.find((item) => item.id === Number(body.zone_id))
+    const cluster = {
+      id: String(body.id),
+      zone_id: Number(body.zone_id),
+      name: String(body.name),
+      lat: Number(body.lat ?? 0),
+      lng: Number(body.lng ?? 0),
+      address: String(body.address ?? ''),
+      cluster_type: String(body.cluster_type ?? 'public_space'),
+      active: true,
+      zone: {
+        id: Number(body.zone_id),
+        name: zone?.name ?? `Zone ${body.zone_id}`,
+        code: zone?.code ?? `ZONE-${body.zone_id}`,
+      },
+      bins: [],
+    }
+    EXTRA_METADATA_CLUSTERS.push(cluster)
+    return HttpResponse.json({ data: cluster }, { status: 201 })
+  }),
+
+  http.patch('/api/metadata/clusters/:clusterId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    const cluster = EXTRA_METADATA_CLUSTERS.find((item: MetadataCluster) => item.id === String(params.clusterId))
+    if (cluster) Object.assign(cluster, body)
+    return HttpResponse.json({ data: { id: params.clusterId, ...body } })
+  }),
+
+  http.delete('/api/metadata/clusters/:clusterId', ({ params }) => {
+    const index = EXTRA_METADATA_CLUSTERS.findIndex((item: MetadataCluster) => item.id === String(params.clusterId))
+    if (index >= 0) EXTRA_METADATA_CLUSTERS.splice(index, 1)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.get('/api/metadata/waste-categories', () => {
+    return HttpResponse.json({ data: MOCK_WASTE_CATEGORIES })
+  }),
+
+  http.get('/api/metadata/bins', ({ request }) => {
+    const url = new URL(request.url)
+    const zoneId = url.searchParams.get('zone_id')
+    const clusterId = url.searchParams.get('cluster_id')
+    let data = metadataBins()
+    if (zoneId) data = data.filter((bin) => bin.cluster.zone_id === Number(zoneId))
+    if (clusterId) data = data.filter((bin) => bin.cluster_id === clusterId)
+    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
+  }),
+
+  http.post('/api/metadata/bins', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    const cluster = metadataClusters().find((item: MetadataCluster) => item.id === String(body.cluster_id))
+    const category = MOCK_WASTE_CATEGORIES.find((item) => item.id === Number(body.waste_category_id)) ?? MOCK_WASTE_CATEGORIES[4]
+    const bin = {
+      bin_id: String(body.id),
+      cluster_id: String(body.cluster_id),
+      cluster_name: cluster?.name ?? String(body.cluster_id),
+      zone_id: cluster?.zone_id ?? 1,
+      zone_name: cluster?.zone.name ?? 'Zone 1',
+      lat: Number(body.lat ?? cluster?.lat ?? 0),
+      lng: Number(body.lng ?? cluster?.lng ?? 0),
+      address: String(body.address ?? cluster?.address ?? ''),
+      fill_level_pct: 0,
+      status: 'normal' as const,
+      urgency_score: 0,
+      estimated_weight_kg: 0,
+      waste_category: category.name as typeof MOCK_BINS[number]['waste_category'],
+      waste_category_colour: category.colour_code,
+      predicted_full_at: null,
+      battery_level_pct: 100,
+      last_reading_at: new Date().toISOString(),
+      last_collected_at: null,
+      has_active_job: false,
+    }
+    MOCK_BINS.push(bin)
+    return HttpResponse.json({ data: metadataBins().find((item) => item.id === bin.bin_id) }, { status: 201 })
+  }),
+
+  http.patch('/api/metadata/bins/:binId', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ data: { id: params.binId, ...body } })
+  }),
+
+  http.delete('/api/metadata/bins/:binId', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   // GET /api/v1/bins — supports ?zone_id= ?status= ?waste_category= ?page= ?limit=
   http.get('http://localhost:30080/api/v1/bins', ({ request }) => {
     const url      = new URL(request.url)
