@@ -331,34 +331,8 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  // GET /api/v1/bins — supports ?zone_id= ?status= ?waste_category= ?page= ?limit=
-  http.get('http://localhost:30080/api/v1/bins', ({ request }) => {
-    const url      = new URL(request.url)
-    const zoneId   = url.searchParams.get('zone_id')
-    const status   = url.searchParams.get('status')
-    const category = url.searchParams.get('waste_category')
-    const page     = Math.max(1, Number(url.searchParams.get('page')  ?? 1))
-    const limit    = Math.max(1, Number(url.searchParams.get('limit') ?? 25))
-    let filtered   = MOCK_BINS
-    if (zoneId)   filtered = filtered.filter((b) => b.zone_id       === Number(zoneId))
-    if (status)   filtered = filtered.filter((b) => b.status        === status)
-    if (category) filtered = filtered.filter((b) => b.waste_category === category)
-    const total = filtered.length
-    const data  = filtered.slice((page - 1) * limit, page * limit)
-    return HttpResponse.json({ data, total, page, limit })
-  }),
-
-  // GET /api/v1/bins/:binId
-  http.get('http://localhost:30080/api/v1/bins/:binId', ({ params }) => {
-    const bin = MOCK_BINS.find((b) => b.bin_id === params.binId)
-    if (!bin) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
-    return HttpResponse.json({
-      ...bin,
-      recent_collections: [
-        { job_id: 'JOB-004', collected_at: new Date(Date.now() - 48 * 3600_000).toISOString(), driver_id: 'DRV-001', fill_level_at_collection: 87, actual_weight_kg: 43.5, job_type: 'routine' },
-      ],
-    })
-  }),
+  // GET /api/v1/bins — unwired: falls through to real bin-status service
+  // (MOCK_BINS data kept above for reference; re-wire by restoring these handlers)
 
   // GET /api/v1/bins/:binId/history
   http.get('http://localhost:30080/api/v1/bins/:binId/history', ({ params }) => {

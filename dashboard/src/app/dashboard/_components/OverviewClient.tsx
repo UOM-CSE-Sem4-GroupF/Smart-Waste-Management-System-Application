@@ -28,19 +28,43 @@ const ACTIVE_STATES = new Set([
   'RECORDING_AUDIT',
 ])
 
+import { useSession } from 'next-auth/react'
+import { useQuery } from '@tanstack/react-query'
+import { createClientApiClient } from '@/lib/api-client'
+import { Loader2 } from 'lucide-react'
+
 export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps) {
+  const { data: session } = useSession()
   const { setBins, bins, zoneStats, vehicles } = useMapStore()
   const { setJobs }                            = useJobStore()
   const jobs                                   = useJobStore((s) => s.jobs)
 
-  // Seed stores once with initial SSR data
-  useEffect(() => {
-    if (initialBins.length > 0) setBins(initialBins)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // 1. Fetch Bins (for stats and map)
+  const { isLoading: isLoadingBins } = useQuery({
+    queryKey: ['bins-overview-initial'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await api.get('data-analysis/api/v1/bins', { searchParams: { limit: 500 } }).json<{ data: any[] }>()
+      // Cast REST Bin[] → BinUpdatePayload[]
+      const payload = res.data as unknown as BinUpdatePayload[]
+      setBins(payload)
+      return payload
+    },
+    enabled: !!session?.accessToken,
+  })
 
-  useEffect(() => {
-    if (initialJobs.length > 0) setJobs(initialJobs)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // 2. Fetch Jobs (for active jobs list)
+  const { isLoading: isLoadingJobs } = useQuery({
+    queryKey: ['jobs-overview-initial'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await api.get('api/v1/collection-jobs', { searchParams: { limit: 100 } }).json<{ data: any[] }>()
+      const payload = res.data as unknown as CollectionJob[]
+      setJobs(payload)
+      return payload
+    },
+    enabled: !!session?.accessToken,
+  })
 
   // Derived stats
   const allBins        = useMemo(() => Array.from(bins.values()), [bins])

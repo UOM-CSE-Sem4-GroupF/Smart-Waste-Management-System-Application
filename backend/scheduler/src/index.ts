@@ -7,7 +7,7 @@ import collectionsRoutes from './routes/collections';
 import vehiclesRoutes    from './routes/vehicles';
 import driversRoutes     from './routes/drivers';
 import { startKafkaConsumer } from './kafka/consumer';
-import { syncVehiclesFromCoreApi } from './store';
+import { syncVehiclesFromCoreApi, syncActiveJobsFromOrchestrator } from './store';
 
 const SERVICE = 'scheduler-service';
 const VERSION = '1.0.0';
@@ -35,6 +35,9 @@ async function start() {
 
   // Load real vehicle IDs from Core API (replaces hardcoded seed data)
   await syncVehiclesFromCoreApi();
+
+  // Restore active jobs from orchestrator so vehicle positions aren't dropped after pod restart
+  await syncActiveJobsFromOrchestrator();
 
   startKafkaConsumer().catch(err =>
     slog('WARN', `Kafka unavailable — running without live vehicle positions: ${err.message}`),

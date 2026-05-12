@@ -13,10 +13,56 @@ interface Props {
   driverOptions:  Array<{ driver_id: string; name: string }>
 }
 
-export function OperationsClient({ zoneOptions, vehicleOptions, driverOptions }: Props) {
+import { useQuery } from '@tanstack/react-query'
+import { createClientApiClient } from '@/lib/api-client'
+import { getZones } from '@/lib/api/zones'
+import { getVehicles } from '@/lib/api/vehicles'
+import { getDrivers } from '@/lib/api/drivers'
+
+export function OperationsClient({ zoneOptions: initialZones, vehicleOptions: initialVehicles, driverOptions: initialDrivers }: Props) {
   const { data: session } = useSession()
   const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? []
   const isAdmin = roles.includes('admin')
+
+  // 1. Fetch Zones
+  const { data: zones } = useQuery({
+    queryKey: ['zones-ops'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await getZones(api)
+      return res.data.map(z => ({
+        id: Number(z.id ?? z.zone_id),
+        name: z.name ?? z.zone_name ?? `Zone ${z.id ?? z.zone_id}`
+      }))
+    },
+    enabled: !!session?.accessToken,
+  })
+
+  // 2. Fetch Vehicles
+  const { data: vehicles } = useQuery({
+    queryKey: ['vehicles-ops'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await getVehicles(api)
+      return res.data.map(v => ({ vehicle_id: v.vehicle_id, vehicle_type: v.vehicle_type }))
+    },
+    enabled: !!session?.accessToken,
+  })
+
+  // 3. Fetch Drivers
+  const { data: drivers } = useQuery({
+    queryKey: ['drivers-ops'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await getDrivers(api)
+      return res.data.map(d => ({ driver_id: d.driver_id, name: d.name }))
+    },
+    enabled: !!session?.accessToken,
+  })
+
+  const zoneOptions = zones ?? initialZones
+  const vehicleOptions = vehicles ?? initialVehicles
+  const driverOptions = drivers ?? initialDrivers
 
   return (
     <div className="space-y-6">
