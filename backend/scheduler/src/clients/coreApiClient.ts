@@ -28,8 +28,9 @@ interface ApiVehicle {
 }
 
 export interface FoundVehicle {
-  vehicle_id:   string;
-  max_cargo_kg: number;
+  vehicle_id:                  string;
+  max_cargo_kg:                number;
+  waste_categories_supported:  string[];
 }
 
 export async function findAvailableVehicle(
@@ -73,7 +74,11 @@ export async function findAvailableVehicle(
   slog('INFO', `findAvailableVehicle: selected vehicle ${v.id} (${v.max_cargo_kg}kg capacity)`, {
     vehicle_id: v.id, max_cargo_kg: v.max_cargo_kg,
   });
-  return { vehicle_id: v.id, max_cargo_kg: v.max_cargo_kg };
+  return {
+    vehicle_id:                 v.id,
+    max_cargo_kg:               v.max_cargo_kg,
+    waste_categories_supported: v.waste_categories.map(wc => wc.category.name),
+  };
 }
 
 export async function setVehicleStatus(
@@ -107,6 +112,39 @@ export interface CreateRoutePlanParams {
   estimated_weight_kg:   number;
   estimated_distance_km?: number;
   estimated_minutes?:    number;
+}
+
+export async function fetchAllVehicles(): Promise<Array<{
+  vehicle_id:                  string;
+  max_cargo_kg:                number;
+  status:                      string;
+  waste_categories_supported:  string[];
+}>> {
+  const url = `${BASE}/vehicles?limit=200`;
+  slog('DEBUG', `fetchAllVehicles: loading vehicles from Core API`, { url });
+
+  try {
+    const res = await timedFetch('fetchAllVehicles', url);
+    if (!res.ok) {
+      slog('WARN', `fetchAllVehicles: Core API responded ${res.status}`, { status: res.status });
+      return [];
+    }
+    const body = await res.json() as { data?: ApiVehicle[] };
+    const all = body.data ?? [];
+    const mapped = all.map(v => ({
+      vehicle_id:                 v.id,
+      max_cargo_kg:               v.max_cargo_kg,
+      status:                     v.status,
+      waste_categories_supported: v.waste_categories.map(wc => wc.category.name),
+    }));
+    slog('INFO', `fetchAllVehicles: loaded ${mapped.length} vehicles`, {
+      vehicle_ids: mapped.map(v => v.vehicle_id),
+    });
+    return mapped;
+  } catch (e) {
+    slog('ERROR', `fetchAllVehicles: exception: ${(e as Error).message}`);
+    return [];
+  }
 }
 
 export async function createRoutePlan(params: CreateRoutePlanParams): Promise<string> {

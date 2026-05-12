@@ -107,6 +107,58 @@ const SEED_VEHICLES: [string, Vehicle][] = [
 
 export const drivers = new Map<string, Driver>(SEED_DRIVERS);
 export const vehicles = new Map<string, Vehicle>(SEED_VEHICLES);
+
+const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
+  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:store', message: msg, ...extra }) + '\n');
+
+// Load vehicles from Core API at startup, replacing seed data with real IDs
+export async function syncVehiclesFromCoreApi(): Promise<void> {
+  const CORE_API = process.env.CORE_API_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
+  const url = `${CORE_API}/api/v1/vehicles?limit=200`;
+
+  slog('INFO', `syncVehiclesFromCoreApi: fetching vehicles from ${url}`);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      slog('WARN', `syncVehiclesFromCoreApi: Core API responded ${res.status} — keeping seed data`, { status: res.status });
+      return;
+    }
+    const body = await res.json() as { data?: Array<{
+      id: string;
+      max_cargo_kg: number;
+      status: string;
+      waste_categories: Array<{ category: { name: string } }>;
+    }> };
+
+    const apiVehicles = body.data ?? [];
+    if (apiVehicles.length === 0) {
+      slog('WARN', 'syncVehiclesFromCoreApi: Core API returned 0 vehicles — keeping seed data');
+      return;
+    }
+
+    // Clear seed data and populate with real vehicles from Core API
+    vehicles.clear();
+    for (const v of apiVehicles) {
+      vehicles.set(v.id, {
+        vehicle_id:                 v.id,
+        name:                       v.id,
+        max_cargo_kg:               v.max_cargo_kg,
+        waste_categories_supported: v.waste_categories.map(wc => wc.category.name),
+        status:                     (v.status as any) ?? 'available',
+        driver_id:                  '',  // resolved later from F3 DB on dispatch
+        lat:                        6.777805,
+        lng:                        79.883911,
+        zone_id:                    1,
+      });
+    }
+
+    slog('INFO', `syncVehiclesFromCoreApi: loaded ${vehicles.size} vehicles from Core API`, {
+      vehicle_ids: Array.from(vehicles.keys()),
+    });
+  } catch (e) {
+    slog('ERROR', `syncVehiclesFromCoreApi: exception — keeping seed data: ${(e as Error).message}`);
+  }
+}
 export const routePlans = new Map<string, RoutePlan>();
 export const binCollectionRecords = new Map<string, BinCollectionRecord>();
 export const clusterCoordinates = new Map<string, { lat: number; lng: number }>();

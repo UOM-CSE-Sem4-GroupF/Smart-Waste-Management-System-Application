@@ -52,12 +52,12 @@ export default async function BinDetailPage({ params }: Props) {
 
       {/* Row 1 — Current state cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Fill Level"     value={`${bin.fill_level_pct.toFixed(1)}%`} />
-        <StatCard label="Urgency Score"  value={bin.urgency_score.toFixed(0)}
-          urgent={bin.urgency_score > 80} />
-        <StatCard label="Est. Weight"    value={`${bin.estimated_weight_kg.toFixed(1)} kg`} />
-        <StatCard label="Battery"        value={`${bin.battery_level_pct.toFixed(0)}%`}
-          urgent={bin.battery_level_pct < 20} />
+        <StatCard label="Fill Level"     value={`${(bin.fill_level_pct ?? 0).toFixed(1)}%`} />
+        <StatCard label="Urgency Score"  value={(bin.urgency_score ?? 0).toFixed(0)}
+          urgent={(bin.urgency_score ?? 0) > 80} />
+        <StatCard label="Est. Weight"    value={`${(bin.estimated_weight_kg ?? 0).toFixed(1)} kg`} />
+        <StatCard label="Battery"        value={`${(bin.battery_level_pct ?? 0).toFixed(0)}%`}
+          urgent={(bin.battery_level_pct ?? 100) < 20} />
         <StatCard
           label="Predicted Full"
           value={bin.predicted_full_at
