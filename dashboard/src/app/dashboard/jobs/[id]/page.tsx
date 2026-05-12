@@ -27,7 +27,7 @@ export default async function JobDetailPage({ params }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-semibold tracking-tight">{job.id.slice(0, 8)}…</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">{job.job_id.slice(0, 8)}…</h2>
             <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${
               job.job_type === 'emergency'
                 ? 'bg-red-100 text-red-800'
@@ -37,7 +37,7 @@ export default async function JobDetailPage({ params }: Props) {
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Zone: {job.zone_name} · Priority {job.priority} ·
+            Zone: {job.zone_name ?? `Zone ${job.zone_id}`}{job.priority != null ? ` · Priority ${job.priority}` : ''} ·
             Created {format(new Date(job.created_at), 'dd MMM yyyy HH:mm')}
           </p>
         </div>
@@ -80,7 +80,7 @@ export default async function JobDetailPage({ params }: Props) {
           </CardHeader>
           <CardContent>
             <p className="text-sm font-medium">
-              {job.bins_collected}/{job.bins_total} collected · {job.bins_skipped} skipped
+              {job.bins_collected ?? 0}/{job.bins_total ?? job.bins_to_collect?.length ?? 0} collected · {job.bins_skipped ?? 0} skipped
             </p>
           </CardContent>
         </Card>

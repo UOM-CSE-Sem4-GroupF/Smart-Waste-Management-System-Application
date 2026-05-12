@@ -12,7 +12,7 @@ const BIN_STATUS_STYLES = {
 }
 
 export function JobDetailClient({ initial }: { initial: CollectionJobDetail }) {
-  const progress = useJobStore((s) => s.jobProgress.get(initial.id))
+  const progress = useJobStore((s) => s.jobProgress.get(initial.job_id))
 
   // Merge live state
   const state = (progress?.state ?? initial.state) as JobState
@@ -60,7 +60,7 @@ export function JobDetailClient({ initial }: { initial: CollectionJobDetail }) {
               </tr>
             </thead>
             <tbody>
-              {initial.bin_collections.map((bc) => {
+              {(initial.bin_collections ?? []).map((bc) => {
                 const raw = liveBinStatus[bc.bin_id] ?? bc.status
                 const displayStatus: 'collected' | 'skipped' | 'pending' =
                   raw === 'collected' ? 'collected' : raw === 'skipped' ? 'skipped' : 'pending'

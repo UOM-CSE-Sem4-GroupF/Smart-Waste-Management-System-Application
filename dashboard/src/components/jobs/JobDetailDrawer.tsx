@@ -7,7 +7,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { useJobStore } from '@/store/jobStore'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -40,10 +39,6 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
   const { data: session } = useSession()
   const open = !!jobId
 
-  // Store fallback: find the job in the seeded list when REST is unavailable
-  const storeJobsList = useJobStore((s) => s.jobsList)
-  const storeJob = storeJobsList.find((j) => j.id === jobId) ?? null
-
   const { data: restJob, isLoading: jobLoading } = useQuery({
     queryKey: ['job', jobId],
     queryFn: () => getJob(createClientApiClient(session?.accessToken), jobId!),
@@ -51,8 +46,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
     staleTime: 30_000,
   })
 
-  // Prefer REST response; fall back to store entry (cast so template's detail fields remain optional)
-  const job = (restJob ?? (storeJob as unknown as CollectionJobDetail | null))
+  const job = restJob ?? null
 
   const { data: progress } = useQuery({
     queryKey: ['job-progress', jobId],
@@ -77,7 +71,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
               <JobStateBadge state={job.state} />
               <JobTypeBadge type={job.job_type.toUpperCase()} />
               <span className="text-xs text-muted-foreground font-mono">
-                {job.id.slice(0, 8)}…
+                {job.job_id.slice(0, 8)}…
               </span>
             </div>
           )}
@@ -111,7 +105,7 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
 
               {/* Summary rows */}
               <div>
-                <DetailRow label="Zone" value={job.zone_name} />
+                <DetailRow label="Zone" value={job.zone_name ?? `Zone ${job.zone_id}`} />
                 <DetailRow
                   label="Vehicle"
                   value={
@@ -134,8 +128,8 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
                     ) : null
                   }
                 />
-                <DetailRow label="Bins total" value={job.bins_total} />
-                <DetailRow label="Bins collected" value={job.bins_collected} />
+                <DetailRow label="Bins total" value={job.bins_total ?? job.bins_to_collect?.length ?? 0} />
+                <DetailRow label="Bins collected" value={job.bins_collected ?? 0} />
                 <DetailRow
                   label="Planned weight"
                   value={job.planned_weight_kg ? `${job.planned_weight_kg} kg` : null}
