@@ -39,8 +39,8 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const pathname  = usePathname()
   const { data: session } = useSession()
-  // BYPASS: Default to supervisor role if no session is present
-  const role      = session?.user?.role ?? 'supervisor'
+  // BYPASS: Default to admin role if no session is present (dev/demo mode)
+  const role      = session?.user?.role ?? 'admin'
 
   const initials = session?.user?.name
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
