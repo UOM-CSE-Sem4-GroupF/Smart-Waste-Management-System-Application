@@ -19,7 +19,9 @@ export async function startKafkaConsumer(): Promise<void> {
     'waste.vehicle.location',
     async (value) => {
       try {
-        const event = JSON.parse(value.toString()) as VehicleLocationEvent;
+        const envelope = JSON.parse(value.toString());
+        // Flink wraps in { version, source_service, timestamp, payload: { vehicle_id, lat, lon, ... } }
+        const event = (envelope.payload ?? envelope) as VehicleLocationEvent;
         await handleVehicleLocation(event);
       } catch (e) {
         slog('ERROR', `Location handler error: ${e}`);
