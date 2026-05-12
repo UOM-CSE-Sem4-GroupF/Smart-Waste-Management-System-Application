@@ -216,11 +216,11 @@ export async function callORTools(
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown Error', detail: response.statusText }));
+      const errorData = await response.json().catch(() => ({ error: 'Unknown Error', detail: response.statusText })) as any;
       throw new Error(`Optimizer failed [${response.status}]: ${errorData.error} - ${errorData.detail}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     return {
       vehicle_id: data.vehicle_id,
