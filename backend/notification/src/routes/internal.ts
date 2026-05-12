@@ -24,6 +24,29 @@ export default async function internalRoutes(app: FastifyInstance) {
   });
 
 
+  // POST /internal/notify/job-initiated
+  // Called by orchestrator immediately after emergency job creation
+  app.post('/internal/notify/job-initiated', async (req) => {
+    const { job_id, job_type, zone_id, cluster_id, urgency_score, waste_category, message } = req.body as any;
+    const ts = new Date().toISOString();
+
+    const payload = {
+      job_id,
+      job_type,
+      zone_id,
+      cluster_id,
+      urgency_score,
+      waste_category,
+      message: message ?? `Emergency collection job initiated for cluster ${cluster_id}`,
+      timestamp: ts,
+    };
+
+    emitToRoom(`dashboard-zone-${zone_id}`, 'job:initiated', payload);
+    emitToRoom('dashboard-all', 'job:initiated', payload);
+
+    return { delivered: true, ts };
+  });
+
   // POST /internal/notify/job-assigned
   // Called by scheduler when driver is dispatched
   app.post<{ Body: JobAssignedBody }>('/internal/notify/job-assigned', async (req) => {

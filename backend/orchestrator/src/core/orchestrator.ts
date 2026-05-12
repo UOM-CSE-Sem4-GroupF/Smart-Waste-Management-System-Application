@@ -35,6 +35,17 @@ export async function executeEmergencyWorkflow(
   event: { bin_id: string; cluster_id: string; urgency_score: number; waste_category: string; zone_id: string },
 ): Promise<void> {
   try {
+    // Notify dashboard immediately — job has been initiated
+    await notifyDashboard('job-initiated', {
+      job_id:        job.job_id,
+      job_type:      'emergency',
+      zone_id:       event.zone_id,
+      cluster_id:    event.cluster_id,
+      urgency_score: event.urgency_score,
+      waste_category: event.waste_category,
+      message:       `Emergency collection job initiated — urgent bin detected in cluster ${event.cluster_id} (zone ${event.zone_id}, score ${event.urgency_score})`,
+    });
+
     // Step 1: Confirm bin urgency — get live cluster state from bin-status
     await transition(job, 'BIN_CONFIRMING');
 
