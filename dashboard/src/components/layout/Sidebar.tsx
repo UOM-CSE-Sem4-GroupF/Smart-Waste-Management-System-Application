@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronRight,
   Settings2,
+  DatabaseZap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
   { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
+  { icon: DatabaseZap,     label: 'System Mgmt', href: '/dashboard/system-management', roles: ['admin'] },
 ]
 
 export function Sidebar() {
