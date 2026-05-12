@@ -192,12 +192,16 @@ export async function getAllVehicles(params?: {
 }
 
 export async function assignDriverToVehicle(vehicle_id: string, driver_id: string | null): Promise<DbDriver | null> {
-  // Note: Since we no longer own the vehicles table, we only update the driver's current_vehicle_id in f3.
-  // We assume the Core API (F2) is updated separately or doesn't need to know about F3's active driver assignment.
   try {
     if (!driver_id) {
+       // Find the driver currently assigned to this vehicle
+       const assigned = await prisma.driver.findFirst({
+         where: { current_vehicle_id: vehicle_id }
+       });
+       if (!assigned) return null;
+       
        return await prisma.driver.update({
-         where: { current_vehicle_id: vehicle_id },
+         where: { id: assigned.id },
          data:  { current_vehicle_id: null },
        });
     }
@@ -210,6 +214,21 @@ export async function assignDriverToVehicle(vehicle_id: string, driver_id: strin
     if (e?.code === 'P2025') return null;
     throw e;
   }
+}
+
+// These are required for test compatibility but the scheduler no longer owns vehicle CRUD
+export async function getDriversByVehicleIds(ids: string[]): Promise<DbDriver[]> {
+  return prisma.driver.findMany({
+    where: { current_vehicle_id: { in: ids } }
+  });
+}
+
+export async function createVehicle(data: any): Promise<DbVehicle> {
+  throw new Error("Vehicle creation moved to Core API");
+}
+
+export async function updateVehicle(id: string, data: any): Promise<DbVehicle> {
+  throw new Error("Vehicle update moved to Core API");
 }
 
 // ── Bin collection records ─────────────────────────────────────────────────
