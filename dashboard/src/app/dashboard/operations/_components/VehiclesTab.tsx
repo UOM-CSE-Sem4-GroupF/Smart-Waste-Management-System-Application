@@ -7,6 +7,7 @@ import { Plus, Pencil, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { createClientApiClient } from '@/lib/api-client'
+import { getDrivers } from '@/lib/api/drivers'
 import { deactivateVehicle, getVehicles } from '@/lib/api/vehicles'
 import { VehicleFormDialog } from './VehicleFormDialog'
 import type { VehicleAsset } from '@/types'
@@ -28,15 +29,23 @@ export function VehiclesTab({ driverOptions }: Props) {
   const { data, isLoading } = useQuery<VehicleListResponse>({
     queryKey: ['vehicles'],
     queryFn: () => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       return getVehicles(api)
     },
-    enabled: !!session,
+  })
+
+  const { data: driversData } = useQuery({
+    queryKey: ['drivers'],
+    queryFn: () => {
+      const api = createClientApiClient(session?.accessToken)
+      return getDrivers(api)
+    },
+    enabled: driverOptions.length === 0,
   })
 
   const { mutate: doDeactivate, isPending: deactivating } = useMutation({
     mutationFn: (vehicleId: string) => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       return deactivateVehicle(api, vehicleId)
     },
     onSuccess: () => {
@@ -46,6 +55,9 @@ export function VehiclesTab({ driverOptions }: Props) {
   })
 
   const vehicles = data?.data ?? []
+  const availableDriverOptions = driverOptions.length > 0
+    ? driverOptions
+    : driversData?.data.map((driver) => ({ driver_id: driver.driver_id, name: driver.name })) ?? []
 
   return (
     <div className="space-y-4">
@@ -120,7 +132,7 @@ export function VehiclesTab({ driverOptions }: Props) {
         open={addOpen || editVehicle !== null}
         onClose={() => { setAddOpen(false); setEditVehicle(null) }}
         vehicle={editVehicle ?? undefined}
-        driverOptions={driverOptions}
+        driverOptions={availableDriverOptions}
       />
 
       <AlertDialog open={deactivate !== null} onOpenChange={(v) => { if (!v) setDeactivate(null) }}>

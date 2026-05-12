@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Bin, ZoneSummary, BinHistory, ZoneStatsPayload } from '@/types'
-import type { ActiveVehicle, VehiclePositionPayload } from '@/types'
+import type { ActiveVehicle, Driver, VehicleAsset, VehiclePositionPayload } from '@/types'
 import type { CollectionJobListItem } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,54 @@ export const MOCK_VEHICLES_REST: ActiveVehicle[] = [
   { vehicle_id: 'VEH-002', vehicle_type: 'compactor', driver_id: 'DRV-002', driver_name: 'Nimal Silva',    job_id: 'JOB-002', job_type: 'emergency', zone_id: 2, state: 'IN_PROGRESS', current_lat: 6.7913, current_lng: 79.8895, last_seen_at: new Date(NOW - 30_000).toISOString(),   cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, bins_collected: 5, bins_total: 7 },
   { vehicle_id: 'VEH-003', vehicle_type: 'mini_truck', driver_id: 'DRV-003', driver_name: 'Kasun Fernando', job_id: 'JOB-003', job_type: 'routine',   zone_id: 3, state: 'IN_PROGRESS', current_lat: 6.8006, current_lng: 79.8933, last_seen_at: new Date(NOW - 90_000).toISOString(),   cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  bins_collected: 1, bins_total: 6 },
 ]
+
+const MOCK_DRIVERS: Driver[] = [
+  { driver_id: 'DRV-001', name: 'Amal Perera',    driver_name: 'Amal Perera',    vehicle_id: 'LORRY-01', vehicle_type: 'large',  zone_id: 1, status: 'on_job',    phone: '+94 71 234 1001', email: 'amal.perera@swms.local',    license_no: 'B2-783421' },
+  { driver_id: 'DRV-002', name: 'Nimal Silva',    driver_name: 'Nimal Silva',    vehicle_id: 'LORRY-02', vehicle_type: 'large',  zone_id: 2, status: 'on_job',    phone: '+94 71 234 1002', email: 'nimal.silva@swms.local',    license_no: 'B2-783422' },
+  { driver_id: 'DRV-003', name: 'Kasun Fernando', driver_name: 'Kasun Fernando', vehicle_id: 'VAN-01',   vehicle_type: 'small',  zone_id: 3, status: 'available', phone: '+94 71 234 1003', email: 'kasun.fernando@swms.local', license_no: 'B1-552140' },
+  { driver_id: 'DRV-004', name: 'Dilini Jayasekara', driver_name: 'Dilini Jayasekara', vehicle_id: null, vehicle_type: null, zone_id: 1, status: 'off_duty', phone: '+94 71 234 1004', email: 'dilini.j@swms.local', license_no: 'B2-783424' },
+]
+
+const MOCK_VEHICLE_ASSETS: VehicleAsset[] = [
+  { vehicle_id: 'LORRY-01', vehicle_type: 'large',  capacity_kg: 15000, registration: 'WP-CAB-1041', status: 'dispatched', driver_id: 'DRV-001', driver_name: 'Amal Perera', active: true },
+  { vehicle_id: 'LORRY-02', vehicle_type: 'large',  capacity_kg: 15000, registration: 'WP-CAB-1142', status: 'dispatched', driver_id: 'DRV-002', driver_name: 'Nimal Silva', active: true },
+  { vehicle_id: 'VAN-01',   vehicle_type: 'small',  capacity_kg: 2500,  registration: 'WP-PG-6821',  status: 'available',  driver_id: 'DRV-003', driver_name: 'Kasun Fernando', active: true },
+  { vehicle_id: 'TRUCK-01', vehicle_type: 'medium', capacity_kg: 8000,  registration: 'WP-LB-2198',  status: 'available',  driver_id: null,      driver_name: null, active: true },
+  { vehicle_id: 'LORRY-03', vehicle_type: 'large',  capacity_kg: 15000, registration: 'WP-CAB-2055', status: 'maintenance', driver_id: null,      driver_name: null, active: true },
+]
+
+function syncVehicleDriverAssignment(vehicleId: string, driverId: string | null) {
+  const vehicle = MOCK_VEHICLE_ASSETS.find((item) => item.vehicle_id === vehicleId)
+  if (!vehicle) return
+
+  MOCK_DRIVERS.forEach((driver) => {
+    if (driver.vehicle_id === vehicleId) {
+      driver.vehicle_id = null
+      driver.vehicle_type = null
+    }
+  })
+
+  if (!driverId) {
+    vehicle.driver_id = null
+    vehicle.driver_name = null
+    return
+  }
+
+  const driver = MOCK_DRIVERS.find((item) => item.driver_id === driverId)
+  if (!driver) return
+
+  MOCK_VEHICLE_ASSETS.forEach((item) => {
+    if (item.driver_id === driverId) {
+      item.driver_id = null
+      item.driver_name = null
+    }
+  })
+
+  vehicle.driver_id = driver.driver_id
+  vehicle.driver_name = driver.name
+  driver.vehicle_id = vehicle.vehicle_id
+  driver.vehicle_type = vehicle.vehicle_type
+}
 
 export const MOCK_JOBS: CollectionJobListItem[] = [
   // Active jobs
@@ -400,7 +448,7 @@ export const handlers = [
   }),
 
   // GET /api/v1/vehicles/active
-  http.get('http://localhost:30080/api/v1/vehicles/active', () => {
+  http.get('*/api/v1/vehicles/active', () => {
     return HttpResponse.json({ vehicles: MOCK_VEHICLES_REST })
   }),
 
@@ -494,37 +542,103 @@ export const handlers = [
   }),
 
   // GET /api/v1/vehicles
-  http.get('http://localhost:30080/api/v1/vehicles', () => {
-    return HttpResponse.json({ data: [], total: 0 })
+  http.get('*/api/v1/vehicles', () => {
+    return HttpResponse.json({ data: MOCK_VEHICLE_ASSETS, total: MOCK_VEHICLE_ASSETS.length })
   }),
 
   // POST /api/v1/vehicles
-  http.post('http://localhost:30080/api/v1/vehicles', async ({ request }) => {
+  http.post('*/api/v1/vehicles', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
+    const driverId = body.driver_id ? String(body.driver_id) : null
+    const vehicle: VehicleAsset = {
+      vehicle_id:   String(body.vehicle_id ?? `VEH-${Date.now()}`),
+      vehicle_type: String(body.vehicle_type ?? 'medium'),
+      capacity_kg:  Number(body.capacity_kg ?? body.max_cargo_kg ?? 8000),
+      registration: String(body.registration ?? `TEMP-${Date.now()}`),
+      status:       (body.status as VehicleAsset['status']) ?? 'available',
+      active:       body.active === undefined ? true : Boolean(body.active),
+      driver_id:    null,
+      driver_name:  null,
+    }
+    MOCK_VEHICLE_ASSETS.push(vehicle)
+    syncVehicleDriverAssignment(vehicle.vehicle_id, driverId)
+    return HttpResponse.json(vehicle, { status: 201 })
   }),
 
   // PATCH /api/v1/vehicles/:vehicleId
-  http.patch('http://localhost:30080/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
+  http.patch('*/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
+    const vehicle = MOCK_VEHICLE_ASSETS.find((item) => item.vehicle_id === params.vehicleId)
+    if (!vehicle) return HttpResponse.json({ error: 'RESOURCE_NOT_FOUND' }, { status: 404 })
+
+    if (body.vehicle_type !== undefined) vehicle.vehicle_type = String(body.vehicle_type)
+    if (body.capacity_kg !== undefined || body.max_cargo_kg !== undefined) {
+      vehicle.capacity_kg = Number(body.capacity_kg ?? body.max_cargo_kg)
+    }
+    if (body.registration !== undefined) vehicle.registration = String(body.registration)
+    if (body.status !== undefined) vehicle.status = body.status as VehicleAsset['status']
+    if (body.active !== undefined) {
+      vehicle.active = Boolean(body.active)
+      if (!vehicle.active) vehicle.status = 'inactive'
+    }
+    if (body.driver_id !== undefined) {
+      syncVehicleDriverAssignment(vehicle.vehicle_id, body.driver_id ? String(body.driver_id) : null)
+    }
+
+    return HttpResponse.json(vehicle)
   }),
 
   // GET /api/v1/drivers
-  http.get('http://localhost:30080/api/v1/drivers', () => {
-    return HttpResponse.json({ data: [], total: 0 })
+  http.get('*/api/v1/drivers', () => {
+    return HttpResponse.json({ data: MOCK_DRIVERS, total: MOCK_DRIVERS.length })
   }),
 
   // POST /api/v1/drivers
-  http.post('http://localhost:30080/api/v1/drivers', async ({ request }) => {
+  http.post('*/api/v1/drivers', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
+    const driver: Driver = {
+      driver_id:    String(body.driver_id ?? `DRV-${Date.now()}`),
+      name:         String(body.name ?? 'New Driver'),
+      driver_name:  String(body.name ?? 'New Driver'),
+      zone_id:      Number(body.zone_id ?? 1),
+      vehicle_id:   null,
+      vehicle_type: null,
+      status:       'off_duty',
+      email:        body.email ? String(body.email) : undefined,
+      phone:        body.phone ? String(body.phone) : undefined,
+      license_no:   body.license_no ? String(body.license_no) : undefined,
+    }
+    MOCK_DRIVERS.push(driver)
+    if (body.vehicle_id) syncVehicleDriverAssignment(String(body.vehicle_id), driver.driver_id)
+    return HttpResponse.json(driver, { status: 201 })
   }),
 
   // PATCH /api/v1/drivers/:driverId
-  http.patch('http://localhost:30080/api/v1/drivers/:driverId', async ({ params, request }) => {
+  http.patch('*/api/v1/drivers/:driverId', async ({ params, request }) => {
     const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ driver_id: params.driverId, ...body })
+    const driver = MOCK_DRIVERS.find((item) => item.driver_id === params.driverId)
+    if (!driver) return HttpResponse.json({ error: 'RESOURCE_NOT_FOUND' }, { status: 404 })
+
+    if (body.name !== undefined) {
+      driver.name = String(body.name)
+      driver.driver_name = driver.name
+    }
+    if (body.zone_id !== undefined) driver.zone_id = Number(body.zone_id)
+    if (body.status !== undefined) driver.status = body.status as Driver['status']
+    if (body.active === false) driver.status = 'off_duty'
+    if (body.email !== undefined) driver.email = String(body.email)
+    if (body.phone !== undefined) driver.phone = String(body.phone)
+    if (body.license_no !== undefined) driver.license_no = String(body.license_no)
+    if (body.vehicle_id !== undefined) {
+      if (!body.vehicle_id && driver.vehicle_id) {
+        syncVehicleDriverAssignment(driver.vehicle_id, null)
+      }
+      if (body.vehicle_id) {
+        syncVehicleDriverAssignment(String(body.vehicle_id), driver.driver_id)
+      }
+    }
+
+    return HttpResponse.json(driver)
   }),
 
   // GET /api/v1/zones

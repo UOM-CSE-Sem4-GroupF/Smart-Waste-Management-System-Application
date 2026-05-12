@@ -82,7 +82,7 @@ export function VehicleFormDialog({ open, onClose, vehicle, driverOptions }: Pro
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: async (values: FormValues) => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       const payload = {
         ...values,
         driver_id: values.driver_id || null,

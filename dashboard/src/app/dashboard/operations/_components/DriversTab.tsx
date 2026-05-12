@@ -28,15 +28,14 @@ export function DriversTab({ zoneOptions, vehicleOptions }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ['drivers'],
     queryFn: () => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       return getDrivers(api)
     },
-    enabled: !!session,
   })
 
   const { mutate: doDeactivate, isPending: deactivating } = useMutation({
     mutationFn: (driverId: string) => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       return deactivateDriver(api, driverId)
     },
     onSuccess: () => {
