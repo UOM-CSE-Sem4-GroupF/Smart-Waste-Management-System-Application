@@ -1,10 +1,12 @@
 import type { KyInstance } from 'ky'
 
 export interface Zone {
-  id:         number
-  name:       string
+  id?:        number
+  name?:      string
+  zone_id?:   string | number
+  zone_name?: string
   district?:  string
-  active:     boolean
+  active?:    boolean
 }
 
 export interface ZoneListResponse {
