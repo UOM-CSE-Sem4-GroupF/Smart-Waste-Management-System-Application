@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, AlertTriangle, TriangleAlert, X } from 'lucide-react'
+import { Bell, AlertTriangle, TriangleAlert, X, Zap } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAlertStore } from '@/store/alertStore'
 import type { Alert } from '@/store/alertStore'
@@ -12,12 +12,14 @@ const ALERT_ICON: Record<Alert['type'], React.ElementType> = {
   urgent:    Bell,
   escalated: AlertTriangle,
   deviation: TriangleAlert,
+  initiated: Zap,
 }
 
 const ALERT_STYLE: Record<Alert['type'], string> = {
   urgent:    'border-rose-100 bg-rose-50/30 text-rose-700 dark:border-rose-900/30 dark:bg-rose-950/20 dark:text-rose-400',
   escalated: 'border-orange-100 bg-orange-50/30 text-orange-700 dark:border-orange-900/30 dark:bg-orange-950/20 dark:text-orange-400',
   deviation: 'border-amber-100 bg-amber-50/30 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-400',
+  initiated: 'border-blue-100 bg-blue-50/30 text-blue-700 dark:border-blue-900/30 dark:bg-blue-950/20 dark:text-blue-400',
 }
 
 interface AlertFeedProps {

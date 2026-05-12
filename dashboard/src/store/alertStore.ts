@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export interface Alert {
   id:           string
-  type:         'urgent' | 'escalated' | 'deviation'
+  type:         'urgent' | 'escalated' | 'deviation' | 'initiated'
   bin_id?:      string
   job_id?:      string
   zone_id?:     number

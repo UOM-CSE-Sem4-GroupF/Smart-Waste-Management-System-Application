@@ -2,7 +2,7 @@
 import { useAlertStore } from '@/store/alertStore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, Check, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Trash2, Zap } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
 
@@ -10,12 +10,14 @@ const TYPE_LABEL: Record<string, string> = {
   urgent:    'Urgent',
   escalated: 'Escalated',
   deviation: 'Deviation',
+  initiated: 'Job Initiated',
 }
 
 const TYPE_COLOUR: Record<string, string> = {
   urgent:    'text-orange-500',
   escalated: 'text-red-500',
   deviation: 'text-yellow-500',
+  initiated: 'text-blue-500',
 }
 
 export function NotificationList() {
@@ -67,9 +69,13 @@ export function NotificationList() {
                   !alert.acknowledged && 'bg-accent/30',
                 )}
               >
-                <AlertTriangle
-                  className={cn('h-4 w-4 mt-0.5 shrink-0', TYPE_COLOUR[alert.type] ?? 'text-muted-foreground')}
-                />
+                {alert.type === 'initiated' ? (
+                  <Zap className={cn('h-4 w-4 mt-0.5 shrink-0', TYPE_COLOUR[alert.type])} />
+                ) : (
+                  <AlertTriangle
+                    className={cn('h-4 w-4 mt-0.5 shrink-0', TYPE_COLOUR[alert.type] ?? 'text-muted-foreground')}
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="font-medium">{TYPE_LABEL[alert.type] ?? alert.type}</span>

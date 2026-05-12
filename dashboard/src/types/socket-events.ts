@@ -78,3 +78,14 @@ export interface AlertEscalatedEvent {
   message:  string
   reason:   string
 }
+
+export interface JobInitiatedEvent {
+  job_id:        string
+  job_type:      string
+  zone_id:       number | string
+  cluster_id:    string
+  urgency_score: number
+  waste_category: string
+  message:       string
+  timestamp:     string
+}

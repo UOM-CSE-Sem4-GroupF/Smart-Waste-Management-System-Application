@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { useJobStore } from '@/store/jobStore'
-import type { JobCompletedEvent } from '@/types/socket-events'
+import type { JobCompletedEvent, JobInitiatedEvent } from '@/types/socket-events'
 
 const SocketContext = createContext<Socket | null>(null)
 
@@ -50,6 +50,24 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     sock.on('job:progress',     (payload) => updateJobProgress(payload))
 
     // ── Job lifecycle events (from Orchestrator via HTTP) ──────
+    sock.on('job:initiated', (e: JobInitiatedEvent) => {
+      const zoneId = typeof e.zone_id === 'number' ? e.zone_id : Number(e.zone_id)
+      addAlert({ type: 'initiated', job_id: e.job_id, zone_id: zoneId, message: e.message })
+      addJob({
+        job_id:           e.job_id,
+        job_type:         e.job_type as 'emergency',
+        zone_id:          zoneId,
+        zone_name:        String(e.zone_id),
+        clusters:         [e.cluster_id],
+        vehicle_id:       '',
+        driver_id:        null,
+        total_bins:       0,
+        planned_weight_kg: 0,
+        priority:         1,
+        route:            [],
+        state:            'CREATED',
+      })
+    })
     sock.on('job:created',   (payload) => addJob(payload))
     sock.on('job:completed', (e: JobCompletedEvent) => {
       updateJob(e.job_id, { state: 'COMPLETED', actual_weight_kg: e.actual_weight_kg })
@@ -69,6 +87,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       sock.off('alert:urgent')
       sock.off('vehicle:position')
       sock.off('job:progress')
+      sock.off('job:initiated')
       sock.off('job:created')
       sock.off('job:completed')
       sock.off('job:cancelled')
