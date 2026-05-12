@@ -57,6 +57,12 @@ export interface BinProcessedEvent {
     fill_rate_pct_per_hour: number;
     predicted_full_at: string | null;
     battery_level_pct: number;
+    latitude?: number;
+    longitude?: number;
+    cluster_id?: string;
+    zone_id?: number;
+    waste_category?: string;
+    volume_litres?: number;
   };
 }
 

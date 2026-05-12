@@ -1,4 +1,3 @@
-import { Kafka, logLevel, Consumer } from 'kafkajs';
 import pino from 'pino';
 import {
   BinProcessedEvent,
@@ -21,32 +20,6 @@ const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
 });
 
-function buildKafka() {
-  const brokers = (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092')
-    .split(',')
-    .map((b) => b.trim());
-  const user = process.env.KAFKA_USER;
-  const pass = process.env.KAFKA_PASS;
-
-  return new Kafka({
-    clientId: 'bin-status-service',
-    brokers,
-    logLevel: logLevel.ERROR,
-    // Fix: Expand short hostnames for cross-namespace resolution
-    socketFactory: (options: any) => {
-      const { host } = options;
-      const fqdnHost = (host.includes('.') || host === 'localhost') 
-        ? host 
-        : `${host}.messaging.svc.cluster.local`;
-      return require('kafkajs/src/network/socketFactory')()({ ...options, host: fqdnHost });
-    },
-    ...(user && pass
-      ? {
-          sasl: { mechanism: 'scram-sha-256' as const, username: user, password: pass },
-        }
-      : {}),
-  });
-}
 
 /**
  * Process a single bin.processed message
@@ -103,11 +76,15 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
     }
 
     // Step 5: Enrich payload
+    // Coordinates come from Flink (latitude/longitude) — fall back to metadata if absent
+    const lat = payload.latitude  ?? meta?.lat ?? 0;
+    const lng = payload.longitude ?? meta?.lng ?? 0;
+
     const enriched: BinUpdatePayload = {
       bin_id,
-      cluster_id: meta?.cluster_id ?? 'CLUSTER-001',
+      cluster_id: payload.cluster_id ?? meta?.cluster_id ?? 'CLUSTER-001',
       cluster_name: meta?.cluster_name ?? 'Main Depot',
-      zone_id: meta?.zone_id ?? 1,
+      zone_id: payload.zone_id ?? meta?.zone_id ?? 1,
       fill_level_pct: payload.fill_level_pct,
       status,
       urgency_score: payload.urgency_score,
@@ -120,8 +97,8 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
       has_active_job: hasActiveJob,
       collection_triggered,
       last_collected_at: null,
-      lat: meta?.lat ?? 0,
-      lng: meta?.lng ?? 0,
+      lat,
+      lng,
     };
 
     // Step 6: Publish to waste.bin.dashboard.updates
