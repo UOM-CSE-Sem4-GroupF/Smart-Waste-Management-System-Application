@@ -61,7 +61,7 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: async (values: FormValues) => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       if (isEdit) {
         const { driver_id, ...rest } = values
         return updateDriver(api, driver_id, rest)

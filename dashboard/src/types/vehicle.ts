@@ -43,21 +43,23 @@ export interface VehicleAsset {
   vehicle_type: string
   capacity_kg:  number
   registration: string
-  year:         number
-  status:       'active' | 'inactive' | 'maintenance'
+  year?:        number | null
+  status:       'available' | 'dispatched' | 'maintenance' | 'decommissioned' | 'inactive'
+  active?:      boolean
+  driver_id?:   string | null
+  driver_name?: string | null
 }
 
 export interface Driver {
   driver_id:    string
   name:         string
   driver_name?: string  // alias kept for backward compat
-  vehicle_id:   string
-  vehicle_type: string
+  vehicle_id:   string | null
+  vehicle_type: string | null
   zone_id:      number
-  status:       'available' | 'on_job' | 'off_duty'
+  status:       'available' | 'on_job' | 'off_duty' | 'on_break'
   // Extended fields for Operations CRUD
   email?:       string
   phone?:       string
   license_no?:  string
 }
-

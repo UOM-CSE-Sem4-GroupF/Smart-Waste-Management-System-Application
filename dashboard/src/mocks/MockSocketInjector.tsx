@@ -3,27 +3,21 @@ import { useEffect, useRef } from 'react'
 import { useMapStore } from '@/store/mapStore'
 import { useAlertStore } from '@/store/alertStore'
 import { useJobStore } from '@/store/jobStore'
-import { MOCK_VEHICLE_POSITIONS, MOCK_ZONE_STATS, MOCK_JOBS } from './handlers'
+import { MOCK_ZONE_STATS, MOCK_JOBS } from './handlers'
 
 const IS_DEV = process.env.NODE_ENV === 'development'
 
 export function MockSocketInjector() {
   const setJobs         = useJobStore((s) => s.setJobs)
   const setJobsList     = useJobStore((s) => s.setJobsList)
-  const updateVehicle   = useMapStore((s) => s.updateVehicle)
   const updateZoneStats = useMapStore((s) => s.updateZoneStats)
   const addAlert        = useAlertStore((s) => s.addAlert)
 
-  // Track mutable vehicle positions between ticks without causing re-renders
-  const vehicleOffsets = useRef(MOCK_VEHICLE_POSITIONS.map((v) => ({ lat: v.lat, lng: v.lng })))
-
-  // Seed vehicles and zone stats once on mount
-  // (bin seeding removed — map now uses real bin data fetched from bin-status service)
+  // Seed zone stats and jobs once on mount
   useEffect(() => {
     if (!IS_DEV) return
-    // MOCK_BINS seed unwired — keep data in handlers.ts for reference
-    MOCK_VEHICLE_POSITIONS.forEach((v) => updateVehicle(v))
     MOCK_ZONE_STATS.forEach((z) => updateZoneStats(z))
+    
     // Seed job store — maps CollectionJobListItem → CollectionJob shape (for analytics charts)
     setJobs(MOCK_JOBS.map((j) => ({
       job_id:            j.id,
@@ -50,24 +44,6 @@ export function MockSocketInjector() {
 
   useEffect(() => {
     if (!IS_DEV) return
-    // Bin fill-level interval unwired — real updates come via socket bin:update events
-
-    // --- Vehicle position updates every 5 s ---
-    const vehicleInterval = setInterval(() => {
-      MOCK_VEHICLE_POSITIONS.forEach((v, i) => {
-        // Small random walk
-        vehicleOffsets.current[i].lat += (Math.random() - 0.5) * 0.0008
-        vehicleOffsets.current[i].lng += (Math.random() - 0.5) * 0.0008
-
-        updateVehicle({
-          ...v,
-          lat: vehicleOffsets.current[i].lat,
-          lng: vehicleOffsets.current[i].lng,
-          speed_kmh: Math.round(Math.random() * 35 + 5),
-          heading_degrees: Math.round(Math.random() * 360),
-        })
-      })
-    }, 5_000)
 
     // --- Random alerts every 30 s ---
     const MOCK_ZONE_IDS = [1, 2, 3]
@@ -87,10 +63,10 @@ export function MockSocketInjector() {
     }, 30_000)
 
     return () => {
-      clearInterval(vehicleInterval)
       clearInterval(alertInterval)
     }
-  }, [updateVehicle, addAlert])
+  }, [addAlert])
 
   return null
 }
+

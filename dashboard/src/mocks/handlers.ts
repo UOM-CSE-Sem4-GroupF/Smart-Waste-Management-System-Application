@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Bin, ZoneSummary, BinHistory, ZoneStatsPayload } from '@/types'
-import type { ActiveVehicle, VehiclePositionPayload } from '@/types'
+import type { ActiveVehicle, Driver, VehicleAsset, VehiclePositionPayload } from '@/types'
 import type { CollectionJobListItem } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -37,17 +37,8 @@ export const MOCK_BINS: Bin[] = [
   { bin_id: 'BIN-020', cluster_id: 'CLU-I', cluster_name: 'Uyanwatta West',    zone_id: 3, zone_name: 'Uyanwatta',      lat: 6.7984, lng: 79.8957, address: '61 Panadura Road',        fill_level_pct: 68, status: 'monitor',  urgency_score: 0.68, estimated_weight_kg: 34.0, waste_category: 'food_waste', waste_category_colour: '#f97316', predicted_full_at: new Date(NOW + 7 * 3600_000).toISOString(),  battery_level_pct: 72, last_reading_at: new Date(NOW - 750_000).toISOString(),   last_collected_at: new Date(NOW - 42 * 3600_000).toISOString(), has_active_job: false },
 ]
 
-export const MOCK_VEHICLE_POSITIONS: VehiclePositionPayload[] = [
-  { vehicle_id: 'VEH-001', driver_id: 'DRV-001', lat: 6.7978, lng: 79.8860, speed_kmh: 22, heading_degrees: 45,  job_id: 'JOB-001', zone_id: 1, current_cluster: 'CLU-B', next_cluster: 'CLU-C', bins_collected: 3, bins_total: 7, cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, weight_limit_warning: false },
-  { vehicle_id: 'VEH-002', driver_id: 'DRV-002', lat: 6.7913, lng: 79.8895, speed_kmh: 18, heading_degrees: 180, job_id: 'JOB-002', zone_id: 2, current_cluster: 'CLU-E', next_cluster: 'CLU-F', bins_collected: 5, bins_total: 7, cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, weight_limit_warning: false },
-  { vehicle_id: 'VEH-003', driver_id: 'DRV-003', lat: 6.8006, lng: 79.8933, speed_kmh: 0,  heading_degrees: 270, job_id: 'JOB-003', zone_id: 3, current_cluster: 'CLU-G', next_cluster: 'CLU-H', bins_collected: 1, bins_total: 6, cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  weight_limit_warning: false },
-]
+// Vehicle and Driver mock data removed
 
-export const MOCK_VEHICLES_REST: ActiveVehicle[] = [
-  { vehicle_id: 'VEH-001', vehicle_type: 'compactor', driver_id: 'DRV-001', driver_name: 'Amal Perera',    job_id: 'JOB-001', job_type: 'routine',   zone_id: 1, state: 'IN_PROGRESS', current_lat: 6.7978, current_lng: 79.8860, last_seen_at: new Date(NOW - 60_000).toISOString(),   cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, bins_collected: 3, bins_total: 7 },
-  { vehicle_id: 'VEH-002', vehicle_type: 'compactor', driver_id: 'DRV-002', driver_name: 'Nimal Silva',    job_id: 'JOB-002', job_type: 'emergency', zone_id: 2, state: 'IN_PROGRESS', current_lat: 6.7913, current_lng: 79.8895, last_seen_at: new Date(NOW - 30_000).toISOString(),   cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, bins_collected: 5, bins_total: 7 },
-  { vehicle_id: 'VEH-003', vehicle_type: 'mini_truck', driver_id: 'DRV-003', driver_name: 'Kasun Fernando', job_id: 'JOB-003', job_type: 'routine',   zone_id: 3, state: 'IN_PROGRESS', current_lat: 6.8006, current_lng: 79.8933, last_seen_at: new Date(NOW - 90_000).toISOString(),   cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  bins_collected: 1, bins_total: 6 },
-]
 
 export const MOCK_JOBS: CollectionJobListItem[] = [
   // Active jobs
@@ -250,10 +241,8 @@ export const handlers = [
     return HttpResponse.json(job)
   }),
 
-  // GET /api/v1/vehicles/active
-  http.get('http://localhost:30080/api/v1/vehicles/active', () => {
-    return HttpResponse.json({ vehicles: MOCK_VEHICLES_REST })
-  }),
+  // Active vehicles handler removed
+
 
   // GET /api/v1/ml/waste-generation
   http.get('http://localhost:30080/api/v1/ml/waste-generation', () => {
@@ -344,39 +333,8 @@ export const handlers = [
     return HttpResponse.json({ bin_id: params.binId, ...body })
   }),
 
-  // GET /api/v1/vehicles
-  http.get('http://localhost:30080/api/v1/vehicles', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
+  // Vehicle and Driver handlers removed — now calling real backend services
 
-  // POST /api/v1/vehicles
-  http.post('http://localhost:30080/api/v1/vehicles', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/vehicles/:vehicleId
-  http.patch('http://localhost:30080/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
-  }),
-
-  // GET /api/v1/drivers
-  http.get('http://localhost:30080/api/v1/drivers', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
-
-  // POST /api/v1/drivers
-  http.post('http://localhost:30080/api/v1/drivers', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/drivers/:driverId
-  http.patch('http://localhost:30080/api/v1/drivers/:driverId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ driver_id: params.driverId, ...body })
-  }),
 
   // GET /api/v1/zones
   http.get('http://localhost:30080/api/v1/zones', () => {

@@ -20,17 +20,24 @@ export interface CreateDriverPayload {
 export type UpdateDriverPayload = Partial<Omit<CreateDriverPayload, 'driver_id'>>
 
 export async function getDrivers(api: KyInstance, params?: { zone_id?: number; limit?: number; offset?: number }): Promise<DriverListResponse> {
-  return api.get('api/v1/drivers', { searchParams: params as Record<string, string | number> }).json()
+  const res = await api.get('api/v1/drivers', { searchParams: params as Record<string, string | number> }).json<DriverListResponse>()
+  console.log('[API] getDrivers payload:', res)
+  return res
 }
 
 export async function createDriver(api: KyInstance, payload: CreateDriverPayload): Promise<Driver> {
-  return api.post('api/v1/drivers', { json: payload }).json()
+  const res = await api.post('api/v1/drivers', { json: payload }).json<Driver>()
+  console.log('[API] createDriver payload:', res)
+  return res
 }
 
 export async function updateDriver(api: KyInstance, driverId: string, payload: UpdateDriverPayload): Promise<Driver> {
-  return api.patch(`api/v1/drivers/${driverId}`, { json: payload }).json()
+  const res = await api.patch(`api/v1/drivers/${driverId}`, { json: payload }).json<Driver>()
+  console.log('[API] updateDriver payload:', res)
+  return res
 }
 
 export async function deactivateDriver(api: KyInstance, driverId: string): Promise<void> {
+  console.log('[API] deactivateDriver calling for:', driverId)
   await api.patch(`api/v1/drivers/${driverId}`, { json: { active: false } })
 }
