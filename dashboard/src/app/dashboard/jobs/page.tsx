@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import { useJobs } from '@/hooks/useJobs'
 import { useJobStore } from '@/store/jobStore'
-import { cancelJob } from '@/lib/api/jobs'
+import { cancelJob, createJob } from '@/lib/api/jobs'
 import { createClientApiClient } from '@/lib/api-client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -131,12 +131,25 @@ function JobList({
   )
 }
 
+const WASTE_CATEGORIES = [
+  'general', 'paper', 'plastic', 'glass', 'food_waste', 'e_waste', 'hazardous',
+]
+
 export default function JobsPage() {
   const { data: session }     = useSession()
   const queryClient           = useQueryClient()
   const [cancelTarget, setCancelTarget] = useState<string | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelError,  setCancelError]  = useState<string | null>(null)
+
+  // Create job dialog state
+  const [createOpen,    setCreateOpen]    = useState(false)
+  const [createJobType, setCreateJobType] = useState<'emergency' | 'routine'>('emergency')
+  const [createZone,    setCreateZone]    = useState('')
+  const [createCategory,setCreateCategory] = useState('general')
+  const [createUrgency, setCreateUrgency] = useState(85)
+  const [createBinIds,  setCreateBinIds]  = useState('')
+  const [createError,   setCreateError]   = useState<string | null>(null)
 
   const { mutate: doCancel, isPending } = useMutation({
     mutationFn: (jobId: string) =>
@@ -150,9 +163,38 @@ export default function JobsPage() {
     onError: (e: Error) => setCancelError(e.message),
   })
 
+  const { mutate: doCreate, isPending: isCreating } = useMutation({
+    mutationFn: () => {
+      const bin_ids = createBinIds
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+      return createJob(createClientApiClient(session?.accessToken), {
+        job_type:      createJobType,
+        zone_id:       createZone.trim(),
+        waste_category: createCategory,
+        urgency_score: createJobType === 'emergency' ? createUrgency : undefined,
+        bin_ids:       bin_ids.length > 0 ? bin_ids : undefined,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      setCreateOpen(false)
+      setCreateZone('')
+      setCreateBinIds('')
+      setCreateError(null)
+    },
+    onError: (e: Error) => setCreateError(e.message),
+  })
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
+        <Button onClick={() => { setCreateOpen(true); setCreateError(null) }}>
+          + New Job
+        </Button>
+      </div>
 
       <Tabs defaultValue="active">
         <TabsList>
@@ -181,6 +223,107 @@ export default function JobsPage() {
           <JobList filter={{ state: CANCELLED_STATES.join(',') }} />
         </TabsContent>
       </Tabs>
+
+      {/* Create Job dialog */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) setCreateOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create collection job</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+
+            {/* Job type */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Job type</label>
+              <div className="flex gap-2">
+                {(['emergency', 'routine'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setCreateJobType(t)}
+                    className={`rounded-md px-3 py-1.5 text-sm capitalize border transition-colors ${
+                      createJobType === t
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'border-border text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Zone ID */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Zone ID <span className="text-red-500">*</span></label>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+                placeholder="e.g. zone-1 or 1"
+                value={createZone}
+                onChange={e => setCreateZone(e.target.value)}
+              />
+            </div>
+
+            {/* Waste category */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Waste category</label>
+              <select
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+                value={createCategory}
+                onChange={e => setCreateCategory(e.target.value)}
+              >
+                {WASTE_CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Urgency score — emergency only */}
+            {createJobType === 'emergency' && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Urgency score (80–100)</label>
+                <input
+                  type="number"
+                  min={80}
+                  max={100}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+                  value={createUrgency}
+                  onChange={e => setCreateUrgency(Number(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The job will be auto-cancelled if no bin in this zone currently has urgency ≥ 80.
+                </p>
+              </div>
+            )}
+
+            {/* Bin IDs (optional) */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Bin IDs <span className="text-muted-foreground">(optional, comma-separated)</span></label>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
+                placeholder="BIN-001, BIN-002"
+                value={createBinIds}
+                onChange={e => setCreateBinIds(e.target.value)}
+              />
+            </div>
+
+            {createError && (
+              <p className="text-xs text-red-600">{createError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              disabled={!createZone.trim() || isCreating}
+              onClick={() => doCreate()}
+            >
+              {isCreating ? 'Creating…' : 'Create job'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancel confirmation dialog */}
       <Dialog open={cancelTarget !== null} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
