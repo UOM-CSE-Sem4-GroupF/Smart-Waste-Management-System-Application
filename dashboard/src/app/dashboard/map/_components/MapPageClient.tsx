@@ -19,25 +19,25 @@ const DashboardMap = dynamic(
 
 function toMapBin(bin: HierarchyBin): BinUpdatePayload {
   return {
-    bin_id:                bin.bin_id,
-    cluster_id:            bin.cluster_id,
-    cluster_name:          bin.cluster_name,
-    zone_id:               bin.zone_id,
+    bin_id: bin.bin_id,
+    cluster_id: bin.cluster_id,
+    cluster_name: bin.cluster_name,
+    zone_id: bin.zone_id,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    waste_category:        bin.waste_category as any,
+    waste_category: bin.waste_category as any,
     waste_category_colour: bin.waste_category_colour,
-    fill_level_pct:        bin.fill_level_pct ?? 0,
-    status:                bin.status,
-    urgency_score:         bin.urgency_score,
-    estimated_weight_kg:   bin.estimated_weight_kg ?? 0,
-    battery_level_pct:     bin.battery_level_pct ?? 100,
-    predicted_full_at:     bin.predicted_full_at,
-    last_collected_at:     bin.last_collected_at,
+    fill_level_pct: bin.fill_level_pct ?? 0,
+    status: bin.status,
+    urgency_score: bin.urgency_score,
+    estimated_weight_kg: bin.estimated_weight_kg ?? 0,
+    battery_level_pct: bin.battery_level_pct ?? 100,
+    predicted_full_at: bin.predicted_full_at,
+    last_collected_at: bin.last_collected_at,
     fill_rate_pct_per_hour: 0,
-    has_active_job:        false,
-    collection_triggered:  false,
-    lat:                   bin.lat,
-    lng:                   bin.lng,
+    has_active_job: false,
+    collection_triggered: false,
+    lat: bin.lat,
+    lng: bin.lng,
   }
 }
 
@@ -49,38 +49,50 @@ export function MapPageClient({ initialBins }: MapPageClientProps) {
   const { data: session } = useSession()
   const setBins = useMapStore(s => s.setBins)
 
-  // 1. Fetch Bins and Clusters in parallel
-  const { data: binsData, isLoading: isLoadingBins } = useQuery({
-    queryKey: ['bins-map-initial'],
+  // Fetch Bins and Clusters in parallel; re-fires when token becomes available
+  const { data: binsData, isLoading: isLoadingBins, error: binsError } = useQuery({
+    queryKey: ['bins-map-initial', session?.accessToken ?? 'unauthenticated'],
     queryFn: async () => {
+      console.log('[MapPageClient] fetching bins, token present:', !!session?.accessToken)
       const api = createClientApiClient(session?.accessToken)
       const res = await api.get('data-analysis/api/v1/bins', { searchParams: { limit: 500 } }).json<CoreListResponse<CoreBin>>()
+      console.log('[MapPageClient] bins response:', res.data?.length, 'bins, first:', res.data?.[0])
       return res.data
     },
-    enabled: !!session?.accessToken,
+    staleTime: 60_000,
   })
 
-  const { data: clustersData } = useQuery({
-    queryKey: ['clusters-map-initial'],
+  const { data: clustersData, error: clustersError } = useQuery({
+    queryKey: ['clusters-map-initial', session?.accessToken ?? 'unauthenticated'],
     queryFn: async () => {
       const api = createClientApiClient(session?.accessToken)
       const res = await api.get('data-analysis/api/v1/clusters', { searchParams: { limit: 200 } }).json<CoreListResponse<CoreCluster>>()
+      console.log('[MapPageClient] clusters response:', res.data?.length, 'clusters, first:', res.data?.[0])
       return res.data
     },
-    enabled: !!session?.accessToken,
+    staleTime: 60_000,
   })
 
-  // 2. Merge and sync with MapStore
+  useEffect(() => {
+    if (binsError) console.error('[MapPageClient] bins fetch error:', binsError)
+    if (clustersError) console.error('[MapPageClient] clusters fetch error:', clustersError)
+  }, [binsError, clustersError])
+
+  // Merge cluster coordinates into bins that have lat=0
   const mergedBins = useMemo(() => {
-    if (!binsData) return initialBins
+    if (!binsData) {
+      console.log('[MapPageClient] no binsData yet, showing initialBins:', initialBins.length)
+      return initialBins
+    }
 
     const clusterCoords = new Map(
       (clustersData || [])
         .filter(c => Number(c.lat) !== 0 && Number(c.lng) !== 0)
         .map(c => [c.id, { lat: Number(c.lat), lng: Number(c.lng) }])
     )
+    console.log('[MapPageClient] clusterCoords with real coords:', clusterCoords.size)
 
-    return binsData.map(raw => {
+    const result = binsData.map(raw => {
       const bin = normaliseBin(raw)
       if (!bin.lat && !bin.lng) {
         const fallback = clusterCoords.get(raw.cluster_id)
@@ -88,6 +100,10 @@ export function MapPageClient({ initialBins }: MapPageClientProps) {
       }
       return toMapBin(bin)
     })
+
+    const withCoords = result.filter(b => b.lat && b.lng).length
+    console.log('[MapPageClient] mergedBins:', result.length, '| with coords:', withCoords, '| sample:', result[0] && { bin_id: result[0].bin_id, lat: result[0].lat, lng: result[0].lng, status: result[0].status })
+    return result
   }, [binsData, clustersData, initialBins])
 
   useEffect(() => {
