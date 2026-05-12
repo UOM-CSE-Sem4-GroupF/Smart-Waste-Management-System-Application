@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSession } from 'next-auth/react'
+import type { KyInstance } from 'ky'
 import { Database, Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight, AlertCircle } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
@@ -11,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { createClientApiClient } from '@/lib/api-client'
 import {
   type Row,
   listWasteCategories, createWasteCategory, updateWasteCategory, deleteWasteCategory,
@@ -49,10 +52,10 @@ interface TableDef {
   description: string
   primaryKey: string
   columns: ColumnDef[]
-  fetch: (params?: Record<string, string | number>) => Promise<{ data: Row[]; total: number; page: number; pages: number }>
-  update?: (id: string, payload: Row) => Promise<unknown>
-  create?: (payload: Row) => Promise<unknown>
-  remove?: (id: string) => Promise<unknown>
+  fetch: (api: KyInstance, params?: Record<string, string | number>) => Promise<{ data: Row[]; total: number; page: number; pages: number }>
+  update?: (api: KyInstance, id: string, payload: Row) => Promise<unknown>
+  create?: (api: KyInstance, payload: Row) => Promise<unknown>
+  remove?: (api: KyInstance, id: string) => Promise<unknown>
 }
 
 // ── Table definitions ─────────────────────────────────────────────────────────
@@ -67,8 +70,8 @@ const TABLES: TableDef[] = [
     primaryKey: 'id',
     fetch: listWasteCategories,
     create: createWasteCategory,
-    update: (id, p) => updateWasteCategory(id, p),
-    remove: (id) => deleteWasteCategory(id),
+    update: updateWasteCategory,
+    remove: deleteWasteCategory,
     columns: [
       { key: 'id', label: 'ID', type: 'number', primaryKey: true },
       { key: 'name', label: 'Name', type: 'text', editable: true },
@@ -89,8 +92,8 @@ const TABLES: TableDef[] = [
     primaryKey: 'id',
     fetch: listCityZones,
     create: createCityZone,
-    update: (id, p) => updateCityZone(id, p),
-    remove: (id) => deleteCityZone(id),
+    update: updateCityZone,
+    remove: deleteCityZone,
     columns: [
       { key: 'id', label: 'ID', type: 'number', primaryKey: true },
       { key: 'name', label: 'Name', type: 'text', editable: true },
@@ -112,8 +115,8 @@ const TABLES: TableDef[] = [
     primaryKey: 'id',
     fetch: listVehicles,
     create: createVehicle,
-    update: (id, p) => updateVehicle(id, p),
-    remove: (id) => deleteVehicle(id),
+    update: updateVehicle,
+    remove: deleteVehicle,
     columns: [
       { key: 'id', label: 'ID', type: 'text', primaryKey: true, editable: true },
       { key: 'registration', label: 'Registration', type: 'text', editable: true },
@@ -136,8 +139,8 @@ const TABLES: TableDef[] = [
     primaryKey: 'id',
     fetch: listClusters,
     create: createCluster,
-    update: (id, p) => updateCluster(id, p),
-    remove: (id) => deleteCluster(id),
+    update: updateCluster,
+    remove: deleteCluster,
     columns: [
       { key: 'id', label: 'ID', type: 'text', primaryKey: true, editable: true },
       { key: 'zone_id', label: 'Zone ID', type: 'number', editable: true },
@@ -159,8 +162,8 @@ const TABLES: TableDef[] = [
     primaryKey: 'id',
     fetch: listBins,
     create: createBinRecord,
-    update: (id, p) => updateBinRecord(id, p),
-    remove: (id) => deleteBinRecord(id),
+    update: updateBinRecord,
+    remove: deleteBinRecord,
     columns: [
       { key: 'id', label: 'ID', type: 'text', primaryKey: true, editable: true },
       { key: 'cluster_id', label: 'Cluster ID', type: 'text', editable: true },
@@ -183,8 +186,8 @@ const TABLES: TableDef[] = [
     description: 'IoT sensors — firmware config, health status, MQTT topics',
     primaryKey: 'id',
     fetch: listDevices,
-    update: (id, p) => updateDevice(id, p),
-    remove: (id) => deleteDevice(id),
+    update: updateDevice,
+    remove: deleteDevice,
     columns: [
       { key: 'id', label: 'Device ID', type: 'text', primaryKey: true },
       { key: 'bin_id', label: 'Bin ID', type: 'text', editable: true },
@@ -233,7 +236,7 @@ const TABLES: TableDef[] = [
     description: 'OR-Tools generated route plans — waypoints, weights, status',
     primaryKey: 'id',
     fetch: listRoutePlans,
-    update: (id, p) => updateRoutePlan(id, p),
+    update: updateRoutePlan,
     columns: [
       { key: 'id', label: 'ID', type: 'text', primaryKey: true },
       { key: 'vehicle_id', label: 'Vehicle', type: 'text' },
@@ -277,7 +280,7 @@ const TABLES: TableDef[] = [
     description: 'ML model training metrics and production promotion history',
     primaryKey: 'id',
     fetch: listModelPerformance,
-    update: (id, p) => updateModelPerformance(id, p),
+    update: updateModelPerformance,
     columns: [
       { key: 'id', label: 'ID', type: 'number', primaryKey: true },
       { key: 'model_name', label: 'Model', type: 'text' },
@@ -298,7 +301,7 @@ const TABLES: TableDef[] = [
     description: 'Driver records — contact info, zone, shift times, stats',
     primaryKey: 'driver_id',
     fetch: listDrivers,
-    update: (id, p) => updateDriverRecord(id, p),
+    update: updateDriverRecord,
     columns: [
       { key: 'driver_id', label: 'Driver ID', type: 'text', primaryKey: true },
       { key: 'name', label: 'Name', type: 'text', editable: true },
@@ -347,9 +350,8 @@ function formatCell(value: unknown, type: FieldType): string {
   if (value === null || value === undefined) return '—'
   if (type === 'boolean') return value ? 'Yes' : 'No'
   if (type === 'datetime') {
-    try {
-      return formatDistanceToNow(new Date(String(value)), { addSuffix: true })
-    } catch { return String(value) }
+    try { return formatDistanceToNow(new Date(String(value)), { addSuffix: true }) }
+    catch { return String(value) }
   }
   if (type === 'json') return typeof value === 'object' ? JSON.stringify(value).slice(0, 60) + '…' : String(value)
   return String(value)
@@ -399,9 +401,9 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
         payload[col.key] = v === '' ? undefined : v
       }
     }
-    if (isCreate && tableDef.columns.find((c) => c.primaryKey && c.editable)) {
-      const pkCol = tableDef.columns.find((c) => c.primaryKey)!
-      payload[pkCol.key] = form[pkCol.key]
+    if (isCreate) {
+      const pkCol = tableDef.columns.find((c) => c.primaryKey && c.editable)
+      if (pkCol) payload[pkCol.key] = form[pkCol.key]
     }
     onSave(payload)
   }
@@ -425,9 +427,7 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
                   value={String(form[col.key] ?? 'false')}
                   onValueChange={(v) => handleChange(col.key, v)}
                 >
-                  <SelectTrigger id={col.key}>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger id={col.key}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="true">Yes</SelectItem>
                     <SelectItem value="false">No</SelectItem>
@@ -438,9 +438,7 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
                   value={String(form[col.key] ?? '')}
                   onValueChange={(v) => handleChange(col.key, v)}
                 >
-                  <SelectTrigger id={col.key}>
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
+                  <SelectTrigger id={col.key}><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
                     {col.options.map((opt) => (
                       <SelectItem key={opt} value={opt}>{opt}</SelectItem>
@@ -450,7 +448,7 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
               ) : col.type === 'textarea' ? (
                 <textarea
                   id={col.key}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px] resize-y"
+                  className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
                   value={String(form[col.key] ?? '')}
                   onChange={(e) => handleChange(col.key, e.target.value)}
                 />
@@ -468,7 +466,7 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
           {error && (
             <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              {error.message}
+              <span><strong>Save failed:</strong> {error.message}</span>
             </div>
           )}
         </div>
@@ -488,9 +486,10 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
 
 interface TableBrowserProps {
   tableDef: TableDef
+  api: KyInstance
 }
 
-function TableBrowser({ tableDef }: TableBrowserProps) {
+function TableBrowser({ tableDef, api }: TableBrowserProps) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -503,7 +502,7 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
 
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey,
-    queryFn: () => tableDef.fetch({ page, limit: 50 }),
+    queryFn: () => tableDef.fetch(api, { page, limit: 50 }),
     staleTime: 30_000,
   })
 
@@ -515,11 +514,11 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
     mutationFn: async ({ payload, isCreate, existingRow }: { payload: Row; isCreate: boolean; existingRow: Row | null }) => {
       if (isCreate) {
         if (!tableDef.create) throw new Error('Create not supported for this table')
-        return tableDef.create(payload)
+        return tableDef.create(api, payload)
       }
       if (!tableDef.update) throw new Error('Update not supported for this table')
       const id = rowId(existingRow!, tableDef.primaryKey)
-      return tableDef.update(id, payload)
+      return tableDef.update(api, id, payload)
     },
     onSuccess: () => {
       invalidate()
@@ -531,7 +530,7 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
   const deleteMutation = useMutation({
     mutationFn: async (row: Row) => {
       if (!tableDef.remove) throw new Error('Delete not supported')
-      return tableDef.remove(rowId(row, tableDef.primaryKey))
+      return tableDef.remove(api, rowId(row, tableDef.primaryKey))
     },
     onSuccess: () => {
       invalidate()
@@ -550,7 +549,7 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
     )
   }, [data?.data, search])
 
-  const canEdit = Boolean(tableDef.update)
+  const canEdit   = Boolean(tableDef.update)
   const canCreate = Boolean(tableDef.create)
   const canDelete = Boolean(tableDef.remove)
 
@@ -561,31 +560,20 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
         <div className="relative min-w-48 flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-8 h-9"
+            className="h-9 pl-8"
             placeholder="Search rows…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          title="Refresh"
+          variant="ghost" size="icon" className="h-9 w-9"
+          onClick={() => refetch()} disabled={isFetching} title="Refresh"
         >
           <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
         </Button>
         {canCreate && (
-          <Button
-            size="sm"
-            className="h-9"
-            onClick={() => {
-              setEditRow(null)
-              setDialogOpen(true)
-            }}
-          >
+          <Button size="sm" className="h-9" onClick={() => { setEditRow(null); setDialogOpen(true) }}>
             <Plus className="mr-1.5 h-4 w-4" /> Add Row
           </Button>
         )}
@@ -594,9 +582,7 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-            Loading…
-          </div>
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Loading…</div>
         ) : isError ? (
           <div className="flex flex-col items-center gap-2 py-16 text-sm text-muted-foreground">
             <AlertCircle className="h-6 w-6 text-destructive" />
@@ -604,34 +590,24 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
             <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
           </div>
         ) : filteredRows.length === 0 ? (
-          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-            No rows found.
-          </div>
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">No rows found.</div>
         ) : (
           <table className="w-full min-w-max text-sm">
             <thead className="sticky top-0 bg-muted/60 backdrop-blur-sm">
               <tr>
                 {visibleCols.map((col) => (
-                  <th
-                    key={col.key}
-                    className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                  >
+                  <th key={col.key} className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {col.label}
                   </th>
                 ))}
                 {(canEdit || canDelete) && (
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Actions
-                  </th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {filteredRows.map((row, idx) => (
-                <tr
-                  key={String(row[tableDef.primaryKey] ?? idx)}
-                  className="border-b last:border-0 hover:bg-muted/30"
-                >
+                <tr key={String(row[tableDef.primaryKey] ?? idx)} className="border-b last:border-0 hover:bg-muted/30">
                   {visibleCols.map((col) => {
                     const val = row[col.key]
                     return (
@@ -640,16 +616,9 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
                           <Badge variant={val ? 'default' : 'outline'} className="text-[10px]">
                             {val ? 'Yes' : 'No'}
                           </Badge>
-                        ) : col.type === 'datetime' ? (
-                          <span title={String(val ?? '')}>
-                            {formatCell(val, col.type)}
-                          </span>
                         ) : (
                           <span
-                            className={cn(
-                              'block max-w-[180px] truncate',
-                              col.primaryKey && 'font-semibold text-foreground',
-                            )}
+                            className={cn('block max-w-[180px] truncate', col.primaryKey && 'font-semibold text-foreground')}
                             title={String(val ?? '')}
                           >
                             {formatCell(val, col.type)}
@@ -663,21 +632,15 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
                       <div className="flex gap-1">
                         {canEdit && (
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            onClick={() => {
-                              setEditRow(row)
-                              setDialogOpen(true)
-                            }}
+                            size="icon" variant="ghost" className="h-7 w-7"
+                            onClick={() => { setEditRow(row); setDialogOpen(true) }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         )}
                         {canDelete && (
                           <Button
-                            size="icon"
-                            variant="ghost"
+                            size="icon" variant="ghost"
                             className="h-7 w-7 text-destructive hover:bg-destructive/10"
                             onClick={() => setDeleteTarget(row)}
                           >
@@ -727,7 +690,7 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
               <DialogTitle>Delete row?</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              This will permanently remove the record with {tableDef.primaryKey} = <strong>{String(deleteTarget[tableDef.primaryKey])}</strong>.
+              Permanently remove the record with {tableDef.primaryKey} = <strong>{String(deleteTarget[tableDef.primaryKey])}</strong>.
             </p>
             {deleteMutation.error && (
               <p className="text-sm text-destructive">{deleteMutation.error.message}</p>
@@ -752,8 +715,13 @@ function TableBrowser({ tableDef }: TableBrowserProps) {
 // ── Main page component ───────────────────────────────────────────────────────
 
 export function SystemManagementClient() {
-  const [selectedTableId, setSelectedTableId] = useState<string>(TABLES[0].id)
+  const { data: session } = useSession()
+  const api = useMemo(
+    () => createClientApiClient(session?.accessToken),
+    [session?.accessToken],
+  )
 
+  const [selectedTableId, setSelectedTableId] = useState<string>(TABLES[0].id)
   const selectedTable = TABLES.find((t) => t.id === selectedTableId) ?? TABLES[0]
 
   return (
@@ -774,9 +742,7 @@ export function SystemManagementClient() {
               <div key={schema}>
                 <div className="sticky top-0 z-10 flex items-center gap-1.5 bg-muted/80 px-3 py-2 backdrop-blur-sm">
                   <Database className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                    {label}
-                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</span>
                 </div>
                 <div className="px-2 pb-2">
                   {tables.map((table) => {
@@ -812,23 +778,19 @@ export function SystemManagementClient() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
           {/* Table header */}
           <div className="border-b bg-muted/30 px-4 py-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{selectedTable.label}</span>
-                  <Badge variant="outline" className="font-mono text-[10px]">{selectedTable.sqlName}</Badge>
-                  {(selectedTable.update || selectedTable.create) ? (
-                    <Badge variant="secondary" className="text-[10px]">editable</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">read-only</Badge>
-                  )}
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">{selectedTable.description}</p>
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">{selectedTable.label}</span>
+              <Badge variant="outline" className="font-mono text-[10px]">{selectedTable.sqlName}</Badge>
+              {(selectedTable.update || selectedTable.create) ? (
+                <Badge variant="secondary" className="text-[10px]">editable</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">read-only</Badge>
+              )}
             </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{selectedTable.description}</p>
           </div>
 
-          <TableBrowser key={selectedTable.id} tableDef={selectedTable} />
+          <TableBrowser key={selectedTable.id} tableDef={selectedTable} api={api} />
         </div>
       </div>
     </div>
