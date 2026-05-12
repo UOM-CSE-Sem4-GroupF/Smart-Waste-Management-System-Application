@@ -1,25 +1,27 @@
-import { createApiClient } from '@/lib/api-client'
-import { getBins } from '@/lib/api/bins'
-import { CityMap } from '@/components/map/CityMap'
-import { MapStoreSeeder } from './_components/MapStoreSeeder'
-import type { BinUpdatePayload } from '@/types'
+'use client'
+import dynamic from 'next/dynamic'
+import { BinDetailPanel } from '@/components/map/BinDetailPanel'
+import { VehicleDetailPanel } from '@/components/map/VehicleDetailPanel'
+import { MapFilterBar } from '@/components/map/MapFilterBar'
 
-export default async function MapPage() {
-  let initialBins: BinUpdatePayload[] = []
+const DashboardMap = dynamic(
+  () => import('@/components/map/DashboardMap'),
+  { ssr: false }
+)
 
-  try {
-    const api = await createApiClient()
-    const res = await getBins(api, { limit: 500 })
-    initialBins = res.data as unknown as BinUpdatePayload[]
-  } catch {
-    // Backend unavailable — map will populate via socket
-  }
-
+export default function MapPage() {
   return (
     <div className="flex h-full flex-col gap-4">
-      <h2 className="text-2xl font-semibold tracking-tight">Live City Map</h2>
-      <MapStoreSeeder initialBins={initialBins} />
-      <CityMap />
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Live City Map</h2>
+        <p className="text-sm text-muted-foreground mt-1">Real-time bin and vehicle positions across all zones.</p>
+      </div>
+      <MapFilterBar />
+      <div className="flex flex-1 min-h-0 rounded-xl overflow-hidden border">
+        <DashboardMap className="flex-1 h-full min-w-0" />
+        <BinDetailPanel />
+        <VehicleDetailPanel />
+      </div>
     </div>
   )
 }

@@ -72,11 +72,20 @@ describe('waste.vehicle.dashboard.updates', () => {
       const event = {
         event_type: 'vehicle:position' as const,
         payload: {
-          vehicle_id: 'V1',
-          zone_id: 1,
-          lat: 6.9,
-          lng: 79.8,
-          speed_kmh: 40,
+          vehicle_id:            'V1',
+          driver_id:             'DRV-001',
+          job_id:                'JOB-1',
+          zone_id:               1,
+          lat:                   6.9,
+          lng:                   79.8,
+          speed_kmh:             40,
+          heading_degrees:       90,
+          accuracy_m:            5,
+          bins_collected:        0,
+          bins_total:            5,
+          cargo_weight_kg:       0,
+          cargo_limit_kg:        2000,
+          cargo_utilisation_pct: 0,
         },
       };
       handle('waste.vehicle.dashboard.updates', event, TS);

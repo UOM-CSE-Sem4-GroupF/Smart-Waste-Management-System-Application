@@ -174,12 +174,12 @@ services:
     routes:
       - name:       data-analysis-proxy
         paths:      ["/data-analysis"]
-        methods:    ["GET", "OPTIONS"]
+        methods:    ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
         strip_path: true
     plugins:
       - name: cors
         config:
           origins: ["*"]
-          methods: ["GET", "OPTIONS"]
+          methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
           headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
           max_age: 3600

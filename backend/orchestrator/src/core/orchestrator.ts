@@ -8,9 +8,9 @@ import { notifyDashboard } from '../clients/notificationClient';
 import { recordAudit, AuditPayload } from '../clients/hyperledgerClient';
 import { publishJobCompleted } from '../kafka/producer';
 
-const slog = (level: string, msg: string, job_id?: string): void => {
+const slog = (level: string, msg: string, job_id?: string, extra?: Record<string, unknown>): void => {
   process.stdout.write(JSON.stringify({
-    timestamp: new Date().toISOString(), level, service: 'orchestrator', message: msg, job_id,
+    timestamp: new Date().toISOString(), level, service: 'orchestrator', message: msg, job_id, ...extra,
   }) + '\n');
 };
 
@@ -32,18 +32,46 @@ export async function handleWorkflowFailure(job: CollectionJob, error: unknown):
 
 export async function executeEmergencyWorkflow(
   job: CollectionJob,
-  event: { bin_id: string; urgency_score: number; waste_category: string; zone_id: string },
+  event: { bin_id: string; cluster_id: string; urgency_score: number; waste_category: string; zone_id: string },
 ): Promise<void> {
+  slog('INFO', `executeEmergencyWorkflow: starting`, job.job_id, {
+    bin_id:        event.bin_id,
+    cluster_id:    event.cluster_id,
+    urgency_score: event.urgency_score,
+    waste_category: event.waste_category,
+    zone_id:       event.zone_id,
+  });
+
   try {
-    // Step 1: Confirm bin urgency
+    // Notify dashboard immediately — job has been initiated
+    await notifyDashboard('job-initiated', {
+      job_id:        job.job_id,
+      job_type:      'emergency',
+      zone_id:       event.zone_id,
+      cluster_id:    event.cluster_id,
+      urgency_score: event.urgency_score,
+      waste_category: event.waste_category,
+      message:       `Emergency collection job initiated — urgent bin detected in cluster ${event.cluster_id} (zone ${event.zone_id}, score ${event.urgency_score})`,
+    });
+
+    // Step 1: Confirm bin urgency — get live cluster state from bin-status
+    slog('DEBUG', `Step 1: BIN_CONFIRMING — fetching cluster snapshot`, job.job_id, { cluster_id: event.cluster_id });
     await transition(job, 'BIN_CONFIRMING');
 
     const snapshot = await step(job, 'bin_confirmation', () =>
-      getClusterSnapshot(event.zone_id).then(s => {
-        if (!s) throw new Error('bin-status unavailable');
+      getClusterSnapshot(event.cluster_id).then(s => {
+        if (!s) throw new Error('bin-status snapshot unavailable');
         return s;
       }),
     );
+
+    slog('DEBUG', `Step 1: snapshot received`, job.job_id, {
+      cluster_id:       event.cluster_id,
+      total_bins:       snapshot.bins.length,
+      urgent_bins:      snapshot.bins.filter(b => b.urgency_score >= 80).length,
+      collectible_bins: snapshot.bins.filter(b => b.should_collect).length,
+      highest_urgency:  Math.max(0, ...snapshot.bins.map(b => b.urgency_score)),
+    });
 
     if (!snapshot.bins.some(b => b.urgency_score >= 80)) {
       await transition(job, 'CANCELLED', 'Bin no longer urgent at confirmation');
@@ -54,14 +82,26 @@ export async function executeEmergencyWorkflow(
     await transition(job, 'BIN_CONFIRMED');
 
     // Step 2: Cluster assembly + wait window
+    slog('DEBUG', `Step 2: CLUSTER_ASSEMBLING — running wait-window assembly`, job.job_id, {
+      zone_id:    event.zone_id,
+      cluster_id: event.cluster_id,
+    });
     await transition(job, 'CLUSTER_ASSEMBLING');
 
     const clusterSet = await assemble({
       job,
-      urgency_score:  event.urgency_score,
-      waste_category: event.waste_category,
-      zone_id:        event.zone_id,
+      urgency_score:   event.urgency_score,
+      waste_category:  event.waste_category,
+      zone_id:         event.zone_id,
+      cluster_id:      event.cluster_id,
       initialSnapshot: snapshot,
+    });
+
+    slog('DEBUG', `Step 2: assembly complete`, job.job_id, {
+      cluster_count: clusterSet.cluster_ids.length,
+      bin_count:     clusterSet.bin_ids.length,
+      weight_kg:     clusterSet.total_weight_kg,
+      cluster_ids:   clusterSet.cluster_ids,
     });
 
     await updateJob(job, {
@@ -72,6 +112,12 @@ export async function executeEmergencyWorkflow(
     await transition(job, 'CLUSTER_ASSEMBLED');
 
     // Step 3: Dispatch
+    slog('DEBUG', `Step 3: DISPATCHING — calling scheduler`, job.job_id, {
+      zone_id:       event.zone_id,
+      cluster_count: clusterSet.cluster_ids.length,
+      bin_count:     clusterSet.bin_ids.length,
+      weight_kg:     clusterSet.total_weight_kg,
+    });
     await transition(job, 'DISPATCHING');
 
     let dispatchResult;
@@ -98,6 +144,13 @@ export async function executeEmergencyWorkflow(
       return;
     }
 
+    slog('INFO', `Step 3: dispatch accepted`, job.job_id, {
+      vehicle_id:     dispatchResult.vehicle_id,
+      driver_id:      dispatchResult.driver_id,
+      route_plan_id:  dispatchResult.route_plan_id,
+      est_minutes:    (dispatchResult as any).estimated_minutes,
+    });
+
     await updateJob(job, {
       assigned_vehicle_id: dispatchResult.vehicle_id,
       assigned_driver_id:  dispatchResult.driver_id,
@@ -107,6 +160,7 @@ export async function executeEmergencyWorkflow(
     await transition(job, 'DISPATCHED');
 
     // Step 4: Notify driver (handled by scheduler) + notify dashboard
+    slog('DEBUG', `Step 4: notifying dashboard of job creation`, job.job_id);
     await transition(job, 'DRIVER_NOTIFIED');
     await notifyDashboard('job-created', {
       job_id:            job.job_id,
@@ -125,7 +179,12 @@ export async function executeEmergencyWorkflow(
     // Step 5: Job now IN_PROGRESS — pauses here until POST /internal/jobs/:id/complete
     await transition(job, 'IN_PROGRESS');
     await updateJob(job, { started_at: new Date().toISOString() });
-    slog('INFO', 'Job now IN_PROGRESS — waiting for collection completion', job.job_id);
+    slog('INFO', 'Job now IN_PROGRESS — waiting for collection completion', job.job_id, {
+      vehicle_id:  dispatchResult.vehicle_id,
+      driver_id:   dispatchResult.driver_id,
+      bin_count:   clusterSet.bin_ids.length,
+      weight_kg:   clusterSet.total_weight_kg,
+    });
 
   } catch (error) {
     await handleWorkflowFailure(job, error);
@@ -204,6 +263,13 @@ export async function executeRoutineWorkflow(
 }
 
 export async function completeJob(job: CollectionJob, request: JobCompleteRequest): Promise<void> {
+  slog('INFO', `completeJob: starting completion`, job.job_id, {
+    bins_collected: request.bins_collected.length,
+    bins_skipped:   request.bins_skipped.length,
+    actual_weight_kg: request.actual_weight_kg,
+    actual_distance_km: request.actual_distance_km,
+  });
+
   if (job.state !== 'IN_PROGRESS') {
     throw new Error(`Cannot complete job in state ${job.state}`);
   }
@@ -211,8 +277,13 @@ export async function completeJob(job: CollectionJob, request: JobCompleteReques
   await transition(job, 'COMPLETING');
 
   // Step 1: Mark each bin collected
+  slog('DEBUG', `completeJob: marking ${request.bins_collected.length} bins as collected`, job.job_id);
   for (const bin of request.bins_collected) {
     const ok = await markCollected(bin.bin_id, job.job_id, bin.collected_at);
+    slog('DEBUG', `completeJob: markCollected ${bin.bin_id} → ${ok ? 'OK' : 'FAILED'}`, job.job_id, {
+      bin_id:       bin.bin_id,
+      collected_at: bin.collected_at,
+    });
     await recordStep(job, `mark-collected:${bin.bin_id}`, 1, ok, 0);
   }
 

@@ -1,9 +1,9 @@
 import pino from 'pino';
 
 const logger = pino();
-// Since core-api is in the DataAnalysis network (waste-network), 
-// we call it directly via the host bridge to bypass the gateway.
-const BASE_URL = process.env.DATA_ANALYSIS_URL ?? 'http://host.docker.internal:8001';
+// Same Kubernetes namespace → use the service name directly.
+// Override DATA_ANALYSIS_URL for local Docker Compose dev.
+const BASE_URL = process.env.DATA_ANALYSIS_URL ?? 'http://core-api-base-service:8001';
 
 export interface BinMetadata {
   bin_id: string;
@@ -66,6 +66,41 @@ export interface ZoneMetadata {
   zone_id: number;
   zone_name: string;
   total_bins: number;
+}
+
+export interface F2ClusterSnapshot {
+  cluster_id: string;
+  cluster_name: string;
+  lat: number;
+  lng: number;
+  zone_id: number;
+  total_bins: number;
+  urgent_bin_count: number;
+  max_urgency_score: number;
+  total_estimated_weight_kg: number;
+  has_special_handling: boolean;
+  bins: Array<{
+    bin_id: string;
+    waste_category: string;
+    status: string;
+    urgency_score: number;
+    estimated_weight_kg: number;
+  }>;
+}
+
+export async function getClusterSnapshot(cluster_id: string): Promise<F2ClusterSnapshot | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/v1/clusters/${cluster_id}/snapshot`);
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      throw new Error(`API returned ${res.status}`);
+    }
+    const body = await res.json() as { data: F2ClusterSnapshot };
+    return body.data ?? null;
+  } catch (error) {
+    logger.warn({ cluster_id, error: error instanceof Error ? error.message : String(error) }, 'Failed to fetch cluster snapshot from Core API');
+    return null;
+  }
 }
 
 export async function getZoneMetadata(zone_id: number): Promise<ZoneMetadata | null> {

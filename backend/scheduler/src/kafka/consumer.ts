@@ -1,12 +1,15 @@
-import { vehicles, drivers, activeJobs, binCollectionRecords, routePlans } from '../store';
+import { vehicles, activeJobs, binCollectionRecords, routePlans, clusterCoordinates } from '../store';
 import { VehicleLocationEvent, VehicleDeviationEvent, VehiclePositionUpdate } from '../types';
 import { startManualConsumer } from './manualConsumer';
 import { createManualProducer, ManualProducer } from './manualProducer';
 
-const slog = (level: string, msg: string) =>
-  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
+const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
+  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:kafka', message: msg, ...extra }) + '\n');
 
 let producer: ManualProducer;
+
+// Movement deduplication: skip publish if vehicle hasn't moved enough recently
+const lastPublished = new Map<string, { lat: number; lng: number; ts: number }>();
 
 export async function startKafkaConsumer(): Promise<void> {
   producer = await createManualProducer('scheduler-service-publisher');
@@ -16,8 +19,8 @@ export async function startKafkaConsumer(): Promise<void> {
     'waste.vehicle.location',
     async (value) => {
       try {
-        const envelope = JSON.parse(value.toString());
-        await handleVehicleLocation(envelope as VehicleLocationEvent);
+        const event = JSON.parse(value.toString()) as VehicleLocationEvent;
+        await handleVehicleLocation(event);
       } catch (e) {
         slog('ERROR', `Location handler error: ${e}`);
       }
@@ -41,68 +44,133 @@ export async function startKafkaConsumer(): Promise<void> {
 }
 
 async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void> {
-  const { payload } = event;
-  const { vehicle_id, driver_id, lat, lng, speed_kmh, heading_degrees, accuracy_m } = payload;
+  // Bug 0: actual payload is flat with lon/speed/heading (not lng/speed_kmh/heading_degrees)
+  const { vehicle_id, lat, lon: lng, speed: speed_kmh, heading: heading_degrees, timestamp } = event;
 
-  // Update vehicle position
+  slog('DEBUG', `handleVehicleLocation: received position for ${vehicle_id}`, {
+    vehicle_id, lat, lng, speed_kmh, heading_degrees, raw_timestamp: timestamp,
+  });
+
+  // Resolve driver from vehicles store (not in the Kafka message)
   const vehicle = vehicles.get(vehicle_id);
+  const driver_id = vehicle?.driver_id ?? '';
+
+  if (!vehicle) {
+    slog('WARN', `handleVehicleLocation: vehicle ${vehicle_id} not in store — no metadata`, { vehicle_id });
+  }
+
+  // Update vehicle position in store
   if (vehicle) {
     vehicle.lat = lat;
     vehicle.lng = lng;
   }
 
-  // Find active job for this vehicle
+  // Only track vehicles with an active or dispatched job
   const activeJob = Array.from(activeJobs.values()).find(
-    job => job.assigned_vehicle_id === vehicle_id && job.state === 'IN_PROGRESS'
+    job => job.assigned_vehicle_id === vehicle_id &&
+           (job.state === 'IN_PROGRESS' || job.state === 'DISPATCHED')
   );
 
   if (!activeJob) {
-    // Throttle position updates for non-active jobs
-    // In real implementation, would check last update time
+    slog('DEBUG', `handleVehicleLocation: no active/dispatched job for ${vehicle_id} — dropping`, { vehicle_id, known_jobs: activeJobs.size });
     return;
   }
 
-  // Enrich with job context
+  slog('DEBUG', `handleVehicleLocation: found active job ${activeJob.job_id} for ${vehicle_id}`, {
+    vehicle_id, job_id: activeJob.job_id, job_state: activeJob.state, zone_id: activeJob.zone_id,
+  });
+
+  // Gap 5: movement deduplication — skip if < 10m moved AND < 30s elapsed
+  const now = Date.now();
+  const last = lastPublished.get(vehicle_id);
+  if (last) {
+    const movedKm  = haversineKm(last.lat, last.lng, lat, lng);
+    const elapsedMs = now - last.ts;
+    if (movedKm < 0.01 && elapsedMs < 30_000) {
+      slog('DEBUG', `handleVehicleLocation: dedup skip for ${vehicle_id} — moved ${(movedKm * 1000).toFixed(1)}m in ${elapsedMs}ms`, {
+        vehicle_id, moved_m: (movedKm * 1000).toFixed(1), elapsed_ms: elapsedMs,
+      });
+      return;
+    }
+    slog('DEBUG', `handleVehicleLocation: dedup pass for ${vehicle_id} — moved ${(movedKm * 1000).toFixed(1)}m`, {
+      vehicle_id, moved_m: (movedKm * 1000).toFixed(1), elapsed_ms: elapsedMs,
+    });
+  }
+
+  // Gap 6: DISPATCHED — vehicle assigned but job not yet started, send minimal update
+  if (activeJob.state === 'DISPATCHED') {
+    slog('DEBUG', `handleVehicleLocation: vehicle ${vehicle_id} in DISPATCHED state — sending minimal update`, {
+      vehicle_id, job_id: activeJob.job_id, lat, lng,
+    });
+    const update: VehiclePositionUpdate = {
+      event_type:            'vehicle:position',
+      vehicle_id,
+      driver_id,
+      job_id:                activeJob.job_id,
+      zone_id:               activeJob.zone_id,
+      lat,
+      lng,
+      speed_kmh,
+      heading_degrees,
+      accuracy_m:            0,
+      bins_collected:        0,
+      bins_total:            activeJob.total_bins,
+      cargo_weight_kg:       0,
+      cargo_limit_kg:        vehicle?.max_cargo_kg ?? 0,
+      cargo_utilisation_pct: 0,
+    };
+    await publish(vehicle_id, update, timestamp);
+    lastPublished.set(vehicle_id, { lat, lng, ts: now });
+    return;
+  }
+
+  // IN_PROGRESS — full enrichment with route plan context
   const routePlan = Array.from(routePlans.values()).find(rp => rp.job_id === activeJob.job_id);
   const binRecords = Array.from(binCollectionRecords.values()).filter(br => br.job_id === activeJob.job_id);
 
-  const binsCollected = binRecords.filter(br => br.collected_at).length;
-  const binsTotal = binRecords.length;
-  const cargoWeightKg = binRecords
+  slog('DEBUG', `handleVehicleLocation: IN_PROGRESS enrichment for ${vehicle_id}`, {
+    vehicle_id,
+    job_id:         activeJob.job_id,
+    has_route_plan: !!routePlan,
+    route_plan_id:  routePlan?.route_plan_id,
+    bin_records:    binRecords.length,
+  });
+
+  const binsCollected    = binRecords.filter(br => br.collected_at).length;
+  const binsTotal        = binRecords.length;
+  const cargoWeightKg    = binRecords
     .filter(br => br.collected_at)
     .reduce((sum, br) => sum + (br.actual_weight_kg || br.estimated_weight_kg), 0);
-
-  const vehicleInfo = vehicles.get(vehicle_id);
-  const cargoLimitKg = vehicleInfo?.max_cargo_kg || 0;
+  const cargoLimitKg     = vehicle?.max_cargo_kg ?? 0;
   const cargoUtilisationPct = cargoLimitKg > 0 ? (cargoWeightKg / cargoLimitKg) * 100 : 0;
 
-  // Proximity check - mark bins as arrived if within 50m
+  // Bug 4: proximity check using real cluster coordinates (not random)
   let arrivedAtBin: string | undefined;
-  for (const binRecord of binRecords) {
-    if (binRecord.arrived_at || binRecord.collected_at || binRecord.skipped_at) continue;
+  if (routePlan) {
+    for (const binRecord of binRecords) {
+      if (binRecord.arrived_at || binRecord.collected_at || binRecord.skipped_at) continue;
 
-    // Mock bin location - in real system would look up from bin data
-    const binLat = lat + (Math.random() - 0.5) * 0.01; // Mock location near vehicle
-    const binLng = lng + (Math.random() - 0.5) * 0.01;
-
-    const distance = haversineKm(lat, lng, binLat, binLng);
-    if (distance < 0.05) { // 50m
-      binRecord.arrived_at = new Date().toISOString();
-      arrivedAtBin = binRecord.bin_id;
-      break;
+      const waypoint = routePlan.waypoints.find(w => w.bins.includes(binRecord.bin_id));
+      if (waypoint) {
+        const coords = clusterCoordinates.get(waypoint.cluster_id);
+        if (coords && haversineKm(lat, lng, coords.lat, coords.lng) < 0.05) {
+          binRecord.arrived_at = new Date().toISOString();
+          arrivedAtBin = binRecord.bin_id;
+          break;
+        }
+      }
     }
   }
 
-  // Determine current cluster
+  // Determine current and next cluster along the route
   let currentCluster: string | undefined;
   let nextCluster: string | undefined;
   if (routePlan) {
-    // Find current cluster based on route progress
     const completedClusters = new Set(
-      binRecords.filter(br => br.collected_at).map(br => {
-        const waypoint = routePlan.waypoints.find(w => w.bins.includes(br.bin_id));
-        return waypoint?.cluster_id;
-      }).filter(Boolean)
+      binRecords
+        .filter(br => br.collected_at)
+        .map(br => routePlan.waypoints.find(w => w.bins.includes(br.bin_id))?.cluster_id)
+        .filter(Boolean) as string[]
     );
 
     for (const waypoint of routePlan.waypoints) {
@@ -112,69 +180,89 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
       }
     }
 
-    // Find next cluster
     if (currentCluster) {
-      const currentIndex = routePlan.waypoints.findIndex(w => w.cluster_id === currentCluster);
-      if (currentIndex >= 0 && currentIndex + 1 < routePlan.waypoints.length) {
-        nextCluster = routePlan.waypoints[currentIndex + 1].cluster_id;
+      const idx = routePlan.waypoints.findIndex(w => w.cluster_id === currentCluster);
+      if (idx >= 0 && idx + 1 < routePlan.waypoints.length) {
+        nextCluster = routePlan.waypoints[idx + 1].cluster_id;
       }
     }
   }
 
-  // Check weight limit warning
-  const weightLimitWarning = cargoWeightKg >= cargoLimitKg * 0.9;
-
-  // Create enriched update
+  // Bug 2: include zone_id in update
   const update: VehiclePositionUpdate = {
-    event_type: 'vehicle:position',
+    event_type:            'vehicle:position',
     vehicle_id,
     driver_id,
-    job_id: activeJob.job_id,
+    job_id:                activeJob.job_id,
+    zone_id:               activeJob.zone_id,
     lat,
     lng,
     speed_kmh,
     heading_degrees,
-    accuracy_m,
-    current_cluster: currentCluster,
-    next_cluster: nextCluster,
-    bins_collected: binsCollected,
-    bins_total: binsTotal,
-    cargo_weight_kg: cargoWeightKg,
-    cargo_limit_kg: cargoLimitKg,
+    accuracy_m:            0,
+    current_cluster:       currentCluster,
+    next_cluster:          nextCluster,
+    bins_collected:        binsCollected,
+    bins_total:            binsTotal,
+    cargo_weight_kg:       cargoWeightKg,
+    cargo_limit_kg:        cargoLimitKg,
     cargo_utilisation_pct: cargoUtilisationPct,
-    arrived_at_bin: arrivedAtBin,
-    weight_limit_warning: weightLimitWarning
+    arrived_at_bin:        arrivedAtBin,
+    weight_limit_warning:  cargoWeightKg >= cargoLimitKg * 0.9,
   };
 
-  // Publish to waste.vehicle.dashboard.updates
-  await producer.send('waste.vehicle.dashboard.updates', vehicle_id, JSON.stringify(update));
+  slog('INFO', `Publishing position update for ${vehicle_id}`, {
+    vehicle_id,
+    job_id:                activeJob.job_id,
+    lat, lng,
+    speed_kmh,
+    heading_degrees,
+    bins_collected:        binsCollected,
+    bins_total:            binsTotal,
+    cargo_utilisation_pct: parseFloat(cargoUtilisationPct.toFixed(1)),
+    current_cluster:       currentCluster,
+    next_cluster:          nextCluster,
+    arrived_at_bin:        arrivedAtBin,
+    weight_limit_warning:  cargoWeightKg >= cargoLimitKg * 0.9,
+  });
 
-  // In real system, would also write to InfluxDB
-  slog('INFO', `Published position update for ${vehicle_id}`);
+  await publish(vehicle_id, update, timestamp);
+  lastPublished.set(vehicle_id, { lat, lng, ts: now });
+  slog('INFO', `Published position update for ${vehicle_id}`, { vehicle_id, job_id: activeJob.job_id });
+}
+
+// Bug 1: wrap in envelope format that notification consumer expects
+async function publish(vehicle_id: string, update: VehiclePositionUpdate, eventTimestamp: number): Promise<void> {
+  await producer.send(
+    'waste.vehicle.dashboard.updates',
+    vehicle_id,
+    JSON.stringify({
+      event_type: 'vehicle:position',
+      payload:    { ...update, timestamp: new Date(eventTimestamp).toISOString() },
+    })
+  );
 }
 
 async function handleVehicleDeviation(event: VehicleDeviationEvent): Promise<void> {
   const { payload } = event;
   const { vehicle_id, job_id, deviation_metres, duration_seconds, current_lat, current_lng } = payload;
 
-  const job = activeJobs.get(job_id);
+  const job    = activeJobs.get(job_id);
   if (!job) return;
 
-  const driver = drivers.get(job.assigned_driver_id);
-  if (!driver) return;
-
-  const message = `${vehicles.get(vehicle_id)?.name || vehicle_id} is ${deviation_metres}m off planned route`;
+  const vehicle = vehicles.get(vehicle_id);
+  const message = `${vehicle?.name ?? vehicle_id} is ${deviation_metres}m off planned route`;
   slog('WARN', `Deviation alert: ${message}`);
 
   const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
   fetch(`${NOTIFICATION_URL}/internal/notify/alert-deviation`, {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       vehicle_id,
-      driver_id: driver.driver_id,
+      driver_id:        vehicle?.driver_id ?? '',
       job_id,
-      zone_id: activeJobs.get(job_id)?.zone_id ?? 0,
+      zone_id:          job.zone_id,
       deviation_metres,
       duration_seconds,
       message,
@@ -183,12 +271,10 @@ async function handleVehicleDeviation(event: VehicleDeviationEvent): Promise<voi
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371; // Earth's radius in km
+  const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

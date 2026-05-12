@@ -1,164 +1,224 @@
 import { FastifyInstance } from 'fastify';
-import {
-  DispatchRequest,
-  BinCollectionRecord,
-  JobAssignedNotification,
-  VehiclePositionUpdate
-} from '../types';
-import {
-  findAvailableVehicle,
-  callORTools,
-  nearestNeighbourFallback,
-  vehicles,
-  drivers,
-  routePlans,
-  binCollectionRecords,
-  activeJobs
-} from '../store';
+import { DispatchRequest, JobAssignedNotification, VehiclePositionUpdate } from '../types';
+import { callORTools, nearestNeighbourFallback, activeJobs, routePlans, clusterCoordinates } from '../store';
+import * as coreApi from '../clients/coreApiClient';
+import * as db from '../db/queries';
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
 
-const slog = (level: string, msg: string) =>
-  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
+const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
+  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:routes', message: msg, ...extra }) + '\n');
 
 export default async function internalRoutes(app: FastifyInstance) {
-  // POST /internal/scheduler/dispatch - Main dispatch endpoint
+  // POST /internal/scheduler/dispatch
   app.post<{ Body: DispatchRequest }>('/internal/scheduler/dispatch', async (req, reply) => {
-    const {
-      job_id,
-      clusters,
-      bins_to_collect,
-      total_estimated_weight_kg,
-      waste_category,
-      zone_id,
-      priority
-    } = req.body;
+    const { job_id, clusters, bins_to_collect, total_estimated_weight_kg, waste_category, zone_id, priority } = req.body;
+    const parsedZoneId = typeof zone_id === 'string' ? parseInt(zone_id, 10) : zone_id;
 
-    slog('INFO', `Dispatching job ${job_id} for ${bins_to_collect.length} bins, ${total_estimated_weight_kg}kg`);
+    slog('INFO', `dispatch: received job ${job_id}`, {
+      job_id, zone_id, cluster_count: clusters.length, bin_count: bins_to_collect.length,
+      weight_kg: total_estimated_weight_kg, waste_category, priority,
+    });
 
-    // Step 1: Find available vehicle
-    const vehicle = findAvailableVehicle(waste_category, total_estimated_weight_kg);
+    // Step 1: Find available vehicle from Core API
+    slog('DEBUG', `dispatch step 1: searching for available ${waste_category} vehicle`, {
+      job_id, waste_category, min_capacity_kg: total_estimated_weight_kg,
+    });
+    const vehicle = await coreApi.findAvailableVehicle(waste_category, total_estimated_weight_kg);
     if (!vehicle) {
-      slog('WARN', `No vehicle available for job ${job_id}`);
+      slog('WARN', `dispatch: no vehicle available for job ${job_id}`, {
+        job_id, waste_category, weight_kg: total_estimated_weight_kg,
+      });
       return reply.code(409).send({ success: false, reason: 'NO_VEHICLE_AVAILABLE' });
     }
+    slog('DEBUG', `dispatch step 1: vehicle found ${vehicle.vehicle_id}`, { job_id, vehicle_id: vehicle.vehicle_id, max_cargo_kg: vehicle.max_cargo_kg });
 
-    const driver = drivers.get(vehicle.driver_id);
+    // Step 2: Find driver for this vehicle from F3 DB
+    slog('DEBUG', `dispatch step 2: finding driver for vehicle ${vehicle.vehicle_id}`, { job_id, vehicle_id: vehicle.vehicle_id });
+    const driver = await db.getDriverByVehicle(vehicle.vehicle_id);
     if (!driver) {
-      slog('ERROR', `Vehicle ${vehicle.vehicle_id} has no driver`);
+      slog('ERROR', `dispatch: vehicle ${vehicle.vehicle_id} has no driver assigned in F3`, { job_id, vehicle_id: vehicle.vehicle_id });
       return reply.code(500).send({ success: false, reason: 'VEHICLE_CONFIG_ERROR' });
     }
+    slog('DEBUG', `dispatch step 2: driver found ${driver.id}`, { job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id });
 
-    // Step 2: Call OR-Tools (with timeout fallback)
+    // Step 3: Route planning via OR-Tools (with 35s timeout fallback)
+    slog('DEBUG', `dispatch step 3: calling OR-Tools for job ${job_id}`, {
+      job_id, cluster_count: clusters.length, bin_count: bins_to_collect.length,
+    });
     let routeResult;
+    const orToolsStart = Date.now();
     try {
-      const availableVehicles = [{
-        vehicle_id: vehicle.vehicle_id,
-        max_cargo_kg: vehicle.max_cargo_kg,
-        lat: vehicle.lat,
-        lng: vehicle.lng
-      }];
-      const depot = { lat: vehicle.lat, lng: vehicle.lng }; // Assume depot is vehicle location
-
+      const availableVehicles = [{ vehicle_id: vehicle.vehicle_id, max_cargo_kg: vehicle.max_cargo_kg, waste_categories_supported: [waste_category], lat: 6.9271, lng: 79.8612 }];
+      const depot = { lat: 6.9271, lng: 79.8612 };
       routeResult = await Promise.race([
-        callORTools(clusters, bins_to_collect, availableVehicles, depot, {}),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('TIMEOUT')), 35000)
-        )
+        callORTools(job_id, 'emergency', clusters, bins_to_collect, availableVehicles, depot, {}),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 35_000)),
       ]);
-    } catch (error) {
-      slog('WARN', `OR-Tools timeout for job ${job_id}, using fallback`);
-      const depot = { lat: vehicle.lat, lng: vehicle.lng };
+      slog('DEBUG', `dispatch step 3: OR-Tools complete in ${Date.now() - orToolsStart}ms`, {
+        job_id, waypoints: routeResult.waypoints.length, distance_km: routeResult.total_distance_km, est_minutes: routeResult.estimated_minutes,
+      });
+    } catch {
+      slog('WARN', `dispatch step 3: OR-Tools timeout for job ${job_id} after ${Date.now() - orToolsStart}ms — using nearest-neighbour fallback`, { job_id });
+      const depot = { lat: 6.9271, lng: 79.8612 };
       routeResult = {
-        vehicle_id: vehicle.vehicle_id,
-        waypoints: nearestNeighbourFallback(bins_to_collect, depot),
-        total_distance_km: 0,
-        estimated_minutes: 0
+        vehicle_id:         vehicle.vehicle_id,
+        waypoints:          nearestNeighbourFallback(bins_to_collect, depot),
+        total_distance_km:  0,
+        estimated_minutes:  0,
       };
     }
 
-    // Step 3: Assign vehicle
-    vehicle.status = 'dispatched';
-    driver.status = 'dispatched';
+    // Step 4: Mark vehicle dispatched via Core API
+    slog('DEBUG', `dispatch step 4: marking vehicle ${vehicle.vehicle_id} as dispatched`, { job_id, vehicle_id: vehicle.vehicle_id });
+    await coreApi.setVehicleStatus(vehicle.vehicle_id, 'dispatched');
 
-    // Step 4: Store route plan
-    const routePlanId = `route_${job_id}`;
-    const routePlan = {
-      route_plan_id: routePlanId,
-      job_id,
-      vehicle_id: vehicle.vehicle_id,
-      route_type: 'emergency' as const,
-      zone_id,
-      waypoints: routeResult.waypoints,
-      total_bins: bins_to_collect.length,
-      estimated_weight_kg: total_estimated_weight_kg,
-      estimated_distance_km: routeResult.total_distance_km,
-      estimated_minutes: routeResult.estimated_minutes,
-      created_at: new Date().toISOString()
-    };
-    routePlans.set(routePlanId, routePlan);
+    // Step 5: Mark driver on_job in F3 DB
+    slog('DEBUG', `dispatch step 5: marking driver ${driver.id} as on_job`, { job_id, driver_id: driver.id });
+    await db.setDriverStatus(driver.id, 'on_job');
 
-    // Step 5: Create bin collection records
-    bins_to_collect.forEach((bin, index) => {
-      const waypoint = routeResult.waypoints.find(w => w.bins.includes(bin.bin_id));
-      const record: BinCollectionRecord = {
-        job_id,
-        bin_id: bin.bin_id,
-        sequence_number: index + 1,
-        planned_arrival_at: waypoint?.estimated_arrival || null,
-        estimated_weight_kg: bin.estimated_weight_kg
-      };
-      binCollectionRecords.set(`${job_id}_${bin.bin_id}`, record);
+    // Step 6: Create route plan in Core API, get back the persisted route_plan_id
+    slog('DEBUG', `dispatch step 6: creating route plan in Core API`, {
+      job_id, vehicle_id: vehicle.vehicle_id, zone_id: parsedZoneId,
     });
+    let route_plan_id: string;
+    try {
+      route_plan_id = await coreApi.createRoutePlan({
+        vehicle_id:           vehicle.vehicle_id,
+        zone_id:              parsedZoneId,
+        route_type:           'emergency',
+        waypoints:            routeResult.waypoints,
+        total_clusters:       clusters.length,
+        total_bins:           bins_to_collect.length,
+        estimated_weight_kg:  total_estimated_weight_kg,
+        estimated_distance_km: routeResult.total_distance_km,
+        estimated_minutes:    routeResult.estimated_minutes,
+      });
+    } catch (e) {
+      slog('WARN', `dispatch step 6: createRoutePlan failed — using local id`, { job_id, error: (e as Error).message });
+      route_plan_id = `route_${job_id}`;
+    }
+    slog('DEBUG', `dispatch step 6: route_plan_id=${route_plan_id}`, { job_id, route_plan_id });
 
-    // Step 6: Store active job
+    // Step 7: Write bin collection records to F3 DB
+    slog('DEBUG', `dispatch step 7: writing ${bins_to_collect.length} bin collection records`, { job_id, bin_count: bins_to_collect.length });
+    await db.createBinCollectionRecords(job_id, bins_to_collect.map((bin, index) => {
+      const waypoint = routeResult.waypoints.find(w => w.bins.includes(bin.bin_id));
+      return {
+        bin_id:              bin.bin_id,
+        cluster_id:          bin.cluster_id,
+        sequence:            index + 1,
+        planned_arrival_at:  waypoint?.estimated_arrival ?? null,
+        estimated_weight_kg: bin.estimated_weight_kg,
+      };
+    }));
+
+    // Step 8: Record driver assignment in F3 DB
+    slog('DEBUG', `dispatch step 8: recording driver assignment`, { job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id });
+    await db.recordAssignment({ job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id, assignment_type: 'accepted' }).catch(() => {});
+
+    // Step 9: Keep activeJobs in-memory for in-flight state (orchestrator is source of truth)
     activeJobs.set(job_id, {
       job_id,
-      state: 'DISPATCHED',
+      state:               'DISPATCHED',
       assigned_vehicle_id: vehicle.vehicle_id,
-      assigned_driver_id: driver.driver_id,
-      zone_id,
+      assigned_driver_id:  driver.id,
+      zone_id:             parsedZoneId,
       waste_category,
-      total_bins: bins_to_collect.length,
-      created_at: new Date().toISOString()
+      total_bins:          bins_to_collect.length,
+      created_at:          new Date().toISOString(),
     });
 
-    // Step 7: Call notification service — push job assignment to driver
+    // Cache route plan for live vehicle enrichment in Kafka consumer
+    routePlans.set(route_plan_id, {
+      route_plan_id,
+      job_id,
+      vehicle_id:           vehicle.vehicle_id,
+      route_type:           'emergency',
+      zone_id:              parsedZoneId,
+      waypoints:            routeResult.waypoints,
+      total_bins:           bins_to_collect.length,
+      estimated_weight_kg:  total_estimated_weight_kg,
+      estimated_distance_km: routeResult.total_distance_km,
+      estimated_minutes:    routeResult.estimated_minutes,
+      created_at:           new Date().toISOString(),
+    });
+
+    // Cache cluster coordinates for proximity detection in Kafka consumer
+    for (const cluster of clusters) {
+      clusterCoordinates.set(cluster.cluster_id, { lat: cluster.lat, lng: cluster.lng });
+    }
+
+    // Step 10: Notify driver (fire-and-forget)
     const notification: JobAssignedNotification = {
-      driver_id: driver.driver_id,
-      vehicle_id: vehicle.vehicle_id,
+      driver_id:              driver.id,
+      vehicle_id:             vehicle.vehicle_id,
       job_id,
       clusters,
-      route: routeResult.waypoints,
-      estimated_duration_min: routeResult.estimated_minutes
+      route:                  routeResult.waypoints,
+      estimated_duration_min: routeResult.estimated_minutes,
     };
-    slog('INFO', `Job ${job_id} assigned to ${driver.driver_id}/${vehicle.vehicle_id}`);
-
     fetch(`${NOTIFICATION_URL}/internal/notify/job-assigned`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(notification),
-    }).catch(e => slog('WARN', `Notification call failed for job ${job_id}: ${(e as Error).message}`));
+      body:    JSON.stringify(notification),
+    }).catch(e => slog('WARN', `Notification failed for job ${job_id}: ${(e as Error).message}`));
+
+    slog('INFO', `dispatch: job ${job_id} successfully assigned`, {
+      job_id,
+      vehicle_id:        vehicle.vehicle_id,
+      driver_id:         driver.id,
+      route_plan_id,
+      estimated_minutes: routeResult.estimated_minutes,
+      waypoint_count:    routeResult.waypoints.length,
+      bin_count:         bins_to_collect.length,
+      active_jobs_total: activeJobs.size,
+      route_plans_total: routePlans.size,
+    });
 
     return {
-      success: true,
-      vehicle_id: vehicle.vehicle_id,
-      driver_id: driver.driver_id,
-      route_plan_id: routePlanId,
+      success:           true,
+      vehicle_id:        vehicle.vehicle_id,
+      driver_id:         driver.id,
+      route_plan_id,
       estimated_minutes: routeResult.estimated_minutes,
-      route: routeResult.waypoints
+      route:             routeResult.waypoints,
     };
   });
 
-  // POST /internal/notify/vehicle-position - Mock endpoint for notification service
+  // POST /internal/scheduler/release
+  app.post<{ Body: { job_id: string } }>('/internal/scheduler/release', async (req) => {
+    const { job_id } = req.body;
+
+    // Try DB first (survives restarts), fall back to in-memory
+    const assignment = await db.getJobAssignment(job_id).catch(() => null)
+      ?? (() => {
+        const j = activeJobs.get(job_id);
+        return j ? { assigned_vehicle_id: j.assigned_vehicle_id, assigned_driver_id: j.assigned_driver_id } : null;
+      })();
+
+    if (assignment) {
+      const { assigned_vehicle_id, assigned_driver_id } = assignment;
+      if (assigned_vehicle_id) await coreApi.setVehicleStatus(assigned_vehicle_id, 'available').catch(() => {});
+      if (assigned_driver_id)  await db.setDriverStatus(assigned_driver_id, 'available').catch(() => {});
+      if (assigned_vehicle_id && assigned_driver_id) {
+        await db.recordAssignment({ job_id, driver_id: assigned_driver_id, vehicle_id: assigned_vehicle_id, assignment_type: 'released' }).catch(() => {});
+      }
+      activeJobs.delete(job_id);
+      slog('INFO', `Released vehicle/driver for job ${job_id}`);
+    }
+
+    return { released: true };
+  });
+
+  // POST /internal/notify/vehicle-position
   app.post<{ Body: VehiclePositionUpdate }>('/internal/notify/vehicle-position', async (req) => {
     const update = req.body;
     slog('INFO', `Vehicle position update: ${update.vehicle_id} at ${update.lat},${update.lng}`);
-    // In real system, this would forward to dashboard via Socket.IO
     return { acknowledged: true };
   });
 
-  // POST /internal/notify/alert-deviation - Mock endpoint for notification service
+  // POST /internal/notify/alert-deviation
   app.post<{ Body: { vehicle_id: string; driver_id: string; job_id: string; deviation_metres: number; duration_seconds: number; message: string } }>(
     '/internal/notify/alert-deviation', async (req) => {
       const { vehicle_id, message } = req.body;
@@ -167,41 +227,21 @@ export default async function internalRoutes(app: FastifyInstance) {
     },
   );
 
-  // POST /internal/jobs/:job_id/vehicle-full - Called when vehicle reaches weight limit
+  // POST /internal/jobs/:job_id/vehicle-full
   app.post<{ Params: { job_id: string } }>('/internal/jobs/:job_id/vehicle-full', async (req) => {
     const { job_id } = req.params;
     slog('WARN', `Vehicle full for job ${job_id}`);
-    // In real system, orchestrator would create new job for remaining bins
     return { acknowledged: true };
   });
 
-  // POST /internal/jobs/:job_id/complete - Called when job is complete
+  // POST /internal/jobs/:job_id/complete
   app.post<{ Params: { job_id: string } }>('/internal/jobs/:job_id/complete', async (req) => {
     const { job_id } = req.params;
     const job = activeJobs.get(job_id);
     if (job) {
       job.state = 'COMPLETED';
-      const vehicle = vehicles.get(job.assigned_vehicle_id);
-      const driver = drivers.get(job.assigned_driver_id);
-      if (vehicle) vehicle.status = 'available';
-      if (driver) driver.status = 'available';
-      slog('INFO', `Job ${job_id} completed`);
+      slog('INFO', `Job ${job_id} marked COMPLETED in memory`);
     }
     return { acknowledged: true };
-  });
-
-  // POST /internal/scheduler/release - Called by orchestrator on job cancel/complete
-  app.post<{ Body: { job_id: string } }>('/internal/scheduler/release', async (req) => {
-    const { job_id } = req.body;
-    const job = activeJobs.get(job_id);
-    if (job) {
-      const vehicle = vehicles.get(job.assigned_vehicle_id);
-      const driver  = drivers.get(job.assigned_driver_id);
-      if (vehicle) vehicle.status = 'available';
-      if (driver)  driver.status  = 'available';
-      activeJobs.delete(job_id);
-      slog('INFO', `Released vehicle/driver for job ${job_id}`);
-    }
-    return { released: true };
   });
 }
