@@ -2,17 +2,25 @@ import type { KyInstance } from 'ky'
 import type { CollectionJobListItem, CollectionJobDetail } from '@/types'
 
 export interface CreateJobRequest {
-  job_type?:      'emergency' | 'routine'
-  zone_id:        string
+  job_type?:       'emergency' | 'routine'
+  zone_id:         string
   waste_category?: string
-  bin_ids?:       string[]
-  urgency_score?: number
+  bin_ids?:        string[]
+  urgency_score?:  number
 }
 
-export async function createJob(api: KyInstance, body: CreateJobRequest) {
-  return api
-    .post('api/v1/collection-jobs', { json: body })
-    .json<{ job_id: string; state: string }>()
+// Proxied through Next.js API route to avoid browser CORS/proxy restrictions
+export async function createJob(body: CreateJobRequest): Promise<{ job_id: string; state: string }> {
+  const res = await fetch('/api/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { reason?: string }
+    throw new Error(err.reason ?? `HTTP ${res.status}`)
+  }
+  return res.json() as Promise<{ job_id: string; state: string }>
 }
 
 export async function getJobs(

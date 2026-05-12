@@ -169,12 +169,12 @@ export default function JobsPage() {
         .split(',')
         .map(s => s.trim())
         .filter(Boolean)
-      return createJob(createClientApiClient(session?.accessToken), {
-        job_type:      createJobType,
-        zone_id:       createZone.trim(),
+      return createJob({
+        job_type:       createJobType,
+        zone_id:        createZone.trim(),
         waste_category: createCategory,
-        urgency_score: createJobType === 'emergency' ? createUrgency : undefined,
-        bin_ids:       bin_ids.length > 0 ? bin_ids : undefined,
+        urgency_score:  createJobType === 'emergency' ? createUrgency : undefined,
+        bin_ids:        bin_ids.length > 0 ? bin_ids : undefined,
       })
     },
     onSuccess: () => {

@@ -1,9 +1,32 @@
 import { FastifyInstance } from 'fastify';
-import { JobCompleteRequest } from '../types';
+import { CollectionJob, JobCompleteRequest } from '../types';
 import { getJob, getJobs, getStats, getStateHistory, getStepLog, insertJob } from '../db/queries';
 import { executeEmergencyWorkflow, executeRoutineWorkflow, completeJob, cancelJob, handleWorkflowFailure } from '../core/orchestrator';
 
 const err404 = (id: string) => ({ error: 'RESOURCE_NOT_FOUND', message: `Job ${id} not found`, timestamp: new Date().toISOString() });
+
+// Maps internal CollectionJob → shape the dashboard list expects
+function toListItem(job: CollectionJob) {
+  return {
+    id:                  job.job_id,
+    job_type:            job.job_type,
+    zone_id:             parseInt(job.zone_id, 10),
+    zone_name:           `Zone ${job.zone_id}`,
+    state:               job.state,
+    priority:            job.job_type === 'emergency' ? 9 : 5,
+    assigned_vehicle_id: job.assigned_vehicle_id  ?? null,
+    assigned_driver_id:  job.assigned_driver_id   ?? null,
+    clusters:            job.clusters,
+    planned_weight_kg:   job.planned_weight_kg     ?? null,
+    actual_weight_kg:    job.actual_weight_kg      ?? null,
+    bins_total:          job.bins_to_collect.length,
+    bins_collected:      0,
+    bins_skipped:        0,
+    created_at:          job.created_at,
+    completed_at:        job.completed_at ?? null,
+    duration_minutes:    job.actual_duration_min   ?? null,
+  };
+}
 
 export default async function jobRoutes(app: FastifyInstance): Promise<void> {
 
@@ -17,11 +40,12 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/v1/collection-jobs', async (req) => {
     const { job_type, state, zone_id, date_from, date_to, page = '1', limit = '20' } =
       req.query as Record<string, string | undefined>;
-    return getJobs({
+    const result = await getJobs({
       job_type, state, zone_id, date_from, date_to,
       page:  parseInt(page  ?? '1'),
       limit: Math.min(parseInt(limit ?? '20'), 100),
     });
+    return { ...result, data: result.data.map(toListItem) };
   });
 
   // GET /api/v1/collection-jobs/:id
@@ -29,9 +53,19 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
     const job = await getJob(req.params.id);
     if (!job) return reply.code(404).send(err404(req.params.id));
     return {
-      ...job,
-      state_history: await getStateHistory(job.job_id),
-      step_log:      await getStepLog(job.job_id),
+      ...toListItem(job),
+      trigger_bin_id:        job.trigger_bin_id        ?? null,
+      trigger_urgency_score: job.trigger_urgency_score ?? null,
+      route_plan_id:         job.route_plan_id         ?? null,
+      planned_distance_km:   null,
+      actual_distance_km:    job.actual_distance_km    ?? null,
+      planned_duration_min:  null,
+      hyperledger_tx_id:     job.hyperledger_tx_id     ?? null,
+      failure_reason:        job.failure_reason        ?? null,
+      escalated_at:          null,
+      bin_collections:       [],
+      state_history:         await getStateHistory(job.job_id),
+      step_log:              await getStepLog(job.job_id),
     };
   });
 
