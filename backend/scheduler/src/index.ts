@@ -6,6 +6,7 @@ import internalRoutes    from './routes/internal';
 import collectionsRoutes from './routes/collections';
 import vehiclesRoutes    from './routes/vehicles';
 import driversRoutes     from './routes/drivers';
+import sysadminRoutes    from './routes/sysadmin';
 import { startKafkaConsumer } from './kafka/consumer';
 import { syncVehiclesFromCoreApi, syncActiveJobsFromOrchestrator } from './store';
 
@@ -28,6 +29,7 @@ async function start() {
   await app.register(collectionsRoutes);
   await app.register(vehiclesRoutes);
   await app.register(driversRoutes);
+  await app.register(sysadminRoutes);
 
   const PORT = Number(process.env.PORT ?? 3003);
   await app.listen({ port: PORT, host: '0.0.0.0' });
