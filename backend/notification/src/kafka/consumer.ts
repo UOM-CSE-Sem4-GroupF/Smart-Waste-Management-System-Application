@@ -83,11 +83,25 @@ interface AlertPayload {
 }
 
 interface VehiclePositionPayload {
-  vehicle_id: string;
-  zone_id: number;
-  lat: number;
-  lng: number;
-  speed_kmh: number;
+  vehicle_id:            string;
+  driver_id:             string;
+  job_id:                string;
+  zone_id:               number;
+  lat:                   number;
+  lng:                   number;
+  speed_kmh:             number;
+  heading_degrees:       number;
+  accuracy_m:            number;
+  current_cluster?:      string;
+  next_cluster?:         string;
+  bins_collected:        number;
+  bins_total:            number;
+  cargo_weight_kg:       number;
+  cargo_limit_kg:        number;
+  cargo_utilisation_pct: number;
+  arrived_at_bin?:       string;
+  weight_limit_warning?: boolean;
+  timestamp?:            string;
 }
 
 interface JobProgressPayload {

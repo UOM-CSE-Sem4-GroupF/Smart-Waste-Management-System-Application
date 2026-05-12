@@ -95,18 +95,12 @@ export interface BinCollectionRecord {
 }
 
 export interface VehicleLocationEvent {
-  version: string;
-  source_service: 'flutter-app';
-  timestamp: string;
-  payload: {
-    vehicle_id: string;
-    driver_id: string;
-    lat: number;
-    lng: number;
-    speed_kmh: number;
-    heading_degrees: number;
-    accuracy_m: number;
-  };
+  vehicle_id: string;
+  lat:        number;
+  lon:        number;
+  speed:      number;
+  heading:    number;
+  timestamp:  number;
 }
 
 export interface VehicleDeviationEvent {
@@ -134,6 +128,7 @@ export interface VehiclePositionUpdate {
   vehicle_id: string;
   driver_id: string;
   job_id: string;
+  zone_id: number;
   lat: number;
   lng: number;
   speed_kmh: number;

@@ -17,8 +17,9 @@ function getContainerColour(pct: number): string {
 
 export function useVehicleMarker({ map, vehicle, onSelect }: VehicleMarkerProps) {
   const markerRef = useRef<mapboxgl.Marker | null>(null)
-  const prevPos = useRef<[number, number]>([vehicle.lng, vehicle.lat])
-  const rafRef  = useRef<number | null>(null)
+  const elRef     = useRef<HTMLDivElement | null>(null)
+  const prevPos   = useRef<[number, number]>([vehicle.lng, vehicle.lat])
+  const rafRef    = useRef<number | null>(null)
 
   useEffect(() => {
     const colour = getContainerColour(vehicle.cargo_utilisation_pct)
@@ -35,9 +36,11 @@ export function useVehicleMarker({ map, vehicle, onSelect }: VehicleMarkerProps)
       justify-content: center;
       cursor: pointer;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      transform-origin: center;
+      transform: rotate(${vehicle.heading_degrees ?? 0}deg);
+      transition: transform 0.4s ease;
     `
 
-    // Truck icon (SVG)
     el.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -73,15 +76,24 @@ export function useVehicleMarker({ map, vehicle, onSelect }: VehicleMarkerProps)
       .addTo(map)
 
     markerRef.current = marker
-    prevPos.current = [vehicle.lng, vehicle.lat]
+    elRef.current     = el
+    prevPos.current   = [vehicle.lng, vehicle.lat]
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       popup.remove()
       marker.remove()
+      elRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, vehicle.vehicle_id])
+
+  // Update heading rotation on live updates (no DOM re-creation)
+  useEffect(() => {
+    if (elRef.current) {
+      elRef.current.style.transform = `rotate(${vehicle.heading_degrees ?? 0}deg)`
+    }
+  }, [vehicle.heading_degrees])
 
   // Smooth position transition on lat/lng change
   useEffect(() => {

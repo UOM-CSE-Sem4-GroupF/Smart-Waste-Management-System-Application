@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { DispatchRequest, JobAssignedNotification, VehiclePositionUpdate } from '../types';
-import { callORTools, nearestNeighbourFallback, activeJobs } from '../store';
+import { callORTools, nearestNeighbourFallback, activeJobs, routePlans, clusterCoordinates } from '../store';
 import * as coreApi from '../clients/coreApiClient';
 import * as db from '../db/queries';
 
@@ -13,6 +13,7 @@ export default async function internalRoutes(app: FastifyInstance) {
   // POST /internal/scheduler/dispatch
   app.post<{ Body: DispatchRequest }>('/internal/scheduler/dispatch', async (req, reply) => {
     const { job_id, clusters, bins_to_collect, total_estimated_weight_kg, waste_category, zone_id, priority } = req.body;
+    const parsedZoneId = typeof zone_id === 'string' ? parseInt(zone_id, 10) : zone_id;
 
     slog('INFO', `Dispatching job ${job_id} for ${bins_to_collect.length} bins, ${total_estimated_weight_kg}kg`);
 
@@ -61,7 +62,7 @@ export default async function internalRoutes(app: FastifyInstance) {
     try {
       route_plan_id = await coreApi.createRoutePlan({
         vehicle_id:           vehicle.vehicle_id,
-        zone_id:              typeof zone_id === 'string' ? parseInt(zone_id, 10) : zone_id,
+        zone_id:              parsedZoneId,
         route_type:           'emergency',
         waypoints:            routeResult.waypoints,
         total_clusters:       clusters.length,
@@ -96,11 +97,31 @@ export default async function internalRoutes(app: FastifyInstance) {
       state:               'DISPATCHED',
       assigned_vehicle_id: vehicle.vehicle_id,
       assigned_driver_id:  driver.id,
-      zone_id:             typeof zone_id === 'string' ? parseInt(zone_id, 10) : zone_id,
+      zone_id:             parsedZoneId,
       waste_category,
       total_bins:          bins_to_collect.length,
       created_at:          new Date().toISOString(),
     });
+
+    // Cache route plan for live vehicle enrichment in Kafka consumer
+    routePlans.set(route_plan_id, {
+      route_plan_id,
+      job_id,
+      vehicle_id:           vehicle.vehicle_id,
+      route_type:           'emergency',
+      zone_id:              parsedZoneId,
+      waypoints:            routeResult.waypoints,
+      total_bins:           bins_to_collect.length,
+      estimated_weight_kg:  total_estimated_weight_kg,
+      estimated_distance_km: routeResult.total_distance_km,
+      estimated_minutes:    routeResult.estimated_minutes,
+      created_at:           new Date().toISOString(),
+    });
+
+    // Cache cluster coordinates for proximity detection in Kafka consumer
+    for (const cluster of clusters) {
+      clusterCoordinates.set(cluster.cluster_id, { lat: cluster.lat, lng: cluster.lng });
+    }
 
     // Step 10: Notify driver (fire-and-forget)
     const notification: JobAssignedNotification = {

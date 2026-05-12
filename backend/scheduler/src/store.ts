@@ -109,6 +109,7 @@ export const drivers = new Map<string, Driver>(SEED_DRIVERS);
 export const vehicles = new Map<string, Vehicle>(SEED_VEHICLES);
 export const routePlans = new Map<string, RoutePlan>();
 export const binCollectionRecords = new Map<string, BinCollectionRecord>();
+export const clusterCoordinates = new Map<string, { lat: number; lng: number }>();
 
 // In-memory job state (normally would be in database)
 export const activeJobs = new Map<string, {
@@ -130,6 +131,7 @@ export function resetStore(): void {
   routePlans.clear();
   binCollectionRecords.clear();
   activeJobs.clear();
+  clusterCoordinates.clear();
 }
 
 export function findAvailableVehicle(
