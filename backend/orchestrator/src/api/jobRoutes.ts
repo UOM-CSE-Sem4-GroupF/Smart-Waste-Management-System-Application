@@ -121,8 +121,9 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
     });
 
     if (jt === 'emergency') {
-      const trigger_bin = bin_ids[0] ?? `MANUAL-${zone_id}`;
-      executeEmergencyWorkflow(job, { bin_id: trigger_bin, urgency_score: urgency, waste_category: waste_cat, zone_id })
+      const trigger_bin    = bin_ids[0] ?? `MANUAL-${zone_id}`;
+      const trigger_cluster = `ZONE-${zone_id}`;
+      executeEmergencyWorkflow(job, { bin_id: trigger_bin, cluster_id: trigger_cluster, urgency_score: urgency, waste_category: waste_cat, zone_id })
         .catch(e => handleWorkflowFailure(job, e));
     } else {
       executeRoutineWorkflow(job, { zone_id, bin_ids, waste_category: waste_cat })

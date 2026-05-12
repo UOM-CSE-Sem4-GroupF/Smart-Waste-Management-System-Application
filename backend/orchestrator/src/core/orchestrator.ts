@@ -32,15 +32,15 @@ export async function handleWorkflowFailure(job: CollectionJob, error: unknown):
 
 export async function executeEmergencyWorkflow(
   job: CollectionJob,
-  event: { bin_id: string; urgency_score: number; waste_category: string; zone_id: string },
+  event: { bin_id: string; cluster_id: string; urgency_score: number; waste_category: string; zone_id: string },
 ): Promise<void> {
   try {
-    // Step 1: Confirm bin urgency
+    // Step 1: Confirm bin urgency — get live cluster state from bin-status
     await transition(job, 'BIN_CONFIRMING');
 
     const snapshot = await step(job, 'bin_confirmation', () =>
-      getClusterSnapshot(event.zone_id).then(s => {
-        if (!s) throw new Error('bin-status unavailable');
+      getClusterSnapshot(event.cluster_id).then(s => {
+        if (!s) throw new Error('bin-status snapshot unavailable');
         return s;
       }),
     );
@@ -58,9 +58,10 @@ export async function executeEmergencyWorkflow(
 
     const clusterSet = await assemble({
       job,
-      urgency_score:  event.urgency_score,
-      waste_category: event.waste_category,
-      zone_id:        event.zone_id,
+      urgency_score:   event.urgency_score,
+      waste_category:  event.waste_category,
+      zone_id:         event.zone_id,
+      cluster_id:      event.cluster_id,
       initialSnapshot: snapshot,
     });
 
