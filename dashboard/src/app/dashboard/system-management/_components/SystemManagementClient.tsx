@@ -183,7 +183,7 @@ const TABLES: TableDef[] = [
     label: 'Devices',
     sqlName: 'f2.devices',
     schema: 'f2',
-    description: 'IoT sensors — firmware config, health status, MQTT topics',
+    description: 'IoT sensors — admin-configurable firmware settings and provisioning info',
     primaryKey: 'id',
     fetch: listDevices,
     update: updateDevice,
@@ -193,9 +193,12 @@ const TABLES: TableDef[] = [
       { key: 'bin_id', label: 'Bin ID', type: 'text', editable: true },
       { key: 'device_type', label: 'Type', type: 'select', editable: true, options: ['esp32_ultrasonic','esp32_weight','rpi_gateway'] },
       { key: 'status', label: 'Status', type: 'select', editable: true, options: ['provisioned','active','offline','maintenance','decommissioned'] },
-      { key: 'firmware_current_version', label: 'FW Version', type: 'text' },
-      { key: 'firmware_target_version', label: 'FW Target', type: 'text', editable: true },
+      // Sensor-reported — read-only (overwritten on next heartbeat)
+      { key: 'firmware_current_version', label: 'FW Running', type: 'text' },
       { key: 'battery_level_pct', label: 'Battery %', type: 'number' },
+      { key: 'last_seen_at', label: 'Last Seen', type: 'datetime' },
+      // Admin-configurable firmware settings
+      { key: 'firmware_target_version', label: 'FW Target', type: 'text', editable: true },
       { key: 'sleep_interval_normal_s', label: 'Sleep Normal (s)', type: 'number', editable: true, hideInTable: true },
       { key: 'sleep_interval_monitor_s', label: 'Sleep Monitor (s)', type: 'number', editable: true, hideInTable: true },
       { key: 'sleep_interval_urgent_s', label: 'Sleep Urgent (s)', type: 'number', editable: true, hideInTable: true },
@@ -203,8 +206,6 @@ const TABLES: TableDef[] = [
       { key: 'urgency_threshold_monitor', label: 'Threshold Monitor', type: 'number', editable: true, hideInTable: true },
       { key: 'urgency_threshold_urgent', label: 'Threshold Urgent', type: 'number', editable: true, hideInTable: true },
       { key: 'urgency_threshold_critical', label: 'Threshold Critical', type: 'number', editable: true, hideInTable: true },
-      { key: 'mqtt_topic', label: 'MQTT Topic', type: 'text', hideInTable: true },
-      { key: 'last_seen_at', label: 'Last Seen', type: 'datetime' },
     ],
   },
   {
@@ -212,9 +213,10 @@ const TABLES: TableDef[] = [
     label: 'Bin Current State',
     sqlName: 'f2.bin_current_state',
     schema: 'f2',
-    description: 'Live sensor readings — fill level, urgency score, predictions',
+    description: 'Live sensor readings written by Kafka/Flink — read-only. Editing is pointless; the next sensor message overwrites any manual change.',
     primaryKey: 'bin_id',
     fetch: listBinStates,
+    // No update/create/remove — this table is owned by the sensor pipeline
     columns: [
       { key: 'bin_id', label: 'Bin ID', type: 'text', primaryKey: true },
       { key: 'fill_level_pct', label: 'Fill %', type: 'number' },
@@ -392,6 +394,9 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
   const handleSubmit = () => {
     const payload: Row = {}
     for (const col of editableCols) {
+      // Primary key goes in the URL path for updates — never in the body
+      if (!isCreate && col.primaryKey) continue
+
       const v = form[col.key]
       if (col.type === 'number') {
         payload[col.key] = v === '' || v === undefined ? undefined : Number(v)
@@ -400,10 +405,6 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
       } else {
         payload[col.key] = v === '' ? undefined : v
       }
-    }
-    if (isCreate) {
-      const pkCol = tableDef.columns.find((c) => c.primaryKey && c.editable)
-      if (pkCol) payload[pkCol.key] = form[pkCol.key]
     }
     onSave(payload)
   }
