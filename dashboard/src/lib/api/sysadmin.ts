@@ -26,114 +26,6 @@ function clean(params?: Record<string, string | number>): Record<string, string 
   ) as Record<string, string | number>
 }
 
-// ── F2 Tables (via /api/metadata/[...path] proxy) ────────────────────────────
-
-export async function listWasteCategories(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/waste-categories', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function createWasteCategory(api: KyInstance, payload: Row) {
-  return api.post('api/metadata/waste-categories', { json: payload }).json<Row>()
-}
-export async function updateWasteCategory(api: KyInstance, id: number | string, payload: Row) {
-  return api.patch(`api/metadata/waste-categories/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteWasteCategory(api: KyInstance, id: number | string) {
-  return api.delete(`api/metadata/waste-categories/${id}`)
-}
-
-export async function listCityZones(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/city-zones', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function createCityZone(api: KyInstance, payload: Row) {
-  const res = await api.post('api/metadata/city-zones', { json: payload }).json<{ data?: Row } | Row>()
-  return (res as { data?: Row }).data ?? res as Row
-}
-export async function updateCityZone(api: KyInstance, id: number | string, payload: Row) {
-  return api.patch(`api/metadata/city-zones/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteCityZone(api: KyInstance, id: number | string) {
-  return api.delete(`api/metadata/city-zones/${id}`)
-}
-
-export async function listVehicles(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/vehicles', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function createVehicle(api: KyInstance, payload: Row) {
-  const res = await api.post('api/metadata/vehicles', { json: payload }).json<{ data?: Row } | Row>()
-  return (res as { data?: Row }).data ?? res as Row
-}
-export async function updateVehicle(api: KyInstance, id: string, payload: Row) {
-  return api.patch(`api/metadata/vehicles/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteVehicle(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/vehicles/${id}`)
-}
-
-export async function listClusters(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/clusters', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function createCluster(api: KyInstance, payload: Row) {
-  const res = await api.post('api/metadata/clusters', { json: payload }).json<{ data?: Row } | Row>()
-  return (res as { data?: Row }).data ?? res as Row
-}
-export async function updateCluster(api: KyInstance, id: string, payload: Row) {
-  return api.patch(`api/metadata/clusters/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteCluster(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/clusters/${id}`)
-}
-
-export async function listBins(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/bins', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function createBinRecord(api: KyInstance, payload: Row) {
-  const res = await api.post('api/metadata/bins', { json: payload }).json<{ data?: Row } | Row>()
-  return (res as { data?: Row }).data ?? res as Row
-}
-export async function updateBinRecord(api: KyInstance, id: string, payload: Row) {
-  return api.patch(`api/metadata/bins/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteBinRecord(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/bins/${id}`)
-}
-
-export async function listDevices(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/devices', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function updateDevice(api: KyInstance, id: string, payload: Row) {
-  return api.patch(`api/metadata/devices/${id}`, { json: payload }).json<Row>()
-}
-export async function deleteDevice(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/devices/${id}`)
-}
-
-export async function listRoutePlans(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/route-plans', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function updateRoutePlan(api: KyInstance, id: string, payload: Row) {
-  return api.patch(`api/metadata/route-plans/${id}`, { json: payload }).json<Row>()
-}
-
-export async function listZoneSnapshots(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/zone-snapshots', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-
-export async function listModelPerformance(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/metadata/model-performance', { searchParams: clean(params) }).json()
-  return normaliseList(raw)
-}
-export async function updateModelPerformance(api: KyInstance, id: number | string, payload: Row) {
-  return api.patch(`api/metadata/model-performance/${id}`, { json: payload }).json<Row>()
-}
-
 // ── F3 Tables (via /api/v1/... gateway) ─────────────────────────────────────
 
 export async function listDrivers(api: KyInstance, params?: Record<string, string | number>) {
@@ -149,7 +41,49 @@ export async function listCollectionJobs(api: KyInstance, params?: Record<string
   return normaliseList(raw)
 }
 
-export async function listBinStates(api: KyInstance, params?: Record<string, string | number>) {
-  const raw = await api.get('api/v1/bins', { searchParams: clean(params) }).json()
+export async function listRoutineSchedules(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/routine-schedules', { searchParams: clean(params) }).json()
   return normaliseList(raw)
 }
+
+export async function listEmergencyJobDetails(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/emergency-job-details', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listRoutineJobDetails(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/routine-job-details', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listJobExecutionMetrics(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/job-execution-metrics', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listBinCollectionRecords(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/bin-collection-records', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listJobStateTransitions(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/job-state-transitions', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listJobStepResults(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/job-step-results', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listDriverAssignmentHistory(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/driver-assignment-history', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+export async function listVehicleWeightLogs(api: KyInstance, params?: Record<string, string | number>) {
+  const raw = await api.get('api/v1/vehicle-weight-logs', { searchParams: clean(params) }).json()
+  return normaliseList(raw)
+}
+
+
