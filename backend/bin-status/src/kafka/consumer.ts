@@ -57,12 +57,31 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
   const { bin_id } = payload;
   const now = new Date().toISOString();
 
+  logger.debug({
+    bin_id,
+    fill_level_pct:       payload.fill_level_pct,
+    urgency_score:        payload.urgency_score,
+    status:               payload.status,
+    fill_rate_pct_per_hour: payload.fill_rate_pct_per_hour,
+    battery_level_pct:    payload.battery_level_pct,
+  }, 'processBinProcessedMessage: received event');
+
   try {
     // Step 1 & 5: Load bin metadata for enrichment
+    logger.debug({ bin_id }, 'processBinProcessedMessage: fetching bin metadata');
     const meta = await getBinMetadata(bin_id);
     
     const volume_litres = meta?.volume_litres ?? 240;
     const waste_category = meta?.waste_category ?? 'general';
+
+    logger.debug({
+      bin_id,
+      meta_found:     !!meta,
+      cluster_id:     meta?.cluster_id,
+      zone_id:        meta?.zone_id,
+      waste_category,
+      volume_litres,
+    }, 'processBinProcessedMessage: metadata loaded');
 
     // Step 2: Recalculate weight
     const estimated_weight_kg = calculateBinWeightByCategory(
@@ -81,6 +100,15 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
     // Classify urgency status
     const { status } = classifyUrgency(payload.urgency_score, payload.status);
 
+    logger.debug({
+      bin_id,
+      urgency_score:       payload.urgency_score,
+      status,
+      estimated_weight_kg,
+      has_active_job:      hasActiveJob,
+      collection_triggered,
+    }, 'processBinProcessedMessage: classification complete');
+
     // Step 4: Smart dashboard filter
     const previousState = store.getBinFilterState(bin_id);
     const filterResult = shouldPushToDashboard(
@@ -97,10 +125,12 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
     if (!filterResult.shouldPush) {
       logger.debug(
         { bin_id, reason: filterResult.reason },
-        'Suppressing bin update (filter)',
+        'Suppressing bin update (filter — no significant change)',
       );
       return;
     }
+
+    logger.debug({ bin_id, reason: filterResult.reason }, 'processBinProcessedMessage: dashboard filter passed');
 
     // Step 5: Enrich payload
     const enriched: BinUpdatePayload = {
@@ -131,6 +161,14 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
       payload: enriched,
     };
 
+    logger.debug({
+      bin_id,
+      cluster_id:      enriched.cluster_id,
+      zone_id:         enriched.zone_id,
+      urgency_score:   enriched.urgency_score,
+      fill_level_pct:  enriched.fill_level_pct,
+    }, 'processBinProcessedMessage: publishing bin:update to dashboard');
+
     await publishToDashboard(dashboardEvent);
     
     // Step 7: Update local store state
@@ -153,6 +191,12 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
 
     // If urgent and not already handled, publish alert
     if (collection_triggered && payload.urgency_score >= 80) {
+      logger.warn({
+        bin_id,
+        urgency_score: payload.urgency_score,
+        cluster_id:    enriched.cluster_id,
+        zone_id:       enriched.zone_id,
+      }, 'processBinProcessedMessage: publishing alert:urgent — bin requires collection');
       const alertEvent: DashboardUpdateEvent<AlertPayload> = {
         version: '1.0',
         source_service: 'bin-status-service',
@@ -172,9 +216,9 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
       await publishToDashboard(alertEvent);
     }
 
-    logger.debug(
-      { bin_id, status, urgency_score: payload.urgency_score },
-      'Processed bin.processed message',
+    logger.info(
+      { bin_id, status, urgency_score: payload.urgency_score, collection_triggered, cluster_id: enriched.cluster_id, zone_id: enriched.zone_id },
+      'processBinProcessedMessage: complete',
     );
   } catch (error) {
     logger.error(
@@ -196,6 +240,15 @@ async function processZoneStatisticsMessage(event: ZoneStatisticsEvent): Promise
   const { zone_id } = payload;
   const now = new Date().toISOString();
 
+  logger.debug({
+    zone_id,
+    avg_fill_level_pct:      payload.avg_fill_level_pct,
+    urgent_bin_count:        payload.urgent_bin_count,
+    critical_bin_count:      payload.critical_bin_count,
+    total_bins:              payload.total_bins,
+    total_estimated_weight_kg: payload.total_estimated_weight_kg,
+  }, 'processZoneStatisticsMessage: received event');
+
   try {
     // Step 1: Check if meaningful change occurred
     const cachedStats = store.getZoneCacheEntry(zone_id);
@@ -207,9 +260,16 @@ async function processZoneStatisticsMessage(event: ZoneStatisticsEvent): Promise
       payload.critical_bin_count !== cachedStats.lastCriticalCount;
 
     if (!significantChange) {
-      logger.debug({ zone_id }, 'Zone stats change below threshold — suppressing');
+      logger.debug({
+        zone_id,
+        cached_avg:    cachedStats?.lastAvgFill,
+        new_avg:       payload.avg_fill_level_pct,
+        diff:          cachedStats ? Math.abs(payload.avg_fill_level_pct - (cachedStats.lastAvgFill ?? 0)) : 'no cache',
+      }, 'Zone stats change below threshold — suppressing');
       return;
     }
+
+    logger.debug({ zone_id }, 'Zone stats: significant change detected, proceeding to publish');
 
     // Step 2: Enrich with job context and metadata
     const meta = await getZoneMetadata(zone_id);
@@ -249,10 +309,14 @@ async function processZoneStatisticsMessage(event: ZoneStatisticsEvent): Promise
       lastPublishedAt: Date.now(),
     });
 
-    logger.debug(
-      { zone_id, avg_fill: payload.avg_fill_level_pct },
-      'Processed zone.statistics message',
-    );
+    logger.info({
+      zone_id,
+      zone_name:       enriched.zone_name,
+      avg_fill:        enriched.avg_fill_level_pct,
+      urgent_bins:     enriched.urgent_bin_count,
+      critical_bins:   enriched.critical_bin_count,
+      active_jobs:     enriched.active_jobs_count,
+    }, 'processZoneStatisticsMessage: zone:stats published to dashboard');
   } catch (error) {
     logger.error(
       {

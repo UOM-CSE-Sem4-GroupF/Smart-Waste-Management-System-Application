@@ -55,10 +55,13 @@ export default async function internalRoutes(app: FastifyInstance) {
 
       const { cluster_id } = req.params;
 
+      logger.info({ cluster_id, service_header: req.headers['x-service-name'] }, 'cluster snapshot request received');
+
       try {
         // Fetch authoritative cluster + bin state from Core API (F2).
         // F2's bin_current_state is kept current by Flink writing directly,
         // so this is always as fresh as our local Kafka-derived state.
+        logger.debug({ cluster_id }, 'Fetching cluster snapshot from Core API (F2)');
         const f2 = await getClusterSnapshot(cluster_id);
 
         if (!f2) {
@@ -68,7 +71,10 @@ export default async function internalRoutes(app: FastifyInstance) {
           const allBins = store.getAllBins();
           const clusterBins = allBins.filter((b) => b.cluster_id === cluster_id);
 
+          logger.debug({ cluster_id, local_bins: allBins.length }, 'Using local store for snapshot');
+
           if (clusterBins.length === 0) {
+            logger.warn({ cluster_id }, 'Cluster not found in local store either — returning 404');
             return reply.code(404).send({
               error: 'CLUSTER_NOT_FOUND',
               message: `Cluster ${cluster_id} not found`,
@@ -165,7 +171,14 @@ export default async function internalRoutes(app: FastifyInstance) {
           highest_urgency_bin_id,
         };
 
-        logger.info({ cluster_id, total_bins: f2.total_bins }, 'Cluster snapshot retrieved from Core API');
+        logger.info({
+          cluster_id,
+          total_bins:                f2.total_bins,
+          collectible_bins_count:    collectible_count,
+          collectible_bins_weight_kg: parseFloat(collectible_weight.toFixed(2)),
+          highest_urgency_score:     highest_urgency,
+          has_active_job:            cluster_active_from_db,
+        }, 'Cluster snapshot built from Core API + F3 DB');
         return snapshot;
       } catch (error) {
         logger.error(
@@ -196,9 +209,11 @@ export default async function internalRoutes(app: FastifyInstance) {
     if (!validateServiceHeader(req, reply)) return;
 
     const { lat, lng, radius_km, min_urgency_score } = req.body;
+    logger.info({ lat, lng, radius_km, min_urgency_score }, 'scan-nearby request received');
 
     try {
       const allBins = store.getAllBins();
+      logger.debug({ total_bins_in_store: allBins.length }, 'scan-nearby: checking bins in local store');
 
       // Group bins by cluster, keeping only those with sufficient urgency
       const clusterMap = new Map<string, BinState[]>();
@@ -238,7 +253,11 @@ export default async function internalRoutes(app: FastifyInstance) {
       // Sort by urgency descending so orchestrator gets highest-priority clusters first
       clusters.sort((a, b) => b.highest_urgency_score - a.highest_urgency_score);
 
-      logger.info({ lat, lng, radius_km, min_urgency_score, found: clusters.length }, 'Nearby clusters scan completed');
+      logger.info({
+        lat, lng, radius_km, min_urgency_score,
+        found:       clusters.length,
+        cluster_ids: clusters.map(c => c.cluster_id),
+      }, 'Nearby clusters scan completed');
       return { clusters };
     } catch (error) {
       logger.error(
@@ -271,14 +290,18 @@ export default async function internalRoutes(app: FastifyInstance) {
     const { job_id, driver_id, collected_at, fill_level_at_collection, actual_weight_kg } =
       req.body;
 
+    logger.info({ bin_id, job_id, driver_id, collected_at, fill_level_at_collection, actual_weight_kg }, 'mark-collected request received');
+
     try {
       const bin = store.getBin(bin_id);
       if (!bin) {
+        logger.warn({ bin_id }, 'mark-collected: bin not found in local store');
         return reply.code(404).send({
           error: 'RESOURCE_NOT_FOUND',
           message: `Bin ${bin_id} not found`,
         });
       }
+      logger.debug({ bin_id, current_fill: bin.fill_level_pct, current_urgency: bin.urgency_score }, 'mark-collected: bin found in store');
 
       // Update bin state
       const updated = store.upsertBin({

@@ -6,8 +6,8 @@ import * as db from '../db/queries';
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
 
-const slog = (level: string, msg: string) =>
-  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
+const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
+  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:routes', message: msg, ...extra }) + '\n');
 
 export default async function internalRoutes(app: FastifyInstance) {
   // POST /internal/scheduler/dispatch
@@ -15,24 +15,39 @@ export default async function internalRoutes(app: FastifyInstance) {
     const { job_id, clusters, bins_to_collect, total_estimated_weight_kg, waste_category, zone_id, priority } = req.body;
     const parsedZoneId = typeof zone_id === 'string' ? parseInt(zone_id, 10) : zone_id;
 
-    slog('INFO', `Dispatching job ${job_id} for ${bins_to_collect.length} bins, ${total_estimated_weight_kg}kg`);
+    slog('INFO', `dispatch: received job ${job_id}`, {
+      job_id, zone_id, cluster_count: clusters.length, bin_count: bins_to_collect.length,
+      weight_kg: total_estimated_weight_kg, waste_category, priority,
+    });
 
     // Step 1: Find available vehicle from Core API
+    slog('DEBUG', `dispatch step 1: searching for available ${waste_category} vehicle`, {
+      job_id, waste_category, min_capacity_kg: total_estimated_weight_kg,
+    });
     const vehicle = await coreApi.findAvailableVehicle(waste_category, total_estimated_weight_kg);
     if (!vehicle) {
-      slog('WARN', `No vehicle available for job ${job_id}`);
+      slog('WARN', `dispatch: no vehicle available for job ${job_id}`, {
+        job_id, waste_category, weight_kg: total_estimated_weight_kg,
+      });
       return reply.code(409).send({ success: false, reason: 'NO_VEHICLE_AVAILABLE' });
     }
+    slog('DEBUG', `dispatch step 1: vehicle found ${vehicle.vehicle_id}`, { job_id, vehicle_id: vehicle.vehicle_id, max_cargo_kg: vehicle.max_cargo_kg });
 
     // Step 2: Find driver for this vehicle from F3 DB
+    slog('DEBUG', `dispatch step 2: finding driver for vehicle ${vehicle.vehicle_id}`, { job_id, vehicle_id: vehicle.vehicle_id });
     const driver = await db.getDriverByVehicle(vehicle.vehicle_id);
     if (!driver) {
-      slog('ERROR', `Vehicle ${vehicle.vehicle_id} has no driver assigned in F3`);
+      slog('ERROR', `dispatch: vehicle ${vehicle.vehicle_id} has no driver assigned in F3`, { job_id, vehicle_id: vehicle.vehicle_id });
       return reply.code(500).send({ success: false, reason: 'VEHICLE_CONFIG_ERROR' });
     }
+    slog('DEBUG', `dispatch step 2: driver found ${driver.id}`, { job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id });
 
     // Step 3: Route planning via OR-Tools (with 35s timeout fallback)
+    slog('DEBUG', `dispatch step 3: calling OR-Tools for job ${job_id}`, {
+      job_id, cluster_count: clusters.length, bin_count: bins_to_collect.length,
+    });
     let routeResult;
+    const orToolsStart = Date.now();
     try {
       const availableVehicles = [{ vehicle_id: vehicle.vehicle_id, max_cargo_kg: vehicle.max_cargo_kg, waste_categories_supported: [waste_category], lat: 6.9271, lng: 79.8612 }];
       const depot = { lat: 6.9271, lng: 79.8612 };
@@ -40,8 +55,11 @@ export default async function internalRoutes(app: FastifyInstance) {
         callORTools(job_id, 'emergency', clusters, bins_to_collect, availableVehicles, depot, {}),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 35_000)),
       ]);
+      slog('DEBUG', `dispatch step 3: OR-Tools complete in ${Date.now() - orToolsStart}ms`, {
+        job_id, waypoints: routeResult.waypoints.length, distance_km: routeResult.total_distance_km, est_minutes: routeResult.estimated_minutes,
+      });
     } catch {
-      slog('WARN', `OR-Tools timeout for job ${job_id}, using fallback`);
+      slog('WARN', `dispatch step 3: OR-Tools timeout for job ${job_id} after ${Date.now() - orToolsStart}ms — using nearest-neighbour fallback`, { job_id });
       const depot = { lat: 6.9271, lng: 79.8612 };
       routeResult = {
         vehicle_id:         vehicle.vehicle_id,
@@ -52,12 +70,17 @@ export default async function internalRoutes(app: FastifyInstance) {
     }
 
     // Step 4: Mark vehicle dispatched via Core API
+    slog('DEBUG', `dispatch step 4: marking vehicle ${vehicle.vehicle_id} as dispatched`, { job_id, vehicle_id: vehicle.vehicle_id });
     await coreApi.setVehicleStatus(vehicle.vehicle_id, 'dispatched');
 
     // Step 5: Mark driver on_job in F3 DB
+    slog('DEBUG', `dispatch step 5: marking driver ${driver.id} as on_job`, { job_id, driver_id: driver.id });
     await db.setDriverStatus(driver.id, 'on_job');
 
     // Step 6: Create route plan in Core API, get back the persisted route_plan_id
+    slog('DEBUG', `dispatch step 6: creating route plan in Core API`, {
+      job_id, vehicle_id: vehicle.vehicle_id, zone_id: parsedZoneId,
+    });
     let route_plan_id: string;
     try {
       route_plan_id = await coreApi.createRoutePlan({
@@ -72,11 +95,13 @@ export default async function internalRoutes(app: FastifyInstance) {
         estimated_minutes:    routeResult.estimated_minutes,
       });
     } catch (e) {
-      slog('WARN', `createRoutePlan failed: ${(e as Error).message} — using local id`);
+      slog('WARN', `dispatch step 6: createRoutePlan failed — using local id`, { job_id, error: (e as Error).message });
       route_plan_id = `route_${job_id}`;
     }
+    slog('DEBUG', `dispatch step 6: route_plan_id=${route_plan_id}`, { job_id, route_plan_id });
 
     // Step 7: Write bin collection records to F3 DB
+    slog('DEBUG', `dispatch step 7: writing ${bins_to_collect.length} bin collection records`, { job_id, bin_count: bins_to_collect.length });
     await db.createBinCollectionRecords(job_id, bins_to_collect.map((bin, index) => {
       const waypoint = routeResult.waypoints.find(w => w.bins.includes(bin.bin_id));
       return {
@@ -89,6 +114,7 @@ export default async function internalRoutes(app: FastifyInstance) {
     }));
 
     // Step 8: Record driver assignment in F3 DB
+    slog('DEBUG', `dispatch step 8: recording driver assignment`, { job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id });
     await db.recordAssignment({ job_id, driver_id: driver.id, vehicle_id: vehicle.vehicle_id, assignment_type: 'accepted' }).catch(() => {});
 
     // Step 9: Keep activeJobs in-memory for in-flight state (orchestrator is source of truth)
@@ -138,7 +164,17 @@ export default async function internalRoutes(app: FastifyInstance) {
       body:    JSON.stringify(notification),
     }).catch(e => slog('WARN', `Notification failed for job ${job_id}: ${(e as Error).message}`));
 
-    slog('INFO', `Job ${job_id} assigned to ${driver.id}/${vehicle.vehicle_id}`);
+    slog('INFO', `dispatch: job ${job_id} successfully assigned`, {
+      job_id,
+      vehicle_id:        vehicle.vehicle_id,
+      driver_id:         driver.id,
+      route_plan_id,
+      estimated_minutes: routeResult.estimated_minutes,
+      waypoint_count:    routeResult.waypoints.length,
+      bin_count:         bins_to_collect.length,
+      active_jobs_total: activeJobs.size,
+      route_plans_total: routePlans.size,
+    });
 
     return {
       success:           true,

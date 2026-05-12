@@ -1,6 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { emitToRoom } from '../socket';
 import { findConnectedSocket } from '../socket';
+
+const slog = (level: string, msg: string, extra?: Record<string, unknown>): void => {
+  process.stdout.write(JSON.stringify({
+    timestamp: new Date().toISOString(), level, service: 'notification:routes', message: msg, ...extra,
+  }) + '\n');
+};
 import { sendPush } from '../fcm';
 import { handle } from '../kafka/consumer';
 import {
@@ -19,6 +25,11 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post('/internal/notify/bin-update', async (req) => {
     const event = req.body as any;
     const timestamp = String(event.timestamp ?? new Date().toISOString());
+    slog('DEBUG', `/notify/bin-update received`, {
+      event_type: event.event_type,
+      bin_id:     event.payload?.bin_id ?? event.bin_id,
+      zone_id:    event.payload?.zone_id ?? event.zone_id,
+    });
     handle('waste.bin.dashboard.updates', event, timestamp);
     return { delivered: true, ts: timestamp };
   });
@@ -29,6 +40,7 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post('/internal/notify/job-initiated', async (req) => {
     const { job_id, job_type, zone_id, cluster_id, urgency_score, waste_category, message } = req.body as any;
     const ts = new Date().toISOString();
+    slog('INFO', `/notify/job-initiated: job ${job_id}`, { job_id, job_type, zone_id, cluster_id, urgency_score, waste_category });
 
     const payload = {
       job_id,
@@ -52,6 +64,9 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post<{ Body: JobAssignedBody }>('/internal/notify/job-assigned', async (req) => {
     const { driver_id, vehicle_id, job_id, job_type, clusters, route, estimated_duration_min, planned_weight_kg, total_bins } = req.body;
     const ts = new Date().toISOString();
+    slog('INFO', `/notify/job-assigned: job ${job_id} assigned to driver ${driver_id}`, {
+      job_id, driver_id, vehicle_id, job_type, total_bins, cluster_count: clusters?.length,
+    });
 
     const payload = {
       driver_id,
@@ -67,11 +82,14 @@ export default async function internalRoutes(app: FastifyInstance) {
     };
 
     // 1. Emit via Socket.IO to driver room
+    slog('DEBUG', `job-assigned: emitting to driver-${driver_id} room`, { job_id, driver_id });
     emitToRoom(`driver-${driver_id}`, 'job:assigned', payload);
 
     // 2. Send FCM push if driver not connected to Socket.IO
     const driverConnected = findConnectedSocket((socket) => socket.data.driverId === driver_id);
+    slog('DEBUG', `job-assigned: driver ${driver_id} socket connected=${!!driverConnected}`, { job_id, driver_id, connected: !!driverConnected });
     if (!driverConnected) {
+      slog('INFO', `job-assigned: driver ${driver_id} not connected — sending FCM push`, { job_id, driver_id });
       await sendPush(driver_id, {
         title: 'New collection job assigned',
         body: `You have a new ${job_type} collection — ${total_bins} bins`,
@@ -90,6 +108,9 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post<{ Body: JobCreatedBody }>('/internal/notify/job-created', async (req) => {
     const { job_id, job_type, zone_id, zone_name, clusters, vehicle_id, driver_id, total_bins, planned_weight_kg, priority, route } = req.body;
     const ts = new Date().toISOString();
+    slog('INFO', `/notify/job-created: job ${job_id}`, {
+      job_id, job_type, zone_id, vehicle_id, driver_id, total_bins, priority, cluster_count: clusters?.length,
+    });
 
     const payload = {
       job_id,
@@ -107,6 +128,7 @@ export default async function internalRoutes(app: FastifyInstance) {
     };
 
     // Emit to zone-specific rooms and fleet-ops
+    slog('DEBUG', `job-created: emitting to dashboard-zone-${zone_id}, dashboard-all, fleet-ops`, { job_id, zone_id });
     emitToRoom(`dashboard-zone-${zone_id}`, 'job:created', payload);
     emitToRoom('dashboard-all', 'job:created', payload);
     emitToRoom('fleet-ops', 'job:created', payload);
@@ -119,6 +141,9 @@ export default async function internalRoutes(app: FastifyInstance) {
   app.post<{ Body: JobCompletedBody }>('/internal/notify/job-completed', async (req) => {
     const { job_id, zone_id, vehicle_id, driver_id, bins_collected, bins_skipped, actual_weight_kg, duration_minutes, hyperledger_tx_id } = req.body;
     const ts = new Date().toISOString();
+    slog('INFO', `/notify/job-completed: job ${job_id}`, {
+      job_id, zone_id, vehicle_id, driver_id, bins_collected, bins_skipped, actual_weight_kg, duration_minutes, has_tx_id: !!hyperledger_tx_id,
+    });
 
     const payload = {
       job_id,
@@ -226,6 +251,9 @@ export default async function internalRoutes(app: FastifyInstance) {
       arrived_at_cluster, weight_limit_warning,
     } = req.body;
     const ts = new Date().toISOString();
+    slog('DEBUG', `/notify/vehicle-position: ${vehicle_id}`, {
+      vehicle_id, job_id, zone_id, lat, lng, speed_kmh, bins_collected, bins_total, cargo_utilisation_pct,
+    });
 
     const payload = {
       vehicle_id, driver_id, job_id, zone_id, lat, lng, speed_kmh,
@@ -234,12 +262,16 @@ export default async function internalRoutes(app: FastifyInstance) {
     };
 
     // Emit vehicle position to dashboard and fleet-ops
+    slog('DEBUG', `vehicle-position: emitting to dashboard-zone-${zone_id}, dashboard-all, fleet-ops`, { vehicle_id, zone_id });
     emitToRoom(`dashboard-zone-${zone_id}`, 'vehicle:position', payload);
     emitToRoom('dashboard-all', 'vehicle:position', payload);
     emitToRoom('fleet-ops', 'vehicle:position', payload);
 
     // If weight limit warning, also emit alert
     if (weight_limit_warning) {
+      slog('WARN', `vehicle-position: weight limit warning for ${vehicle_id}`, {
+        vehicle_id, cargo_utilisation_pct, cargo_weight_kg, cargo_limit_kg,
+      });
       const alertPayload = {
         vehicle_id,
         driver_id,
