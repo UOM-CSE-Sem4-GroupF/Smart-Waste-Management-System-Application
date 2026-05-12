@@ -377,9 +377,15 @@ export async function completeJob(job: CollectionJob, request: JobCompleteReques
 
 export async function cancelJob(job: CollectionJob, reason: string): Promise<boolean> {
   const noCancel: JobState[] = ['IN_PROGRESS', 'COMPLETING', 'COLLECTION_DONE', 'RECORDING_AUDIT', 'AUDIT_RECORDED', 'COMPLETED', 'FAILED', 'ESCALATED', 'CANCELLED', 'AUDIT_FAILED'];
-  if (noCancel.includes(job.state)) return false;
+  slog('DEBUG', `cancelJob: checking if state is cancellable`, job.job_id, { state: job.state, in_noCancel_list: noCancel.includes(job.state) });
+
+  if (noCancel.includes(job.state)) {
+    slog('WARN', `cancelJob: returning false — state ${job.state} is in noCancel list`, job.job_id);
+    return false;
+  }
 
   if (job.assigned_driver_id) {
+    slog('DEBUG', `cancelJob: releasing driver ${job.assigned_driver_id}`, job.job_id);
     await releaseDriver(job.job_id);
     await notifyDashboard('job-cancelled', {
       job_id:    job.job_id,
@@ -389,6 +395,7 @@ export async function cancelJob(job: CollectionJob, reason: string): Promise<boo
     });
   }
 
+  slog('DEBUG', `cancelJob: attempting transition ${job.state} → CANCELLED`, job.job_id);
   await transition(job, 'CANCELLED', reason, 'supervisor');
   slog('INFO', `Job CANCELLED: ${reason}`, job.job_id);
   return true;
