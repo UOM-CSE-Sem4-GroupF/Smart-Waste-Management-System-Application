@@ -1,10 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { DispatchRequest, JobAssignedNotification, VehiclePositionUpdate } from '../types';
-import { callORTools, nearestNeighbourFallback, activeJobs, routePlans, clusterCoordinates } from '../store';
+import { callORTools, nearestNeighbourFallback, activeJobs, routePlans, clusterCoordinates, vehicles } from '../store';
 import * as coreApi from '../clients/coreApiClient';
 import * as db from '../db/queries';
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_URL ?? 'http://notification:3004';
+const DEPOT_LAT = 6.777805;
+const DEPOT_LNG = 79.883911;
 
 const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:routes', message: msg, ...extra }) + '\n');
@@ -46,11 +48,30 @@ export default async function internalRoutes(app: FastifyInstance) {
     slog('DEBUG', `dispatch step 3: calling OR-Tools for job ${job_id}`, {
       job_id, cluster_count: clusters.length, bin_count: bins_to_collect.length,
     });
+    // Use real vehicle position from in-memory store (updated by Kafka consumer)
+    const vehicleRecord = vehicles.get(vehicle.vehicle_id);
+    const vehicleLat = vehicleRecord?.lat ?? DEPOT_LAT;
+    const vehicleLng = vehicleRecord?.lng ?? DEPOT_LNG;
+    const vehicleCategories = vehicle.waste_categories_supported.length > 0
+      ? vehicle.waste_categories_supported
+      : (vehicleRecord?.waste_categories_supported ?? [waste_category]);
+
+    slog('DEBUG', `dispatch step 3: vehicle position ${vehicle.vehicle_id} = ${vehicleLat},${vehicleLng}`, {
+      job_id, vehicle_id: vehicle.vehicle_id, lat: vehicleLat, lng: vehicleLng,
+      from_store: !!vehicleRecord, categories: vehicleCategories,
+    });
+
     let routeResult;
     const orToolsStart = Date.now();
+    const depot = { lat: DEPOT_LAT, lng: DEPOT_LNG };
     try {
-      const availableVehicles = [{ vehicle_id: vehicle.vehicle_id, max_cargo_kg: vehicle.max_cargo_kg, waste_categories_supported: [waste_category], lat: 6.9271, lng: 79.8612 }];
-      const depot = { lat: 6.9271, lng: 79.8612 };
+      const availableVehicles = [{
+        vehicle_id:                 vehicle.vehicle_id,
+        max_cargo_kg:               vehicle.max_cargo_kg,
+        waste_categories_supported: vehicleCategories,
+        lat:                        vehicleLat,
+        lng:                        vehicleLng,
+      }];
       routeResult = await Promise.race([
         callORTools(job_id, 'emergency', clusters, bins_to_collect, availableVehicles, depot, {}),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 35_000)),
@@ -60,7 +81,6 @@ export default async function internalRoutes(app: FastifyInstance) {
       });
     } catch {
       slog('WARN', `dispatch step 3: OR-Tools timeout for job ${job_id} after ${Date.now() - orToolsStart}ms — using nearest-neighbour fallback`, { job_id });
-      const depot = { lat: 6.9271, lng: 79.8612 };
       routeResult = {
         vehicle_id:         vehicle.vehicle_id,
         waypoints:          nearestNeighbourFallback(bins_to_collect, depot),

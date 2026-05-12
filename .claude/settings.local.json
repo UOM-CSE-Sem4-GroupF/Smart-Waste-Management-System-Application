@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(kubectl logs *)"
+      "Bash(kubectl logs *)",
+      "Bash(Get-ChildItem -Recurse -Filter \"*.ts\" \"E:\\\\Porjects\\\\sem 4\\\\Software-Engineering\\\\Smart-Wast-Management-System\\\\Smart-Waste-Management-System-Application\\\\backend\\\\scheduler\\\\src\")",
+      "Bash(Select-Object FullName)"
     ]
   }
 }
