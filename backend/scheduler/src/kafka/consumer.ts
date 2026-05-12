@@ -3,8 +3,8 @@ import { VehicleLocationEvent, VehicleDeviationEvent, VehiclePositionUpdate } fr
 import { startManualConsumer } from './manualConsumer';
 import { createManualProducer, ManualProducer } from './manualProducer';
 
-const slog = (level: string, msg: string) =>
-  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
+const slog = (level: string, msg: string, extra?: Record<string, unknown>) =>
+  process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler:kafka', message: msg, ...extra }) + '\n');
 
 let producer: ManualProducer;
 
@@ -47,9 +47,17 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
   // Bug 0: actual payload is flat with lon/speed/heading (not lng/speed_kmh/heading_degrees)
   const { vehicle_id, lat, lon: lng, speed: speed_kmh, heading: heading_degrees, timestamp } = event;
 
+  slog('DEBUG', `handleVehicleLocation: received position for ${vehicle_id}`, {
+    vehicle_id, lat, lng, speed_kmh, heading_degrees, raw_timestamp: timestamp,
+  });
+
   // Resolve driver from vehicles store (not in the Kafka message)
   const vehicle = vehicles.get(vehicle_id);
   const driver_id = vehicle?.driver_id ?? '';
+
+  if (!vehicle) {
+    slog('WARN', `handleVehicleLocation: vehicle ${vehicle_id} not in store — no metadata`, { vehicle_id });
+  }
 
   // Update vehicle position in store
   if (vehicle) {
@@ -63,7 +71,14 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
            (job.state === 'IN_PROGRESS' || job.state === 'DISPATCHED')
   );
 
-  if (!activeJob) return;
+  if (!activeJob) {
+    slog('DEBUG', `handleVehicleLocation: no active/dispatched job for ${vehicle_id} — dropping`, { vehicle_id, known_jobs: activeJobs.size });
+    return;
+  }
+
+  slog('DEBUG', `handleVehicleLocation: found active job ${activeJob.job_id} for ${vehicle_id}`, {
+    vehicle_id, job_id: activeJob.job_id, job_state: activeJob.state, zone_id: activeJob.zone_id,
+  });
 
   // Gap 5: movement deduplication — skip if < 10m moved AND < 30s elapsed
   const now = Date.now();
@@ -71,11 +86,22 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
   if (last) {
     const movedKm  = haversineKm(last.lat, last.lng, lat, lng);
     const elapsedMs = now - last.ts;
-    if (movedKm < 0.01 && elapsedMs < 30_000) return;
+    if (movedKm < 0.01 && elapsedMs < 30_000) {
+      slog('DEBUG', `handleVehicleLocation: dedup skip for ${vehicle_id} — moved ${(movedKm * 1000).toFixed(1)}m in ${elapsedMs}ms`, {
+        vehicle_id, moved_m: (movedKm * 1000).toFixed(1), elapsed_ms: elapsedMs,
+      });
+      return;
+    }
+    slog('DEBUG', `handleVehicleLocation: dedup pass for ${vehicle_id} — moved ${(movedKm * 1000).toFixed(1)}m`, {
+      vehicle_id, moved_m: (movedKm * 1000).toFixed(1), elapsed_ms: elapsedMs,
+    });
   }
 
   // Gap 6: DISPATCHED — vehicle assigned but job not yet started, send minimal update
   if (activeJob.state === 'DISPATCHED') {
+    slog('DEBUG', `handleVehicleLocation: vehicle ${vehicle_id} in DISPATCHED state — sending minimal update`, {
+      vehicle_id, job_id: activeJob.job_id, lat, lng,
+    });
     const update: VehiclePositionUpdate = {
       event_type:            'vehicle:position',
       vehicle_id,
@@ -101,6 +127,14 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
   // IN_PROGRESS — full enrichment with route plan context
   const routePlan = Array.from(routePlans.values()).find(rp => rp.job_id === activeJob.job_id);
   const binRecords = Array.from(binCollectionRecords.values()).filter(br => br.job_id === activeJob.job_id);
+
+  slog('DEBUG', `handleVehicleLocation: IN_PROGRESS enrichment for ${vehicle_id}`, {
+    vehicle_id,
+    job_id:         activeJob.job_id,
+    has_route_plan: !!routePlan,
+    route_plan_id:  routePlan?.route_plan_id,
+    bin_records:    binRecords.length,
+  });
 
   const binsCollected    = binRecords.filter(br => br.collected_at).length;
   const binsTotal        = binRecords.length;
@@ -177,9 +211,24 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
     weight_limit_warning:  cargoWeightKg >= cargoLimitKg * 0.9,
   };
 
+  slog('INFO', `Publishing position update for ${vehicle_id}`, {
+    vehicle_id,
+    job_id:                activeJob.job_id,
+    lat, lng,
+    speed_kmh,
+    heading_degrees,
+    bins_collected:        binsCollected,
+    bins_total:            binsTotal,
+    cargo_utilisation_pct: parseFloat(cargoUtilisationPct.toFixed(1)),
+    current_cluster:       currentCluster,
+    next_cluster:          nextCluster,
+    arrived_at_bin:        arrivedAtBin,
+    weight_limit_warning:  cargoWeightKg >= cargoLimitKg * 0.9,
+  });
+
   await publish(vehicle_id, update, timestamp);
   lastPublished.set(vehicle_id, { lat, lng, ts: now });
-  slog('INFO', `Published position update for ${vehicle_id}`);
+  slog('INFO', `Published position update for ${vehicle_id}`, { vehicle_id, job_id: activeJob.job_id });
 }
 
 // Bug 1: wrap in envelope format that notification consumer expects
