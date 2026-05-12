@@ -4,6 +4,16 @@ import { store } from '../store';
 import { ClusterSnapshot, BinState } from '../types';
 import { AVG_KG_PER_LITRE } from '../rules/weightCalculator';
 import { publishToDashboard } from '../publishers/dashboardPublisher';
+import { getClusterSnapshot } from '../clients/dataAnalysisClient';
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -35,65 +45,95 @@ export default async function internalRoutes(app: FastifyInstance) {
       const { cluster_id } = req.params;
 
       try {
-        // In production, query f2.clusters to verify existence
-        // For now, we'll accept any cluster_id
+        // Fetch authoritative cluster + bin state from Core API (F2).
+        // F2's bin_current_state is kept current by Flink writing directly,
+        // so this is always as fresh as our local Kafka-derived state.
+        const f2 = await getClusterSnapshot(cluster_id);
 
-        // Get all bins in cluster
-        // In production, filter by cluster_id from f2 database
-        const allBins = store.getAllBins();
-        const clusterBins = allBins.filter((b) => b.cluster_id === cluster_id || !b.cluster_id);
+        if (!f2) {
+          // F2 returned 404 or is unreachable — fall back to local in-memory bins
+          logger.warn({ cluster_id }, 'Core API snapshot unavailable — falling back to local store');
 
-        if (clusterBins.length === 0) {
-          return reply.code(404).send({
-            error: 'CLUSTER_NOT_FOUND',
-            message: `Cluster ${cluster_id} does not exist`,
+          const allBins = store.getAllBins();
+          const clusterBins = allBins.filter((b) => b.cluster_id === cluster_id);
+
+          if (clusterBins.length === 0) {
+            return reply.code(404).send({
+              error: 'CLUSTER_NOT_FOUND',
+              message: `Cluster ${cluster_id} not found`,
+            });
+          }
+
+          let collectible_count = 0;
+          let collectible_weight = 0;
+          let highest_urgency = 0;
+          let highest_urgency_bin_id = '';
+
+          const bins = clusterBins.map((bin) => {
+            const has_active_job = store.hasActiveJobForBin(bin.bin_id);
+            const should_collect = bin.urgency_score >= 80 && !has_active_job;
+            if (should_collect) { collectible_count++; collectible_weight += bin.estimated_weight_kg; }
+            if (bin.urgency_score > highest_urgency) { highest_urgency = bin.urgency_score; highest_urgency_bin_id = bin.bin_id; }
+            return {
+              bin_id: bin.bin_id, waste_category: bin.waste_category,
+              fill_level_pct: bin.fill_level_pct, status: bin.status,
+              urgency_score: bin.urgency_score, estimated_weight_kg: bin.estimated_weight_kg,
+              volume_litres: bin.volume_litres, avg_kg_per_litre: AVG_KG_PER_LITRE[bin.waste_category],
+              predicted_full_at: bin.predicted_full_at || null,
+              fill_rate_pct_per_hour: bin.fill_rate_pct_per_hour || 0, should_collect,
+            };
           });
+
+          const first = clusterBins[0];
+          return {
+            cluster_id, cluster_name: first.cluster_name ?? cluster_id,
+            zone_id: Number(first.zone_id) || 0, lat: first.lat || 0, lng: first.lng || 0,
+            address: null, total_bins: clusterBins.length,
+            has_active_job: clusterBins.some(b => store.hasActiveJobForBin(b.bin_id)),
+            active_job_id: null, bins,
+            collectible_bins_count: collectible_count,
+            collectible_bins_weight_kg: parseFloat(collectible_weight.toFixed(2)),
+            highest_urgency_score: highest_urgency, highest_urgency_bin_id,
+          } as ClusterSnapshot;
         }
 
-        // Calculate metrics
+        // Stamp each bin with live `should_collect` using local activeJobs map
         let collectible_count = 0;
         let collectible_weight = 0;
         let highest_urgency = 0;
         let highest_urgency_bin_id = '';
 
-        const bins = clusterBins.map((bin) => {
-          const should_collect = bin.urgency_score >= 80 && !bin.has_active_job;
-
-          if (should_collect) {
-            collectible_count++;
-            collectible_weight += bin.estimated_weight_kg;
-          }
-
-          if (bin.urgency_score > highest_urgency) {
-            highest_urgency = bin.urgency_score;
-            highest_urgency_bin_id = bin.bin_id;
-          }
-
+        const bins = f2.bins.map((bin) => {
+          const localBin = store.getBin(bin.bin_id);
+          const has_active_job = store.hasActiveJobForBin(bin.bin_id);
+          const should_collect = bin.urgency_score >= 80 && !has_active_job;
+          if (should_collect) { collectible_count++; collectible_weight += bin.estimated_weight_kg; }
+          if (bin.urgency_score > highest_urgency) { highest_urgency = bin.urgency_score; highest_urgency_bin_id = bin.bin_id; }
           return {
             bin_id: bin.bin_id,
             waste_category: bin.waste_category,
-            fill_level_pct: bin.fill_level_pct,
+            fill_level_pct: localBin?.fill_level_pct ?? 0,
             status: bin.status,
             urgency_score: bin.urgency_score,
             estimated_weight_kg: bin.estimated_weight_kg,
-            volume_litres: bin.volume_litres,
-            avg_kg_per_litre: AVG_KG_PER_LITRE[bin.waste_category],
-            predicted_full_at: bin.predicted_full_at || null,
-            fill_rate_pct_per_hour: bin.fill_rate_pct_per_hour || 0,
+            volume_litres: localBin?.volume_litres ?? 0,
+            avg_kg_per_litre: AVG_KG_PER_LITRE[bin.waste_category as keyof typeof AVG_KG_PER_LITRE] ?? AVG_KG_PER_LITRE.general,
+            predicted_full_at: localBin?.predicted_full_at ?? null,
+            fill_rate_pct_per_hour: localBin?.fill_rate_pct_per_hour ?? 0,
             should_collect,
           };
         });
 
         const snapshot: ClusterSnapshot = {
-          cluster_id,
-          cluster_name: 'Main Depot', // From metadata
-          zone_id: 1, // From metadata
-          lat: 6.9271, // From metadata
-          lng: 79.8612, // From metadata
-          address: 'Main Waste Management Center', // From metadata
-          total_bins: clusterBins.length,
-          has_active_job: store.getActiveJobsCountForZone(1) > 0,
-          active_job_id: null, // From orchestrator in production
+          cluster_id: f2.cluster_id,
+          cluster_name: f2.cluster_name,
+          zone_id: f2.zone_id,
+          lat: f2.lat,
+          lng: f2.lng,
+          address: null,
+          total_bins: f2.total_bins,
+          has_active_job: bins.some(b => store.hasActiveJobForBin(b.bin_id)),
+          active_job_id: null,
           bins,
           collectible_bins_count: collectible_count,
           collectible_bins_weight_kg: parseFloat(collectible_weight.toFixed(2)),
@@ -101,7 +141,7 @@ export default async function internalRoutes(app: FastifyInstance) {
           highest_urgency_bin_id,
         };
 
-        logger.info({ cluster_id, total_bins: clusterBins.length }, 'Cluster snapshot retrieved');
+        logger.info({ cluster_id, total_bins: f2.total_bins }, 'Cluster snapshot retrieved from Core API');
         return snapshot;
       } catch (error) {
         logger.error(
@@ -119,74 +159,66 @@ export default async function internalRoutes(app: FastifyInstance) {
   // =========================================================================
   // POST /internal/clusters/:cluster_id/scan-nearby
   // =========================================================================
+  // Body matches service spec: { lat, lng, radius_km, min_urgency_score }
+  // Called by orchestrator during wait-window cluster assembly (Option C)
   app.post<{
-    Params: { cluster_id: string };
     Body: {
-      zone_id: number;
-      urgency_threshold: number;
-      within_minutes: number;
-      exclude_cluster_ids: string[];
+      lat: number;
+      lng: number;
+      radius_km: number;
+      min_urgency_score: number;
     };
-  }>('/internal/clusters/:cluster_id/scan-nearby', async (req, reply) => {
+  }>('/internal/clusters/scan-nearby', async (req, reply) => {
     if (!validateServiceHeader(req, reply)) return;
 
-    const { cluster_id } = req.params;
-    const { zone_id, urgency_threshold, exclude_cluster_ids } = req.body;
+    const { lat, lng, radius_km, min_urgency_score } = req.body;
 
     try {
-      // Find other clusters in the same zone with urgent bins
-      // In production, this would use geospatial queries
       const allBins = store.getAllBins();
-      const zoneBins = allBins.filter((b) => Number(b.zone_id) === zone_id);
 
-      // Group bins by cluster
+      // Group bins by cluster, keeping only those with sufficient urgency
       const clusterMap = new Map<string, BinState[]>();
-      zoneBins.forEach((bin) => {
-        const cid = bin.cluster_id || 'UNKNOWN';
-        if (!clusterMap.has(cid)) {
-          clusterMap.set(cid, []);
-        }
+      for (const bin of allBins) {
+        if (bin.urgency_score < min_urgency_score) continue;
+        const cid = bin.cluster_id;
+        if (!cid) continue;
+        if (!clusterMap.has(cid)) clusterMap.set(cid, []);
         clusterMap.get(cid)!.push(bin);
-      });
+      }
 
-      // Find clusters that meet criteria
       const clusters = [];
-      for (const [cid, bins] of clusterMap) {
-        if (cid === cluster_id || exclude_cluster_ids.includes(cid)) {
-          continue;
-        }
+      for (const [cid, clusterBins] of clusterMap) {
+        // Use lat/lng from the first bin — populated during Kafka enrichment from F2 metadata
+        const clusterLat = clusterBins[0]?.lat ?? 0;
+        const clusterLng = clusterBins[0]?.lng ?? 0;
+        if (!clusterLat && !clusterLng) continue;
 
-        const urgentBins = bins.filter((b) => b.urgency_score >= urgency_threshold);
-        if (urgentBins.length === 0) {
-          continue;
-        }
+        const distance_km = haversineKm(lat, lng, clusterLat, clusterLng);
+        if (distance_km > radius_km) continue;
 
-        const totalWeight = urgentBins.reduce((sum, b) => sum + b.estimated_weight_kg, 0);
+        const totalWeight = clusterBins.reduce((sum, b) => sum + b.estimated_weight_kg, 0);
+        const highestUrgency = Math.max(...clusterBins.map((b) => b.urgency_score));
 
         clusters.push({
           cluster_id: cid,
-          cluster_name: `Cluster ${cid}`, // From metadata
-          lat: urgentBins[0]?.lat || 0,
-          lng: urgentBins[0]?.lng || 0,
-          distance_km: Math.random() * 5, // Dummy distance — in production use geo queries
-          highest_urgency_score: Math.max(...urgentBins.map((b) => b.urgency_score)),
-          predicted_urgent_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          cluster_name: clusterBins[0]?.cluster_name ?? cid,
+          lat: clusterLat,
+          lng: clusterLng,
+          distance_km: parseFloat(distance_km.toFixed(3)),
+          highest_urgency_score: highestUrgency,
           collectible_weight_kg: parseFloat(totalWeight.toFixed(2)),
-          bins_to_collect: urgentBins.map((b) => b.bin_id),
+          bins_to_collect: clusterBins.map((b) => b.bin_id),
         });
       }
 
-      logger.info(
-        { cluster_id, zone_id, found_clusters: clusters.length },
-        'Nearby clusters scan completed',
-      );
+      // Sort by urgency descending so orchestrator gets highest-priority clusters first
+      clusters.sort((a, b) => b.highest_urgency_score - a.highest_urgency_score);
+
+      logger.info({ lat, lng, radius_km, min_urgency_score, found: clusters.length }, 'Nearby clusters scan completed');
       return { clusters };
     } catch (error) {
       logger.error(
-        {
-          cluster_id,
-          error: error instanceof Error ? error.message : String(error),
-        },
+        { error: error instanceof Error ? error.message : String(error) },
         'Failed to scan nearby clusters',
       );
       return reply.code(500).send({
