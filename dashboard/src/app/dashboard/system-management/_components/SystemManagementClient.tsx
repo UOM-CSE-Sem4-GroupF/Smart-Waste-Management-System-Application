@@ -4,7 +4,8 @@ import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import type { KyInstance } from 'ky'
-import { Database, Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight, AlertCircle } from 'lucide-react'
+import { HTTPError } from 'ky'
+import { Database, Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +26,7 @@ import {
   listRoutePlans, updateRoutePlan,
   listZoneSnapshots,
   listModelPerformance, updateModelPerformance,
-  listDrivers, updateDriverRecord,
+  listDrivers,
   listCollectionJobs,
   listBinStates,
 } from '@/lib/api/sysadmin'
@@ -300,22 +301,18 @@ const TABLES: TableDef[] = [
     label: 'Drivers',
     sqlName: 'f3.drivers',
     schema: 'f3',
-    description: 'Driver records — contact info, zone, shift times, stats',
+    description: 'Driver records — read-only view. Updates go through the Scheduler service which is not exposed for PATCH via the gateway.',
     primaryKey: 'driver_id',
     fetch: listDrivers,
-    update: updateDriverRecord,
+    // No update/create/remove — the F3 Scheduler service handles driver mutations;
+    // the Kong gateway only exposes GET on /api/v1/drivers/:id
     columns: [
       { key: 'driver_id', label: 'Driver ID', type: 'text', primaryKey: true },
-      { key: 'name', label: 'Name', type: 'text', editable: true },
-      { key: 'phone', label: 'Phone', type: 'text', editable: true },
-      { key: 'email', label: 'Email', type: 'text', editable: true },
-      { key: 'zone_id', label: 'Zone ID', type: 'number', editable: true },
-      { key: 'current_vehicle_id', label: 'Vehicle', type: 'text', editable: true },
-      { key: 'status', label: 'Status', type: 'select', editable: true, options: ['available','on_job','off_duty','on_break'] },
-      { key: 'shift_start', label: 'Shift Start', type: 'text', editable: true },
-      { key: 'shift_end', label: 'Shift End', type: 'text', editable: true },
-      { key: 'total_jobs_completed', label: 'Jobs Done', type: 'number' },
-      { key: 'total_bins_collected', label: 'Bins Collected', type: 'number' },
+      { key: 'name', label: 'Name', type: 'text' },
+      { key: 'vehicle_id', label: 'Vehicle', type: 'text' },
+      { key: 'vehicle_type', label: 'Vehicle Type', type: 'text' },
+      { key: 'zone_id', label: 'Zone ID', type: 'number' },
+      { key: 'status', label: 'Status', type: 'text' },
     ],
   },
   {
@@ -498,6 +495,7 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
   const [editRow, setEditRow] = useState<Row | null | undefined>(undefined)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
 
   const queryKey = ['sysadmin', tableDef.id, page]
 
@@ -513,18 +511,28 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
 
   const saveMutation = useMutation({
     mutationFn: async ({ payload, isCreate, existingRow }: { payload: Row; isCreate: boolean; existingRow: Row | null }) => {
-      if (isCreate) {
-        if (!tableDef.create) throw new Error('Create not supported for this table')
-        return tableDef.create(api, payload)
+      try {
+        if (isCreate) {
+          if (!tableDef.create) throw new Error('Create not supported for this table')
+          return await tableDef.create(api, payload)
+        }
+        if (!tableDef.update) throw new Error('Update not supported for this table')
+        const id = rowId(existingRow!, tableDef.primaryKey)
+        return await tableDef.update(api, id, payload)
+      } catch (e) {
+        if (e instanceof HTTPError) {
+          const body = await e.response.text().catch(() => '')
+          const detail = body ? `: ${body}` : ''
+          throw new Error(`HTTP ${e.response.status}${detail}`)
+        }
+        throw e
       }
-      if (!tableDef.update) throw new Error('Update not supported for this table')
-      const id = rowId(existingRow!, tableDef.primaryKey)
-      return tableDef.update(api, id, payload)
     },
     onSuccess: () => {
       invalidate()
       setDialogOpen(false)
       setEditRow(undefined)
+      setSavedAt(Date.now())
     },
   })
 
@@ -573,8 +581,13 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
         >
           <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
         </Button>
+        {savedAt && Date.now() - savedAt < 4000 && (
+          <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+          </span>
+        )}
         {canCreate && (
-          <Button size="sm" className="h-9" onClick={() => { setEditRow(null); setDialogOpen(true) }}>
+          <Button size="sm" className="h-9" onClick={() => { saveMutation.reset(); setEditRow(null); setDialogOpen(true) }}>
             <Plus className="mr-1.5 h-4 w-4" /> Add Row
           </Button>
         )}
@@ -634,7 +647,7 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
                         {canEdit && (
                           <Button
                             size="icon" variant="ghost" className="h-7 w-7"
-                            onClick={() => { setEditRow(row); setDialogOpen(true) }}
+                            onClick={() => { saveMutation.reset(); setSavedAt(null); setEditRow(row); setDialogOpen(true) }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -674,7 +687,7 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
       {dialogOpen && editRow !== undefined && (
         <RowEditDialog
           open={dialogOpen}
-          onClose={() => { setDialogOpen(false); setEditRow(undefined) }}
+          onClose={() => { setDialogOpen(false); setEditRow(undefined); saveMutation.reset() }}
           tableDef={tableDef}
           row={editRow}
           onSave={(p) => saveMutation.mutate({ payload: p, isCreate: editRow === null, existingRow: editRow })}
