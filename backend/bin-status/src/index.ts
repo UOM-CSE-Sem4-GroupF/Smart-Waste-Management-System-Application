@@ -9,6 +9,7 @@ import zonesRoutes from './routes/zones';
 import internalRoutes from './routes/internal';
 import { setBinSocketServer } from './socket';
 import { startKafkaConsumer } from './kafka/consumer';
+import { seedBinCoordinates } from './seed/binCoordinates';
 
 const SERVICE = 'bin-status-service';
 const VERSION = '1.0.0';
@@ -61,6 +62,10 @@ async function start() {
 
   await app.listen({ port: PORT, host: HOST });
   logger.info(`${SERVICE} v${VERSION} listening on ${HOST}:${PORT}`);
+
+  // Seed known bin coordinates so the map has data before the first Kafka message
+  seedBinCoordinates();
+  logger.info('Bin coordinates seeded');
 
   // Setup Socket.IO
   const io = new SocketServer(app.server, {

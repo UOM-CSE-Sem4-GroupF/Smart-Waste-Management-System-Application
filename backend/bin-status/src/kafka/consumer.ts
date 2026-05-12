@@ -120,6 +120,8 @@ async function processBinProcessedMessage(event: BinProcessedEvent): Promise<voi
       has_active_job: hasActiveJob,
       collection_triggered,
       last_collected_at: null,
+      lat: meta?.lat ?? 0,
+      lng: meta?.lng ?? 0,
     };
 
     // Step 6: Publish to waste.bin.dashboard.updates

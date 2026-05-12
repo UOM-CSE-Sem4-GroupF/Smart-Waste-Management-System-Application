@@ -19,7 +19,12 @@ export const useBinStore = create<BinStore>((set) => ({
   updateBin: (payload) =>
     set((state) => {
       const next = new Map(state.bins)
-      next.set(payload.bin_id, payload)
+      const existing = state.bins.get(payload.bin_id)
+      next.set(payload.bin_id, {
+        ...payload,
+        lat: payload.lat || existing?.lat,
+        lng: payload.lng || existing?.lng,
+      })
       return { bins: next }
     }),
 

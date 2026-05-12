@@ -113,6 +113,8 @@ export interface BinUpdatePayload {
   has_active_job: boolean;
   collection_triggered: boolean;
   last_collected_at: string | null;
+  lat: number;
+  lng: number;
 }
 
 export interface ZoneStatsPayload {

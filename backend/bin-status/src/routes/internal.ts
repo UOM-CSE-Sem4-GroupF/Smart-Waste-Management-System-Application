@@ -257,6 +257,8 @@ export default async function internalRoutes(app: FastifyInstance) {
           has_active_job: false,
           collection_triggered: false,
           last_collected_at: collected_at,
+          lat: bin.lat,
+          lng: bin.lng,
         },
       });
 

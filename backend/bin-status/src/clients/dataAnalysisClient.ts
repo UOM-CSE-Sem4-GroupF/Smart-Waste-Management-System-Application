@@ -14,6 +14,8 @@ export interface BinMetadata {
   waste_category: string;
   waste_category_colour: string;
   volume_litres: number;
+  lat: number;
+  lng: number;
 }
 
 export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null> {
@@ -30,7 +32,7 @@ export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null
         }
         throw new Error(`API returned ${res.status}`);
       }
-      
+
       const body = await res.json() as { data: any };
       const data = body.data;
       if (!data) return null;
@@ -44,6 +46,8 @@ export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null
         waste_category: data.waste_category?.name ?? 'general',
         waste_category_colour: data.waste_category?.colour_code ?? '#808080',
         volume_litres: data.volume_litres ?? 240,
+        lat: data.lat ?? data.cluster?.lat ?? 0,
+        lng: data.lng ?? data.cluster?.lng ?? 0,
       };
     } catch (error) {
       lastError = error;
