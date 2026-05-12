@@ -7,12 +7,17 @@ import { Plus, Pencil, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
 import { createClientApiClient } from '@/lib/api-client'
+import { deactivateVehicle, getVehicles } from '@/lib/api/vehicles'
 import { VehicleFormDialog } from './VehicleFormDialog'
 import type { VehicleAsset } from '@/types'
 
 interface VehicleListResponse { data: VehicleAsset[]; total: number }
 
-export function VehiclesTab() {
+interface Props {
+  driverOptions: Array<{ driver_id: string; name: string }>
+}
+
+export function VehiclesTab({ driverOptions }: Props) {
   const { data: session } = useSession()
   const queryClient = useQueryClient()
 
@@ -24,7 +29,7 @@ export function VehiclesTab() {
     queryKey: ['vehicles'],
     queryFn: () => {
       const api = createClientApiClient(session!.accessToken)
-      return api.get('api/v1/vehicles').json<VehicleListResponse>()
+      return getVehicles(api)
     },
     enabled: !!session,
   })
@@ -32,7 +37,7 @@ export function VehiclesTab() {
   const { mutate: doDeactivate, isPending: deactivating } = useMutation({
     mutationFn: (vehicleId: string) => {
       const api = createClientApiClient(session!.accessToken)
-      return api.patch(`api/v1/vehicles/${vehicleId}`, { json: { active: false } }).json()
+      return deactivateVehicle(api, vehicleId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
@@ -54,7 +59,7 @@ export function VehiclesTab() {
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/50">
             <tr>
-              {['Vehicle ID', 'Type', 'Capacity', 'Registration', 'Year', 'Status', 'Actions'].map((h) => (
+              {['Vehicle ID', 'Type', 'Capacity', 'Registration', 'Driver', 'Status', 'Actions'].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left font-medium text-muted-foreground">{h}</th>
               ))}
             </tr>
@@ -77,12 +82,16 @@ export function VehiclesTab() {
                   <td className="px-3 py-2.5">{v.vehicle_type}</td>
                   <td className="px-3 py-2.5">{v.capacity_kg ? `${v.capacity_kg / 1000}t` : '—'}</td>
                   <td className="px-3 py-2.5">{v.registration ?? '—'}</td>
-                  <td className="px-3 py-2.5">{v.year ?? '—'}</td>
+                  <td className="px-3 py-2.5">{v.driver_name ?? v.driver_id ?? '—'}</td>
                   <td className="px-3 py-2.5">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      v.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                      v.status === 'available'
+                        ? 'bg-green-100 text-green-800'
+                        : v.status === 'dispatched'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {v.status ?? 'unknown'}
+                      {v.status?.replace(/_/g, ' ') ?? 'unknown'}
                     </span>
                   </td>
                   <td className="px-3 py-2.5">
@@ -111,6 +120,7 @@ export function VehiclesTab() {
         open={addOpen || editVehicle !== null}
         onClose={() => { setAddOpen(false); setEditVehicle(null) }}
         vehicle={editVehicle ?? undefined}
+        driverOptions={driverOptions}
       />
 
       <AlertDialog open={deactivate !== null} onOpenChange={(v) => { if (!v) setDeactivate(null) }}>

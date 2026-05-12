@@ -40,7 +40,7 @@ export function OperationsClient({ zoneOptions, vehicleOptions, driverOptions }:
         </TabsContent>
 
         <TabsContent value="vehicles" className="mt-4">
-          <VehiclesTab />
+          <VehiclesTab driverOptions={driverOptions} />
         </TabsContent>
 
         <TabsContent value="drivers" className="mt-4">

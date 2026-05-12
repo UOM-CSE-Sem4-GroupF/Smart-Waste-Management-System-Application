@@ -7,10 +7,28 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["f3"]
+  schemas  = ["f2", "f3"]
 }
 
 // ── F3 tables owned or read by the scheduler ───────────────────────────────
+
+model Vehicle {
+  id              String    @id @db.VarChar(20)
+  registration    String    @unique @db.VarChar(20)
+  vehicle_type    String    @db.VarChar(20)
+  max_cargo_kg    Decimal   @db.Decimal(8, 2)
+  volume_m3       Decimal?  @db.Decimal(6, 2)
+  driver_id       String?   @db.VarChar(20)
+  status          String    @default("available") @db.VarChar(20)
+  active          Boolean   @default(true)
+  last_service_at DateTime? @db.Timestamptz(6)
+  notes           String?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("vehicles")
+  @@schema("f2")
+}
 
 model Driver {
   id                  String   @id @db.VarChar(20)

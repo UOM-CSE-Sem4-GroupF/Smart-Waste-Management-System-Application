@@ -9,6 +9,19 @@ export interface DbDriver {
   status:             string;
 }
 
+export interface DbVehicle {
+  id:              string;
+  registration:    string;
+  vehicle_type:    string;
+  max_cargo_kg:    Prisma.Decimal;
+  volume_m3:       Prisma.Decimal | null;
+  driver_id:       string | null;
+  status:          string;
+  active:          boolean;
+  last_service_at: Date | null;
+  notes:           string | null;
+}
+
 export interface DbBinRecord {
   id:                       string;
   job_id:                   string;
@@ -92,6 +105,177 @@ export async function updateDriver(
     return await prisma.driver.update({
       where: { id: driver_id },
       data:  patch,
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2025') return null;
+    throw e;
+  }
+}
+
+export async function assignVehicleToDriver(driver_id: string, vehicle_id: string | null): Promise<DbDriver | null> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const driver = await tx.driver.findUnique({ where: { id: driver_id } });
+      if (!driver) return null;
+
+      if (!vehicle_id) {
+        await tx.vehicle.updateMany({ where: { driver_id }, data: { driver_id: null } });
+        return tx.driver.update({
+          where: { id: driver_id },
+          data:  { current_vehicle_id: null },
+        });
+      }
+
+      const vehicle = await tx.vehicle.findUnique({ where: { id: vehicle_id } });
+      if (!vehicle || !vehicle.active) {
+        throw new Error('VEHICLE_NOT_FOUND');
+      }
+
+      await tx.driver.updateMany({
+        where: { current_vehicle_id: vehicle_id, id: { not: driver_id } },
+        data:  { current_vehicle_id: null },
+      });
+      await tx.vehicle.updateMany({
+        where: { driver_id, id: { not: vehicle_id } },
+        data:  { driver_id: null },
+      });
+
+      await tx.vehicle.update({
+        where: { id: vehicle_id },
+        data:  { driver_id },
+      });
+
+      return tx.driver.update({
+        where: { id: driver_id },
+        data:  { current_vehicle_id: vehicle_id },
+      });
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2025') return null;
+    throw e;
+  }
+}
+
+// ── Vehicles ───────────────────────────────────────────────────────────────
+
+export async function getAllVehicles(params?: {
+  status?: string;
+  active?: boolean;
+  limit?:  number;
+  offset?: number;
+}): Promise<{ vehicles: DbVehicle[]; total: number }> {
+  const where: Prisma.VehicleWhereInput = {};
+  if (params?.status) where.status = params.status;
+  if (params?.active !== undefined) where.active = params.active;
+
+  const limit  = Math.min(params?.limit ?? 50, 200);
+  const offset = params?.offset ?? 0;
+
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({ where, orderBy: { id: 'asc' }, take: limit, skip: offset }),
+    prisma.vehicle.count({ where }),
+  ]);
+
+  return { vehicles, total };
+}
+
+export async function getVehicleById(vehicle_id: string): Promise<DbVehicle | null> {
+  return prisma.vehicle.findUnique({ where: { id: vehicle_id } });
+}
+
+export async function getVehiclesByIds(vehicle_ids: string[]): Promise<DbVehicle[]> {
+  const ids = Array.from(new Set(vehicle_ids.filter(Boolean)));
+  if (ids.length === 0) return [];
+  return prisma.vehicle.findMany({ where: { id: { in: ids } } });
+}
+
+export async function getDriversByVehicleIds(vehicle_ids: string[]): Promise<DbDriver[]> {
+  const ids = Array.from(new Set(vehicle_ids.filter(Boolean)));
+  if (ids.length === 0) return [];
+  return prisma.driver.findMany({ where: { current_vehicle_id: { in: ids } } });
+}
+
+export async function createVehicle(payload: {
+  id:            string;
+  registration:  string;
+  vehicle_type:  string;
+  max_cargo_kg:  number;
+  status?:       string;
+  active?:       boolean;
+}): Promise<DbVehicle> {
+  return prisma.vehicle.create({
+    data: {
+      id:           payload.id,
+      registration: payload.registration,
+      vehicle_type: payload.vehicle_type,
+      max_cargo_kg: payload.max_cargo_kg,
+      status:       payload.status ?? 'available',
+      active:       payload.active ?? true,
+    },
+  });
+}
+
+export async function updateVehicle(
+  vehicle_id: string,
+  patch: Partial<{
+    registration: string;
+    vehicle_type: string;
+    max_cargo_kg: number;
+    status:       string;
+    active:       boolean;
+  }>,
+): Promise<DbVehicle | null> {
+  try {
+    return await prisma.vehicle.update({
+      where: { id: vehicle_id },
+      data:  patch,
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2025') return null;
+    throw e;
+  }
+}
+
+export async function assignDriverToVehicle(vehicle_id: string, driver_id: string | null): Promise<DbVehicle | null> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const vehicle = await tx.vehicle.findUnique({ where: { id: vehicle_id } });
+      if (!vehicle) return null;
+
+      if (!driver_id) {
+        await tx.driver.updateMany({
+          where: { current_vehicle_id: vehicle_id },
+          data:  { current_vehicle_id: null },
+        });
+        return tx.vehicle.update({
+          where: { id: vehicle_id },
+          data:  { driver_id: null },
+        });
+      }
+
+      const driver = await tx.driver.findUnique({ where: { id: driver_id } });
+      if (!driver) {
+        throw new Error('DRIVER_NOT_FOUND');
+      }
+
+      await tx.driver.updateMany({
+        where: { current_vehicle_id: vehicle_id, id: { not: driver_id } },
+        data:  { current_vehicle_id: null },
+      });
+      await tx.vehicle.updateMany({
+        where: { driver_id, id: { not: vehicle_id } },
+        data:  { driver_id: null },
+      });
+
+      await tx.driver.update({
+        where: { id: driver_id },
+        data:  { current_vehicle_id: vehicle_id },
+      });
+
+      return tx.vehicle.update({
+        where: { id: vehicle_id },
+        data:  { driver_id },
+      });
     });
   } catch (e: any) {
     if (e?.code === 'P2025') return null;

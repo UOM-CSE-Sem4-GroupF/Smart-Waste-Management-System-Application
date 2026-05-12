@@ -89,13 +89,24 @@ export default async function driversRoutes(app: FastifyInstance) {
     }
 
     try {
+      if (vehicle_id) {
+        const vehicle = await db.getVehicleById(vehicle_id);
+        if (!vehicle || !vehicle.active) {
+          return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Vehicle ${vehicle_id} not found` });
+        }
+      }
+
       const driver = await db.createDriver({
         id:                 driver_id,
         name,
         zone_id:            zone_id ?? 0,
-        current_vehicle_id: vehicle_id ?? null,
+        current_vehicle_id: null,
       });
-      return reply.code(201).send(toDriverResponse(driver));
+      const assignedDriver = vehicle_id
+        ? await db.assignVehicleToDriver(driver.id, vehicle_id)
+        : driver;
+
+      return reply.code(201).send(toDriverResponse(assignedDriver ?? driver));
     } catch (e: any) {
       if (e?.code === 'P2002') {
         return reply.code(409).send({ error: 'CONFLICT', message: `Driver ${driver_id} already exists` });
@@ -111,32 +122,39 @@ export default async function driversRoutes(app: FastifyInstance) {
   }>('/api/v1/drivers/:id', async (req, reply) => {
     const { id } = req.params;
 
-    // Build patch from only the known columns — unknown fields (e.g. active) are ignored
+    // Build patch from only the known columns. Vehicle assignment is handled below
+    // so both f2.vehicles.driver_id and f3.drivers.current_vehicle_id stay aligned.
     const body = req.body as any;
     const patch: Parameters<typeof db.updateDriver>[1] = {};
     if (body.name        !== undefined) patch.name               = String(body.name);
     if (body.zone_id     !== undefined) patch.zone_id            = Number(body.zone_id);
-    if (body.vehicle_id  !== undefined) patch.current_vehicle_id = body.vehicle_id || null;
     if (body.status      !== undefined) patch.status             = String(body.status);
-
-    // If nothing meaningful was sent (e.g. only { active: false }), return current record
-    if (Object.keys(patch).length === 0) {
-      try {
-        const driver = await db.getDriverById(id);
-        if (!driver) {
-          return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Driver ${id} not found` });
-        }
-        return toDriverResponse(driver);
-      } catch {
-        return reply.code(500).send({ error: 'INTERNAL_ERROR', message: 'Failed to fetch driver' });
-      }
-    }
+    if (body.active      !== undefined && body.active === false) patch.status = 'off_duty';
 
     try {
-      const driver = await db.updateDriver(id, patch);
+      let driver = Object.keys(patch).length > 0
+        ? await db.updateDriver(id, patch)
+        : await db.getDriverById(id);
+
       if (!driver) {
         return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Driver ${id} not found` });
       }
+
+      if (body.vehicle_id !== undefined) {
+        const vehicle_id = body.vehicle_id ? String(body.vehicle_id) : null;
+        if (vehicle_id) {
+          const vehicle = await db.getVehicleById(vehicle_id);
+          if (!vehicle || !vehicle.active) {
+            return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Vehicle ${vehicle_id} not found` });
+          }
+        }
+
+        driver = await db.assignVehicleToDriver(id, vehicle_id);
+        if (!driver) {
+          return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Driver ${id} not found` });
+        }
+      }
+
       return toDriverResponse(driver);
     } catch (e) {
       return reply.code(500).send({ error: 'INTERNAL_ERROR', message: 'Failed to update driver' });
