@@ -320,9 +320,15 @@ export async function getJobs(
   const page  = Math.max(1, filters.page  ?? 1);
   const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
 
+  const stateFilter = filters.state
+    ? filters.state.includes(',')
+      ? { state: { in: filters.state.split(',').map((s) => s.trim()) } }
+      : { state: filters.state }
+    : {};
+
   const where: Prisma.CollectionJobWhereInput = {
     ...(filters.job_type ? { job_type: filters.job_type } : {}),
-    ...(filters.state    ? { state:    filters.state }    : {}),
+    ...stateFilter,
     ...(filters.zone_id  ? { zone_id:  parseInt(filters.zone_id, 10) } : {}),
     ...(filters.date_from || filters.date_to
       ? {
