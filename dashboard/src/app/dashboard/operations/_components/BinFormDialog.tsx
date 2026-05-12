@@ -149,7 +149,7 @@ export function BinFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!value) onClose() }}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit ${bin.bin_id}` : 'Create Bin'}</DialogTitle>
         </DialogHeader>

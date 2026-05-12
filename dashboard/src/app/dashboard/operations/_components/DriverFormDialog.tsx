@@ -61,7 +61,7 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: async (values: FormValues) => {
-      const api = createClientApiClient(session!.accessToken)
+      const api = createClientApiClient(session?.accessToken)
       if (isEdit) {
         const { driver_id, ...rest } = values
         return updateDriver(api, driver_id, rest)
@@ -81,7 +81,7 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent aria-describedby={undefined} className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit Driver ${driver?.driver_id}` : 'Add New Driver'}</DialogTitle>
         </DialogHeader>

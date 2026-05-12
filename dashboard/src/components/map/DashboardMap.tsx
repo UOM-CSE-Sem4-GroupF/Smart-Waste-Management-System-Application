@@ -8,6 +8,7 @@ import { useMapStore } from '@/store/mapStore'
 import { useBinMarker } from './BinMarker'
 import { useVehicleMarker } from './VehicleMarker'
 import { STATUS_COLORS } from '@/lib/colours'
+import type { BinUpdatePayload } from '@/types'
 
 /** Build a rectangular GeoJSON ring (closed) around a set of lat/lng points */
 function bboxRing(lats: number[], lngs: number[], buffer: number): number[][] {
@@ -30,6 +31,8 @@ interface DashboardMapProps {
   /** If set, show only the active route for this job */
   jobId?: string
   className?: string
+  /** When provided, render these bins directly instead of reading from mapStore */
+  bins?: BinUpdatePayload[]
   onBinSelect?: (binId: string) => void
   onVehicleSelect?: (jobId: string) => void
 }
@@ -38,21 +41,25 @@ interface DashboardMapProps {
 function BinMarkersLayer({
   map,
   onSelect,
+  bins: propBins,
 }: {
   map: mapboxgl.Map
   onSelect: (id: string) => void
+  bins?: BinUpdatePayload[]
 }) {
-  const rawBins  = useMapStore((s) => s.bins)
-  const filters  = useMapStore((s) => s.filters)
+  // Only subscribe to store when propBins is not provided — avoids re-renders on every setBins call
+  const rawBins = useMapStore((s) => propBins ? null : s.bins)
+  const filters = useMapStore((s) => s.filters)
   const bins = useMemo(() => {
-    return Array.from(rawBins.values()).filter((bin) => {
+    const source = propBins ?? Array.from((rawBins as Map<string, BinUpdatePayload>).values())
+    return source.filter((bin) => {
       if (filters.zoneId && bin.zone_id !== filters.zoneId) return false
       if (filters.clusterId && bin.cluster_id !== filters.clusterId) return false
       if (filters.status.length && !filters.status.includes(bin.status)) return false
       if (filters.wasteCategory.length && !filters.wasteCategory.includes(bin.waste_category)) return false
       return true
     })
-  }, [rawBins, filters])
+  }, [propBins, rawBins, filters])
 
   return (
     <>
@@ -115,6 +122,7 @@ const CLUSTER_COLORS = ['#6366f1', '#ec4899', '#14b8a6', '#f97316', '#84cc16', '
 /** Renders zone and cluster boundary polygons as Mapbox GL fill/line layers */
 function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
   const bins         = useMapStore((s) => s.bins)
+  const binsSize     = useMapStore((s) => s.bins.size)
   const zoneStats    = useMapStore((s) => s.zoneStats)
   const showZones    = useMapStore((s) => s.filters.showZones)
   const showClusters = useMapStore((s) => s.filters.showClusters)
@@ -168,7 +176,8 @@ function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
       paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 
     return cleanup
-  }, [map, bins, zoneStats, showZones])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, binsSize, zoneStats, showZones])
 
   // Cluster overlay layers
   useEffect(() => {
@@ -219,7 +228,8 @@ function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
       paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 
     return cleanup
-  }, [map, bins, showClusters])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, binsSize, showClusters])
 
   return null
 }
@@ -228,6 +238,7 @@ export default function DashboardMap({
   compact = false,
   jobId,
   className = '',
+  bins,
   onBinSelect,
   onVehicleSelect,
 }: DashboardMapProps) {
@@ -311,6 +322,19 @@ export default function DashboardMap({
     mapRef.current.setStyle(getMapboxStyle(resolvedTheme === 'dark' ? 'dark' : 'light'))
   }, [resolvedTheme]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-fit to bin locations when the map and bins are both ready
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded || !bins || bins.length === 0) return
+    const valid = bins.filter(b => b.lat && b.lng)
+    if (valid.length === 0) return
+    const lats = valid.map(b => b.lat!)
+    const lngs = valid.map(b => b.lng!)
+    mapRef.current.fitBounds(
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: 80, maxZoom: 15, duration: 800 },
+    )
+  }, [mapLoaded, bins]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className={`flex items-center justify-center bg-muted text-muted-foreground text-sm ${className}`}>
@@ -339,7 +363,7 @@ export default function DashboardMap({
       {mapLoaded && mapRef.current && (
         <>
           <ZoneClusterOverlaysLayer map={mapRef.current} />
-          <BinMarkersLayer    map={mapRef.current} onSelect={handleBinSelect} />
+          <BinMarkersLayer    map={mapRef.current} onSelect={handleBinSelect} bins={bins} />
           <VehicleMarkersLayer map={mapRef.current} onSelect={handleVehicleSelect} />
         </>
       )}

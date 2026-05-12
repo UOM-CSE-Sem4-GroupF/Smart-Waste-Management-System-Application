@@ -62,7 +62,7 @@ interface Props {
 export function ZoneFormDialog({ open, onClose, zone, value, onChange, onSubmit, isPending, error }: Props) {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent aria-describedby={undefined} className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{zone ? `Edit ${zone.name}` : 'Create Zone'}</DialogTitle>
         </DialogHeader>

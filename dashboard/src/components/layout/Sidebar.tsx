@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronRight,
   Settings2,
+  DatabaseZap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,14 +32,16 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
   { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
   { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
+  { icon: Settings2,       label: 'Operations (New)', href: '/dashboard/operations-new', roles: ['supervisor', 'admin'] },
   { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
+  { icon: DatabaseZap,     label: 'System Mgmt', href: '/dashboard/system-management', roles: ['admin'] },
 ]
 
 export function Sidebar() {
   const pathname  = usePathname()
   const { data: session } = useSession()
-  // BYPASS: Default to supervisor role if no session is present
-  const role      = session?.user?.role ?? 'supervisor'
+  // BYPASS: Default to admin role if no session is present (dev/demo mode)
+  const role      = session?.user?.role ?? 'admin'
 
   const initials = session?.user?.name
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)

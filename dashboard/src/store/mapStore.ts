@@ -59,9 +59,15 @@ export const useMapStore = create<MapStore>((set, get) => ({
     }),
 
   setBins: (bins) =>
-    set(() => ({
-      bins: new Map(bins.map((b) => [b.bin_id, b])),
-    })),
+    set((state) => {
+      const next = new Map(state.bins)
+      for (const b of bins) {
+        const existing = next.get(b.bin_id)
+        // Merge: REST payload carries coords; preserve any live socket state already in store
+        next.set(b.bin_id, existing ? { ...existing, ...b } : b)
+      }
+      return { bins: next }
+    }),
 
   updateVehicle: (payload) =>
     set((state) => {

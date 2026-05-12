@@ -159,6 +159,55 @@ export async function syncVehiclesFromCoreApi(): Promise<void> {
     slog('ERROR', `syncVehiclesFromCoreApi: exception — keeping seed data: ${(e as Error).message}`);
   }
 }
+
+// Populate activeJobs from orchestrator on startup so vehicle positions aren't dropped after a pod restart
+export async function syncActiveJobsFromOrchestrator(): Promise<void> {
+  const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL ?? 'http://orchestrator-base-service.waste-dev.svc.cluster.local:3001';
+
+  slog('INFO', `syncActiveJobsFromOrchestrator: fetching active jobs from ${ORCHESTRATOR_URL}`);
+  try {
+    let loaded = 0;
+    for (const state of ['DISPATCHED', 'IN_PROGRESS']) {
+      const url = `${ORCHESTRATOR_URL}/api/v1/collection-jobs?state=${state}&limit=100`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        slog('WARN', `syncActiveJobsFromOrchestrator: orchestrator responded ${res.status} for state=${state}`, { status: res.status });
+        continue;
+      }
+      const body = await res.json() as { data?: Array<{
+        job_id:               string;
+        state:                string;
+        zone_id?:             string | number;
+        waste_category?:      string;
+        assigned_vehicle_id?: string;
+        assigned_driver_id?:  string;
+        bins_to_collect?:     string[];
+        created_at?:          string;
+      }> };
+
+      for (const job of (body.data ?? [])) {
+        if (!job.assigned_vehicle_id) continue;
+        activeJobs.set(job.job_id, {
+          job_id:              job.job_id,
+          state:               job.state as any,
+          assigned_vehicle_id: job.assigned_vehicle_id,
+          assigned_driver_id:  job.assigned_driver_id ?? '',
+          zone_id:             typeof job.zone_id === 'string' ? parseInt(job.zone_id, 10) : (job.zone_id ?? 0),
+          waste_category:      job.waste_category ?? 'general',
+          total_bins:          job.bins_to_collect?.length ?? 0,
+          created_at:          job.created_at ?? new Date().toISOString(),
+        });
+        loaded++;
+      }
+    }
+
+    slog('INFO', `syncActiveJobsFromOrchestrator: loaded ${loaded} active jobs into store`, {
+      job_ids: Array.from(activeJobs.keys()),
+    });
+  } catch (e) {
+    slog('ERROR', `syncActiveJobsFromOrchestrator: exception — activeJobs remains empty: ${(e as Error).message}`);
+  }
+}
 export const routePlans = new Map<string, RoutePlan>();
 export const binCollectionRecords = new Map<string, BinCollectionRecord>();
 export const clusterCoordinates = new Map<string, { lat: number; lng: number }>();

@@ -52,7 +52,7 @@ export function AccountFormDialog({ open, onClose, zoneOptions, driverOptions }:
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent aria-describedby={undefined} className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Account</DialogTitle>
         </DialogHeader>

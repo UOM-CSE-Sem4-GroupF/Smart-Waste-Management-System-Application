@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Bin, ZoneSummary, BinHistory, ZoneStatsPayload } from '@/types'
-import type { ActiveVehicle, VehiclePositionPayload } from '@/types'
+import type { ActiveVehicle, Driver, VehicleAsset, VehiclePositionPayload } from '@/types'
 import type { CollectionJobListItem } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -37,17 +37,8 @@ export const MOCK_BINS: Bin[] = [
   { bin_id: 'BIN-020', cluster_id: 'CLU-I', cluster_name: 'Uyanwatta West',    zone_id: 3, zone_name: 'Uyanwatta',      lat: 6.7984, lng: 79.8957, address: '61 Panadura Road',        fill_level_pct: 68, status: 'monitor',  urgency_score: 0.68, estimated_weight_kg: 34.0, waste_category: 'food_waste', waste_category_colour: '#f97316', predicted_full_at: new Date(NOW + 7 * 3600_000).toISOString(),  battery_level_pct: 72, last_reading_at: new Date(NOW - 750_000).toISOString(),   last_collected_at: new Date(NOW - 42 * 3600_000).toISOString(), has_active_job: false },
 ]
 
-export const MOCK_VEHICLE_POSITIONS: VehiclePositionPayload[] = [
-  { vehicle_id: 'VEH-001', driver_id: 'DRV-001', lat: 6.7978, lng: 79.8860, speed_kmh: 22, heading_degrees: 45,  job_id: 'JOB-001', zone_id: 1, current_cluster: 'CLU-B', next_cluster: 'CLU-C', bins_collected: 3, bins_total: 7, cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, weight_limit_warning: false },
-  { vehicle_id: 'VEH-002', driver_id: 'DRV-002', lat: 6.7913, lng: 79.8895, speed_kmh: 18, heading_degrees: 180, job_id: 'JOB-002', zone_id: 2, current_cluster: 'CLU-E', next_cluster: 'CLU-F', bins_collected: 5, bins_total: 7, cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, weight_limit_warning: false },
-  { vehicle_id: 'VEH-003', driver_id: 'DRV-003', lat: 6.8006, lng: 79.8933, speed_kmh: 0,  heading_degrees: 270, job_id: 'JOB-003', zone_id: 3, current_cluster: 'CLU-G', next_cluster: 'CLU-H', bins_collected: 1, bins_total: 6, cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  weight_limit_warning: false },
-]
+// Vehicle and Driver mock data removed
 
-export const MOCK_VEHICLES_REST: ActiveVehicle[] = [
-  { vehicle_id: 'VEH-001', vehicle_type: 'compactor', driver_id: 'DRV-001', driver_name: 'Amal Perera',    job_id: 'JOB-001', job_type: 'routine',   zone_id: 1, state: 'IN_PROGRESS', current_lat: 6.7978, current_lng: 79.8860, last_seen_at: new Date(NOW - 60_000).toISOString(),   cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, bins_collected: 3, bins_total: 7 },
-  { vehicle_id: 'VEH-002', vehicle_type: 'compactor', driver_id: 'DRV-002', driver_name: 'Nimal Silva',    job_id: 'JOB-002', job_type: 'emergency', zone_id: 2, state: 'IN_PROGRESS', current_lat: 6.7913, current_lng: 79.8895, last_seen_at: new Date(NOW - 30_000).toISOString(),   cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, bins_collected: 5, bins_total: 7 },
-  { vehicle_id: 'VEH-003', vehicle_type: 'mini_truck', driver_id: 'DRV-003', driver_name: 'Kasun Fernando', job_id: 'JOB-003', job_type: 'routine',   zone_id: 3, state: 'IN_PROGRESS', current_lat: 6.8006, current_lng: 79.8933, last_seen_at: new Date(NOW - 90_000).toISOString(),   cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  bins_collected: 1, bins_total: 6 },
-]
 
 export const MOCK_JOBS: CollectionJobListItem[] = [
   // Active jobs
@@ -205,160 +196,11 @@ function makeBinHistory(binId: string): BinHistory {
 }
 
 export const handlers = [
-  http.get('/api/metadata/zones', () => {
-    return HttpResponse.json({ data: MOCK_METADATA_ZONES, total: MOCK_METADATA_ZONES.length })
-  }),
+  // api/metadata/... handlers removed — BinsTab now calls data-analysis/api/v1/... (Core API via Kong)
+  // Mock data arrays above kept for reference.
 
-  http.post('/api/metadata/city-zones', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = {
-      id: MOCK_METADATA_ZONES.length ? Math.max(...MOCK_METADATA_ZONES.map((z) => z.id)) + 1 : 1,
-      name: String(body.name),
-      code: String(body.code),
-      active: true,
-    }
-    MOCK_METADATA_ZONES.push(zone)
-    return HttpResponse.json({ data: zone }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/city-zones/:zoneId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = MOCK_METADATA_ZONES.find((z) => z.id === Number(params.zoneId))
-    if (!zone) return HttpResponse.json({ message: 'Zone not found' }, { status: 404 })
-    Object.assign(zone, body)
-    return HttpResponse.json({ data: zone })
-  }),
-
-  http.delete('/api/metadata/city-zones/:zoneId', ({ params }) => {
-    const index = MOCK_METADATA_ZONES.findIndex((z) => z.id === Number(params.zoneId))
-    if (index >= 0) MOCK_METADATA_ZONES.splice(index, 1)
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  http.get('/api/metadata/clusters', ({ request }) => {
-    const url = new URL(request.url)
-    const zoneId = url.searchParams.get('zone_id')
-    let data = metadataClusters()
-    if (zoneId) data = data.filter((cluster) => cluster.zone_id === Number(zoneId))
-    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
-  }),
-
-  http.post('/api/metadata/clusters', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = MOCK_METADATA_ZONES.find((item) => item.id === Number(body.zone_id))
-    const cluster = {
-      id: String(body.id),
-      zone_id: Number(body.zone_id),
-      name: String(body.name),
-      lat: Number(body.lat ?? 0),
-      lng: Number(body.lng ?? 0),
-      address: String(body.address ?? ''),
-      cluster_type: String(body.cluster_type ?? 'public_space'),
-      active: true,
-      zone: {
-        id: Number(body.zone_id),
-        name: zone?.name ?? `Zone ${body.zone_id}`,
-        code: zone?.code ?? `ZONE-${body.zone_id}`,
-      },
-      bins: [],
-    }
-    EXTRA_METADATA_CLUSTERS.push(cluster)
-    return HttpResponse.json({ data: cluster }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/clusters/:clusterId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const cluster = EXTRA_METADATA_CLUSTERS.find((item: MetadataCluster) => item.id === String(params.clusterId))
-    if (cluster) Object.assign(cluster, body)
-    return HttpResponse.json({ data: { id: params.clusterId, ...body } })
-  }),
-
-  http.delete('/api/metadata/clusters/:clusterId', ({ params }) => {
-    const index = EXTRA_METADATA_CLUSTERS.findIndex((item: MetadataCluster) => item.id === String(params.clusterId))
-    if (index >= 0) EXTRA_METADATA_CLUSTERS.splice(index, 1)
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  http.get('/api/metadata/waste-categories', () => {
-    return HttpResponse.json({ data: MOCK_WASTE_CATEGORIES })
-  }),
-
-  http.get('/api/metadata/bins', ({ request }) => {
-    const url = new URL(request.url)
-    const zoneId = url.searchParams.get('zone_id')
-    const clusterId = url.searchParams.get('cluster_id')
-    let data = metadataBins()
-    if (zoneId) data = data.filter((bin) => bin.cluster.zone_id === Number(zoneId))
-    if (clusterId) data = data.filter((bin) => bin.cluster_id === clusterId)
-    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
-  }),
-
-  http.post('/api/metadata/bins', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const cluster = metadataClusters().find((item: MetadataCluster) => item.id === String(body.cluster_id))
-    const category = MOCK_WASTE_CATEGORIES.find((item) => item.id === Number(body.waste_category_id)) ?? MOCK_WASTE_CATEGORIES[4]
-    const bin = {
-      bin_id: String(body.id),
-      cluster_id: String(body.cluster_id),
-      cluster_name: cluster?.name ?? String(body.cluster_id),
-      zone_id: cluster?.zone_id ?? 1,
-      zone_name: cluster?.zone.name ?? 'Zone 1',
-      lat: Number(body.lat ?? cluster?.lat ?? 0),
-      lng: Number(body.lng ?? cluster?.lng ?? 0),
-      address: String(body.address ?? cluster?.address ?? ''),
-      fill_level_pct: 0,
-      status: 'normal' as const,
-      urgency_score: 0,
-      estimated_weight_kg: 0,
-      waste_category: category.name as typeof MOCK_BINS[number]['waste_category'],
-      waste_category_colour: category.colour_code,
-      predicted_full_at: null,
-      battery_level_pct: 100,
-      last_reading_at: new Date().toISOString(),
-      last_collected_at: null,
-      has_active_job: false,
-    }
-    MOCK_BINS.push(bin)
-    return HttpResponse.json({ data: metadataBins().find((item) => item.id === bin.bin_id) }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/bins/:binId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ data: { id: params.binId, ...body } })
-  }),
-
-  http.delete('/api/metadata/bins/:binId', () => {
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  // GET /api/v1/bins — supports ?zone_id= ?status= ?waste_category= ?page= ?limit=
-  http.get('http://localhost:30080/api/v1/bins', ({ request }) => {
-    const url      = new URL(request.url)
-    const zoneId   = url.searchParams.get('zone_id')
-    const status   = url.searchParams.get('status')
-    const category = url.searchParams.get('waste_category')
-    const page     = Math.max(1, Number(url.searchParams.get('page')  ?? 1))
-    const limit    = Math.max(1, Number(url.searchParams.get('limit') ?? 25))
-    let filtered   = MOCK_BINS
-    if (zoneId)   filtered = filtered.filter((b) => b.zone_id       === Number(zoneId))
-    if (status)   filtered = filtered.filter((b) => b.status        === status)
-    if (category) filtered = filtered.filter((b) => b.waste_category === category)
-    const total = filtered.length
-    const data  = filtered.slice((page - 1) * limit, page * limit)
-    return HttpResponse.json({ data, total, page, limit })
-  }),
-
-  // GET /api/v1/bins/:binId
-  http.get('http://localhost:30080/api/v1/bins/:binId', ({ params }) => {
-    const bin = MOCK_BINS.find((b) => b.bin_id === params.binId)
-    if (!bin) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
-    return HttpResponse.json({
-      ...bin,
-      recent_collections: [
-        { job_id: 'JOB-004', collected_at: new Date(Date.now() - 48 * 3600_000).toISOString(), driver_id: 'DRV-001', fill_level_at_collection: 87, actual_weight_kg: 43.5, job_type: 'routine' },
-      ],
-    })
-  }),
+  // GET /api/v1/bins — unwired: falls through to real bin-status service
+  // (MOCK_BINS data kept above for reference; re-wire by restoring these handlers)
 
   // GET /api/v1/bins/:binId/history
   http.get('http://localhost:30080/api/v1/bins/:binId/history', ({ params }) => {
@@ -399,10 +241,8 @@ export const handlers = [
     return HttpResponse.json(job)
   }),
 
-  // GET /api/v1/vehicles/active
-  http.get('http://localhost:30080/api/v1/vehicles/active', () => {
-    return HttpResponse.json({ vehicles: MOCK_VEHICLES_REST })
-  }),
+  // Active vehicles handler removed
+
 
   // GET /api/v1/ml/waste-generation
   http.get('http://localhost:30080/api/v1/ml/waste-generation', () => {
@@ -493,39 +333,8 @@ export const handlers = [
     return HttpResponse.json({ bin_id: params.binId, ...body })
   }),
 
-  // GET /api/v1/vehicles
-  http.get('http://localhost:30080/api/v1/vehicles', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
+  // Vehicle and Driver handlers removed — now calling real backend services
 
-  // POST /api/v1/vehicles
-  http.post('http://localhost:30080/api/v1/vehicles', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/vehicles/:vehicleId
-  http.patch('http://localhost:30080/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
-  }),
-
-  // GET /api/v1/drivers
-  http.get('http://localhost:30080/api/v1/drivers', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
-
-  // POST /api/v1/drivers
-  http.post('http://localhost:30080/api/v1/drivers', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/drivers/:driverId
-  http.patch('http://localhost:30080/api/v1/drivers/:driverId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ driver_id: params.driverId, ...body })
-  }),
 
   // GET /api/v1/zones
   http.get('http://localhost:30080/api/v1/zones', () => {

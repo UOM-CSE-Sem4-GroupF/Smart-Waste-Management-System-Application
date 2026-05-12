@@ -19,10 +19,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token
     },
     async session({ session, token }) {
-      session.accessToken = token.accessToken as string
-      const decoded = decodeJwt(token.accessToken as string)
-      session.user.role   = decoded.realm_access?.roles?.[0] ?? 'viewer'
-      session.user.zoneId = decoded.zone_id ?? null
+      if (!token?.accessToken) return session
+
+      try {
+        session.accessToken = token.accessToken as string
+        const decoded = decodeJwt(token.accessToken as string)
+        session.user.role   = decoded?.realm_access?.roles?.[0] ?? 'viewer'
+        session.user.zoneId = decoded?.zone_id ?? null
+      } catch (err) {
+        console.error('[Auth] Decode error:', err)
+      }
       return session
     },
   },

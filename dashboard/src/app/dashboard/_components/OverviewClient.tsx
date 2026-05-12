@@ -15,8 +15,8 @@ import type { BinUpdatePayload, CollectionJob } from '@/types'
 const MiniMap = dynamic(() => import('@/components/map/DashboardMap'), { ssr: false })
 
 interface OverviewClientProps {
-  initialBins:    BinUpdatePayload[]
-  initialJobs:    CollectionJob[]
+  initialBins: BinUpdatePayload[]
+  initialJobs: CollectionJob[]
 }
 
 // Active job states (CREATED → IN_PROGRESS)
@@ -28,26 +28,91 @@ const ACTIVE_STATES = new Set([
   'RECORDING_AUDIT',
 ])
 
+import { useSession } from 'next-auth/react'
+import { useQuery } from '@tanstack/react-query'
+import { createClientApiClient } from '@/lib/api-client'
+import { normaliseBin, type CoreBin, type CoreCluster, type CoreListResponse } from '@/lib/api/metadata'
+import { Loader2 } from 'lucide-react'
+
 export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps) {
+  const { data: session } = useSession()
   const { setBins, bins, zoneStats, vehicles } = useMapStore()
-  const { setJobs }                            = useJobStore()
-  const jobs                                   = useJobStore((s) => s.jobs)
+  const { setJobs } = useJobStore()
+  const jobs = useJobStore((s) => s.jobs)
 
-  // Seed stores once with initial SSR data
-  useEffect(() => {
-    if (initialBins.length > 0) setBins(initialBins)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // 1. Fetch Bins + Clusters → merge real coordinates → seed map store
+  const { isLoading: isLoadingBins } = useQuery({
+    queryKey: ['bins-overview-initial', session?.accessToken ?? 'unauthenticated'],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const [binsRes, clustersRes] = await Promise.all([
+        api.get('data-analysis/api/v1/bins', { searchParams: { limit: 500 } })
+           .json<CoreListResponse<CoreBin>>(),
+        api.get('data-analysis/api/v1/clusters', { searchParams: { limit: 200 } })
+           .json<CoreListResponse<CoreCluster>>()
+           .catch(() => ({ data: [] as CoreCluster[] })),
+      ])
 
-  useEffect(() => {
-    if (initialJobs.length > 0) setJobs(initialJobs)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      const clusterCoords = new Map(
+        clustersRes.data
+          .filter(c => Number(c.lat) !== 0 && Number(c.lng) !== 0)
+          .map(c => [c.id, { lat: Number(c.lat), lng: Number(c.lng) }])
+      )
+
+      const payload: BinUpdatePayload[] = binsRes.data.map(raw => {
+        const bin = normaliseBin(raw)
+        const lat = bin.lat || clusterCoords.get(raw.cluster_id)?.lat || 0
+        const lng = bin.lng || clusterCoords.get(raw.cluster_id)?.lng || 0
+        return {
+          bin_id:                bin.bin_id,
+          cluster_id:            bin.cluster_id,
+          cluster_name:          bin.cluster_name,
+          zone_id:               bin.zone_id,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          waste_category:        bin.waste_category as any,
+          waste_category_colour: bin.waste_category_colour,
+          fill_level_pct:        bin.fill_level_pct ?? 0,
+          status:                bin.status,
+          urgency_score:         bin.urgency_score,
+          estimated_weight_kg:   bin.estimated_weight_kg ?? 0,
+          battery_level_pct:     bin.battery_level_pct ?? 100,
+          predicted_full_at:     bin.predicted_full_at,
+          last_collected_at:     bin.last_collected_at,
+          fill_rate_pct_per_hour: 0,
+          has_active_job:        false,
+          collection_triggered:  false,
+          lat,
+          lng,
+        }
+      })
+
+      setBins(payload)
+      return payload
+    },
+    staleTime: 60_000,
+  })
+
+  // 2. Fetch Jobs (for active jobs list)
+  const { isLoading: isLoadingJobs } = useQuery({
+    queryKey: ['jobs-overview-initial'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await api.get('api/v1/collection-jobs', { searchParams: { limit: 100 } }).json<{ data: any[] }>()
+      const payload = res.data as unknown as CollectionJob[]
+      setJobs(payload)
+      return payload
+    },
+    enabled: !!session?.accessToken,
+  })
 
   // Derived stats
-  const allBins        = useMemo(() => Array.from(bins.values()), [bins])
-  const allZones       = useMemo(() => Array.from(zoneStats.values()), [zoneStats])
-  const totalBins      = allBins.length
-  const urgentCount    = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
-  const activeJobs     = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
+  const allBins = useMemo(() => Array.from(bins.values()), [bins])
+  const allZones = useMemo(() => Array.from(zoneStats.values()), [zoneStats])
+  const totalBins = allBins.length
+  const urgentCount = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
+  const activeJobs = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
   const activeVehicles = vehicles.size
 
   // Top 5 active jobs for the right column
@@ -75,7 +140,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
           </div>
         </CardHeader>
         <CardContent className="p-0 h-[calc(100%-3rem)]">
-          <MiniMap compact className="w-full h-full" />
+          <MiniMap className="w-full h-full" bins={allBins} />
         </CardContent>
       </Card>
 

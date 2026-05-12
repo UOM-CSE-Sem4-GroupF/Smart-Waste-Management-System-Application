@@ -93,7 +93,7 @@ interface Props {
 export function ClusterFormDialog({ open, onClose, cluster, zones, value, onChange, onSubmit, isPending, error }: Props) {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent aria-describedby={undefined} className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{cluster ? `Edit ${cluster.name}` : 'Create Cluster'}</DialogTitle>
         </DialogHeader>
