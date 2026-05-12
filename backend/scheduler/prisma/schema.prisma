@@ -1,0 +1,76 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["f3"]
+}
+
+// ── F3 tables owned or read by the scheduler ───────────────────────────────
+
+model Driver {
+  id                  String   @id @db.VarChar(20)
+  name                String   @db.VarChar(100)
+  zone_id             Int
+  current_vehicle_id  String?  @db.VarChar(20)
+  status              String   @default("off_duty") @db.VarChar(20)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("drivers")
+  @@schema("f3")
+}
+
+model BinCollectionRecord {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id                   String    @db.Uuid
+  bin_id                   String    @db.VarChar(20)
+  cluster_id               String    @db.VarChar(20)
+  sequence_number          Int
+  planned_arrival_at       DateTime? @db.Timestamptz(6)
+  arrived_at               DateTime? @db.Timestamptz(6)
+  collected_at             DateTime? @db.Timestamptz(6)
+  skipped_at               DateTime? @db.Timestamptz(6)
+  skip_reason              String?   @db.VarChar(30)
+  skip_notes               String?
+  fill_level_at_collection Decimal?  @db.Decimal(5, 2)
+  estimated_weight_kg      Decimal?  @db.Decimal(8, 2)
+  actual_weight_kg         Decimal?  @db.Decimal(8, 2)
+  driver_notes             String?
+  photo_url                String?
+  gps_lat                  Decimal?  @db.Decimal(10, 7)
+  gps_lng                  Decimal?  @db.Decimal(10, 7)
+  gps_accuracy_m           Decimal?  @db.Decimal(6, 2)
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([job_id, bin_id])
+  @@map("bin_collection_records")
+  @@schema("f3")
+}
+
+model DriverAssignmentHistory {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id           String    @db.Uuid
+  driver_id        String?   @db.VarChar(20)
+  vehicle_id       String?   @db.VarChar(20)
+  assignment_type  String    @db.VarChar(20)
+  rejection_reason String?   @db.VarChar(100)
+  offered_at       DateTime  @default(now()) @db.Timestamptz(6)
+  responded_at     DateTime? @db.Timestamptz(6)
+
+  @@map("driver_assignment_history")
+  @@schema("f3")
+}
+
+// Read-only — orchestrator owns this table; scheduler only SELECTs for release
+model CollectionJob {
+  id                  String  @id @db.Uuid
+  assigned_vehicle_id String? @db.VarChar(20)
+  assigned_driver_id  String? @db.VarChar(20)
+
+  @@map("collection_jobs")
+  @@schema("f3")
+}

@@ -5,6 +5,7 @@ import { ClusterSnapshot, BinState } from '../types';
 import { AVG_KG_PER_LITRE } from '../rules/weightCalculator';
 import { publishToDashboard } from '../publishers/dashboardPublisher';
 import { getClusterSnapshot } from '../clients/dataAnalysisClient';
+import { hasActiveJobForCluster, hasActiveJobForBin } from '../db/queries';
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -19,6 +20,8 @@ const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
 });
 
+const CORE_API = process.env.DATA_ANALYSIS_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
+
 /**
  * Internal API for orchestrator (not exposed via Kong)
  * All routes require X-Service-Name header for basic auth
@@ -31,6 +34,14 @@ function validateServiceHeader(req: FastifyRequest, reply: FastifyReply): boolea
     return false;
   }
   return true;
+}
+
+async function getActiveJobForBin(bin_id: string): Promise<boolean> {
+  try {
+    return await hasActiveJobForBin(bin_id);
+  } catch {
+    return false;
+  }
 }
 
 export default async function internalRoutes(app: FastifyInstance) {
@@ -68,9 +79,11 @@ export default async function internalRoutes(app: FastifyInstance) {
           let collectible_weight = 0;
           let highest_urgency = 0;
           let highest_urgency_bin_id = '';
+          let cluster_has_active_job = false;
 
-          const bins = clusterBins.map((bin) => {
-            const has_active_job = store.hasActiveJobForBin(bin.bin_id);
+          const bins = await Promise.all(clusterBins.map(async (bin) => {
+            const has_active_job = await getActiveJobForBin(bin.bin_id);
+            if (has_active_job) cluster_has_active_job = true;
             const should_collect = bin.urgency_score >= 80 && !has_active_job;
             if (should_collect) { collectible_count++; collectible_weight += bin.estimated_weight_kg; }
             if (bin.urgency_score > highest_urgency) { highest_urgency = bin.urgency_score; highest_urgency_bin_id = bin.bin_id; }
@@ -82,14 +95,14 @@ export default async function internalRoutes(app: FastifyInstance) {
               predicted_full_at: bin.predicted_full_at || null,
               fill_rate_pct_per_hour: bin.fill_rate_pct_per_hour || 0, should_collect,
             };
-          });
+          }));
 
           const first = clusterBins[0];
           return {
             cluster_id, cluster_name: first.cluster_name ?? cluster_id,
             zone_id: Number(first.zone_id) || 0, lat: first.lat || 0, lng: first.lng || 0,
             address: null, total_bins: clusterBins.length,
-            has_active_job: clusterBins.some(b => store.hasActiveJobForBin(b.bin_id)),
+            has_active_job: cluster_has_active_job,
             active_job_id: null, bins,
             collectible_bins_count: collectible_count,
             collectible_bins_weight_kg: parseFloat(collectible_weight.toFixed(2)),
@@ -97,15 +110,17 @@ export default async function internalRoutes(app: FastifyInstance) {
           } as ClusterSnapshot;
         }
 
-        // Stamp each bin with live `should_collect` using local activeJobs map
+        // Stamp each bin with live `should_collect` and `has_active_job` from F3 DB
         let collectible_count = 0;
         let collectible_weight = 0;
         let highest_urgency = 0;
         let highest_urgency_bin_id = '';
+        let cluster_has_active_job = false;
 
-        const bins = f2.bins.map((bin) => {
+        const bins = await Promise.all(f2.bins.map(async (bin) => {
           const localBin = store.getBin(bin.bin_id);
-          const has_active_job = store.hasActiveJobForBin(bin.bin_id);
+          const has_active_job = await getActiveJobForBin(bin.bin_id);
+          if (has_active_job) cluster_has_active_job = true;
           const should_collect = bin.urgency_score >= 80 && !has_active_job;
           if (should_collect) { collectible_count++; collectible_weight += bin.estimated_weight_kg; }
           if (bin.urgency_score > highest_urgency) { highest_urgency = bin.urgency_score; highest_urgency_bin_id = bin.bin_id; }
@@ -122,7 +137,16 @@ export default async function internalRoutes(app: FastifyInstance) {
             fill_rate_pct_per_hour: localBin?.fill_rate_pct_per_hour ?? 0,
             should_collect,
           };
-        });
+        }));
+
+        let cluster_active_from_db = cluster_has_active_job;
+        if (!cluster_active_from_db) {
+          try {
+            cluster_active_from_db = await hasActiveJobForCluster(cluster_id);
+          } catch {
+            // non-fatal
+          }
+        }
 
         const snapshot: ClusterSnapshot = {
           cluster_id: f2.cluster_id,
@@ -132,7 +156,7 @@ export default async function internalRoutes(app: FastifyInstance) {
           lng: f2.lng,
           address: null,
           total_bins: f2.total_bins,
-          has_active_job: bins.some(b => store.hasActiveJobForBin(b.bin_id)),
+          has_active_job: cluster_active_from_db,
           active_job_id: null,
           bins,
           collectible_bins_count: collectible_count,
@@ -265,6 +289,15 @@ export default async function internalRoutes(app: FastifyInstance) {
         last_collected_at: collected_at,
         has_active_job: false,
       });
+
+      // Propagate last_collected_at to Core API (F2) — fire-and-forget, non-fatal
+      fetch(`${CORE_API}/api/v1/bins/${bin_id}/state`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_collected_at: collected_at }),
+      }).catch((err: Error) =>
+        logger.warn({ bin_id, err: err.message }, 'Core API bin state update failed (non-fatal)'),
+      );
 
       // Publish dashboard update
       await publishToDashboard({

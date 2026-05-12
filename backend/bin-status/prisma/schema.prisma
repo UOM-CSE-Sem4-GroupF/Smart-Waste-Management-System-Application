@@ -1,0 +1,36 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["f3"]
+}
+
+// Read-only view of F3 — bin-status only SELECTs to check active jobs
+
+model CollectionJob {
+  id    String @id @db.Uuid
+  state String @db.VarChar(50)
+
+  emergency_details EmergencyJobDetails?
+
+  @@map("collection_jobs")
+  @@schema("f3")
+}
+
+model EmergencyJobDetails {
+  job_id             String   @id @db.Uuid
+  trigger_bin_id     String   @db.VarChar(20)
+  trigger_cluster_id String   @db.VarChar(20)
+  cluster_ids        String[]
+  bin_ids            String[]
+
+  job CollectionJob @relation(fields: [job_id], references: [id])
+
+  @@map("emergency_job_details")
+  @@schema("f3")
+}

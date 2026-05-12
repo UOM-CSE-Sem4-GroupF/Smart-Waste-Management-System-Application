@@ -7,13 +7,14 @@ export interface DriverListResponse {
 }
 
 export interface CreateDriverPayload {
-  driver_id:   string
-  name:        string
-  email:       string
-  phone:       string
-  license_no:  string
-  zone_id?:    number
-  vehicle_id?: string
+  driver_id:    string
+  name:         string
+  zone_id?:     number
+  vehicle_id?:  string
+  // contact fields — wired later via Keycloak user table
+  email?:       string
+  phone?:       string
+  license_no?:  string
 }
 
 export type UpdateDriverPayload = Partial<Omit<CreateDriverPayload, 'driver_id'>>

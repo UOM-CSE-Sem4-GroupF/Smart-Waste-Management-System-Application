@@ -98,27 +98,24 @@ export function BinsTab({ zoneOptions }: Props) {
         <Select value={zoneFilter} onValueChange={(v) => { setZoneFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Zone" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All zones</SelectItem>
-            {zoneOptions.map((z) => (
-              <SelectItem key={z.id} value={String(z.id)}>{z.name}</SelectItem>
+            {[{ id: 'all', name: 'All zones' }, ...zoneOptions.map((z) => ({ id: String(z.id), name: z.name }))].map((opt) => (
+              <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            {STATUSES.filter(Boolean).map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
+            {['all', ...STATUSES.filter(Boolean)].map((s) => (
+              <SelectItem key={s} value={s}>{s === 'all' ? 'All' : s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={catFilter} onValueChange={(v) => { setCatFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            {CATS.filter(Boolean).map((c) => (
-              <SelectItem key={c} value={c}>{c.replace(/_/g, ' ')}</SelectItem>
+            {['all', ...CATS.filter(Boolean)].map((c) => (
+              <SelectItem key={c} value={c}>{c === 'all' ? 'All' : c.replace(/_/g, ' ')}</SelectItem>
             ))}
           </SelectContent>
         </Select>

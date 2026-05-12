@@ -18,9 +18,6 @@ import type { Driver } from '@/types'
 const schema = z.object({
   driver_id:  z.string().min(1, 'Driver ID is required'),
   name:       z.string().min(1, 'Name is required'),
-  email:      z.string().email('Invalid email'),
-  phone:      z.string().min(1, 'Phone is required'),
-  license_no: z.string().min(1, 'License number is required'),
   zone_id:    z.coerce.number().optional(),
   vehicle_id: z.string().optional(),
 })
@@ -46,9 +43,6 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
     defaultValues: {
       driver_id:  driver?.driver_id  ?? '',
       name:       driver?.name       ?? '',
-      email:      driver?.email      ?? '',
-      phone:      driver?.phone      ?? '',
-      license_no: driver?.license_no ?? '',
       zone_id:    driver?.zone_id    ?? undefined,
       vehicle_id: driver?.vehicle_id ?? '',
     },
@@ -59,9 +53,6 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
       reset({
         driver_id:  driver?.driver_id  ?? '',
         name:       driver?.name       ?? '',
-        email:      driver?.email      ?? '',
-        phone:      driver?.phone      ?? '',
-        license_no: driver?.license_no ?? '',
         zone_id:    driver?.zone_id    ?? undefined,
         vehicle_id: driver?.vehicle_id ?? '',
       })
@@ -78,9 +69,6 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
       return createDriver(api, {
         driver_id:  values.driver_id,
         name:       values.name,
-        email:      values.email,
-        phone:      values.phone,
-        license_no: values.license_no,
         zone_id:    values.zone_id,
         vehicle_id: values.vehicle_id,
       })
@@ -113,25 +101,6 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label htmlFor="email">Email*</Label>
-              <Input id="email" type="email" {...register('email')} />
-              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="phone">Phone*</Label>
-              <Input id="phone" {...register('phone')} />
-              {errors.phone && <p className="text-xs text-red-500">{errors.phone.message}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="license_no">License No.*</Label>
-            <Input id="license_no" {...register('license_no')} />
-            {errors.license_no && <p className="text-xs text-red-500">{errors.license_no.message}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
               <Label>Assigned Zone</Label>
               <Select
                 defaultValue={driver?.zone_id?.toString()}
@@ -148,15 +117,14 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
             <div className="space-y-1">
               <Label>Assigned Vehicle</Label>
               <Select
-                defaultValue={driver?.vehicle_id ?? ''}
-                onValueChange={(v) => setValue('vehicle_id', v)}
+                defaultValue={driver?.vehicle_id ?? '__none__'}
+                onValueChange={(v) => setValue('vehicle_id', v === '__none__' ? '' : v)}
               >
                 <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
-                  {vehicleOptions.map((v) => (
+                  {[{ vehicle_id: '__none__', vehicle_type: '' }, ...vehicleOptions].map((v) => (
                     <SelectItem key={v.vehicle_id} value={v.vehicle_id}>
-                      {v.vehicle_id} — {v.vehicle_type}
+                      {v.vehicle_id === '__none__' ? 'Unassigned' : `${v.vehicle_id} — ${v.vehicle_type}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
