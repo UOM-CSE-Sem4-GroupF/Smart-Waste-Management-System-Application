@@ -156,9 +156,11 @@ export function getVehicleType(max_cargo_kg: number): VehicleType {
 
 // Mock OR-Tools call (in real implementation, this would call the route-optimizer service)
 export async function callORTools(
+  job_id: string,
+  job_type: string,
   clusters: Cluster[],
   bins: BinToCollect[],
-  availableVehicles: Array<{ vehicle_id: string; max_cargo_kg: number; lat: number; lng: number }>,
+  availableVehicles: Array<{ vehicle_id: string; max_cargo_kg: number; waste_categories_supported: string[]; lat: number; lng: number }>,
   depot: { lat: number; lng: number },
   constraints: any
 ): Promise<{
@@ -166,22 +168,84 @@ export async function callORTools(
   waypoints: Waypoint[];
   total_distance_km: number;
   estimated_minutes: number;
+  polyline?: string;
 }> {
-  // Simple mock implementation - in real system this would call OR-Tools
-  const vehicle = availableVehicles[0];
-  const waypoints: Waypoint[] = bins.map((bin, index) => ({
-    cluster_id: bin.cluster_id,
-    bins: [bin.bin_id],
-    estimated_arrival: null,
-    cumulative_weight_kg: bin.estimated_weight_kg * (index + 1)
-  }));
+  const ROUTE_OPTIMIZER_URL = process.env.ROUTE_OPTIMIZER_URL || 'http://route-optimizer-base-service.waste-dev.svc.cluster.local:8083';
 
-  return {
-    vehicle_id: vehicle.vehicle_id,
-    waypoints,
-    total_distance_km: 50,
-    estimated_minutes: 120
+  const payload = {
+    job_id,
+    job_type,
+    clusters: clusters.map(c => ({
+      cluster_id: c.cluster_id,
+      lat: c.lat,
+      lng: c.lng,
+      cluster_name: c.cluster_name
+    })),
+    bins: bins.map(b => ({
+      bin_id: b.bin_id,
+      cluster_id: b.cluster_id,
+      lat: b.lat,
+      lng: b.lng,
+      waste_category: b.waste_category,
+      fill_level_pct: b.fill_level_pct,
+      estimated_weight_kg: b.estimated_weight_kg,
+      urgency_score: b.urgency_score || 0,
+      predicted_full_at: b.predicted_full_at
+    })),
+    available_vehicles: availableVehicles.map(v => ({
+      vehicle_id: v.vehicle_id,
+      max_cargo_kg: v.max_cargo_kg,
+      waste_categories_supported: v.waste_categories_supported,
+      current_lat: v.lat,
+      current_lng: v.lng
+    })),
+    depot: {
+      lat: depot.lat,
+      lng: depot.lng
+    },
+    time_limit_seconds: constraints?.time_limit_seconds || 30
   };
+
+  try {
+    const response = await fetch(`${ROUTE_OPTIMIZER_URL}/internal/route-optimizer/solve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown Error', detail: response.statusText }));
+      throw new Error(`Optimizer failed [${response.status}]: ${errorData.error} - ${errorData.detail}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      vehicle_id: data.vehicle_id,
+      total_distance_km: data.total_distance_km,
+      estimated_minutes: data.estimated_minutes,
+      polyline: data.polyline,
+      waypoints: data.waypoints.map((wp: any) => ({
+        cluster_id: wp.cluster_id,
+        bins: wp.bins,
+        estimated_arrival: wp.estimated_arrival_iso,
+        cumulative_weight_kg: wp.cumulative_weight_kg
+      }))
+    };
+
+  } catch (error) {
+    console.warn(`[RouteOptimizer] Failed to get optimal route: ${(error as Error).message}. Falling back to Nearest Neighbour.`);
+    
+    const fallbackVehicle = availableVehicles[0];
+    const fallbackRoute = nearestNeighbourFallback(bins, depot);
+    
+    return {
+      vehicle_id: fallbackVehicle.vehicle_id,
+      waypoints: fallbackRoute,
+      total_distance_km: 0,
+      estimated_minutes: 0
+    };
+  }
 }
 
 // Fallback nearest neighbour algorithm

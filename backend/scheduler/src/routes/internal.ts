@@ -55,13 +55,14 @@ export default async function internalRoutes(app: FastifyInstance) {
       const availableVehicles = [{
         vehicle_id: vehicle.vehicle_id,
         max_cargo_kg: vehicle.max_cargo_kg,
+        waste_categories_supported: vehicle.waste_categories_supported,
         lat: vehicle.lat,
         lng: vehicle.lng
       }];
       const depot = { lat: vehicle.lat, lng: vehicle.lng }; // Assume depot is vehicle location
 
       routeResult = await Promise.race([
-        callORTools(clusters, bins_to_collect, availableVehicles, depot, {}),
+        callORTools(job_id, 'emergency', clusters, bins_to_collect, availableVehicles, depot, {}),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('TIMEOUT')), 35000)
         )
