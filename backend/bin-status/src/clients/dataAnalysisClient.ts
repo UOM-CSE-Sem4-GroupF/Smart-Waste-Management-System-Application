@@ -18,8 +18,7 @@ export interface BinMetadata {
   lng: number;
 }
 
-export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null> {
-  const maxRetries = Number(process.env.METADATA_MAX_RETRIES ?? 10);
+export async function getBinMetadata(bin_id: string): Promise<BinMetadata | null> {  const maxRetries = Number(process.env.METADATA_MAX_RETRIES ?? 10);
   let lastError: any;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
