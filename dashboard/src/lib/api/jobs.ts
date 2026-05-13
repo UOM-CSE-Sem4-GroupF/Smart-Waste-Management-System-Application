@@ -1,5 +1,5 @@
 import type { KyInstance } from 'ky'
-import type { CollectionJobListItem, CollectionJobDetail, JobProgress } from '@/types'
+import type { CollectionJobListItem, CollectionJobDetail, JobProgress, RoutePlan } from '@/types'
 
 export async function getJobs(
   api: KyInstance,
@@ -30,4 +30,8 @@ export async function getJobProgress(api: KyInstance, collectionId: string) {
   return api
     .get(`api/v1/collections/${collectionId}/progress`)
     .json<JobProgress>()
+}
+
+export async function getRoutePlan(api: KyInstance, routePlanId: string) {
+  return api.get(`api/v1/route-plans/${routePlanId}`).json<RoutePlan>()
 }

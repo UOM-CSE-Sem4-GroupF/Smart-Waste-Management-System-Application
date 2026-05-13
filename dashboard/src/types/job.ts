@@ -98,6 +98,35 @@ export interface CollectionJob {
   duration_minutes?:   number
 }
 
+export interface RoutePlanStop {
+  sequence:              number
+  cluster_id:            string
+  cluster_name?:         string
+  lat:                   number
+  lng:                   number
+  bins:                  string[]
+  estimated_weight_kg?:  number
+  cumulative_weight_kg?: number
+  estimated_arrival_iso?: string
+}
+
+export interface RoutePlan {
+  id:                   string
+  job_id:               string | null
+  vehicle_id:           string
+  route_type:           string
+  zone_id:              number
+  waypoints:            { route_polyline?: string | null; stops: RoutePlanStop[] }
+  total_clusters:       number
+  total_bins:           number
+  estimated_weight_kg:  number
+  estimated_distance_km?: number
+  estimated_minutes?:   number
+  solver_method?:       string
+  status:               string
+  created_at:           string
+}
+
 export interface JobProgress {
   job_id:                  string
   state:                   JobState
