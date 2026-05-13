@@ -10,7 +10,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -351,6 +351,9 @@ function RowEditDialog({ open, onClose, tableDef, row, onSave, isPending, error 
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isCreate ? 'Add Row' : 'Edit Row'} — {tableDef.label}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Fill in the fields to {isCreate ? 'add a new' : 'update this'} record in the {tableDef.label} table.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -642,6 +645,9 @@ function TableBrowser({ tableDef, api }: TableBrowserProps) {
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Delete row?</DialogTitle>
+              <DialogDescription className="sr-only">
+                Confirm if you want to permanently delete this row.
+              </DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
               Permanently remove the record with {tableDef.primaryKey} = <strong>{String(deleteTarget[tableDef.primaryKey])}</strong>.

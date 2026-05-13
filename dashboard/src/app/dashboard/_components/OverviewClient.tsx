@@ -91,7 +91,6 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
       setBins(payload)
       return payload
     },
-    staleTime: 60_000,
   })
 
   // 2. Fetch Jobs (for active jobs list)

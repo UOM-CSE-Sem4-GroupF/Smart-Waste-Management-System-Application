@@ -20,21 +20,20 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface NavItem {
-  icon:    React.ElementType
-  label:   string
-  href:    string
-  roles?:  string[]  // undefined = visible to all
+  icon:  React.ElementType
+  label: string
+  href:  string
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Overview',  href: '/dashboard' },
-  { icon: Map,             label: 'Live Map',  href: '/dashboard/map' },
-  { icon: Trash2,          label: 'Bins',      href: '/dashboard/bins' },
-  { icon: Briefcase,       label: 'Jobs',      href: '/dashboard/jobs',      roles: ['supervisor', 'fleet-operator', 'admin'] },
-  { icon: Settings2,       label: 'Operations', href: '/dashboard/operations', roles: ['supervisor', 'admin'] },
-  { icon: Settings2,       label: 'Operations (New)', href: '/dashboard/operations-new', roles: ['supervisor', 'admin'] },
-  { icon: BarChart3,       label: 'Analytics', href: '/dashboard/analytics', roles: ['supervisor', 'admin'] },
-  { icon: DatabaseZap,     label: 'System Mgmt', href: '/dashboard/system-management', roles: ['admin'] },
+  { icon: LayoutDashboard, label: 'Overview',           href: '/dashboard' },
+  { icon: Map,             label: 'Live Map',           href: '/dashboard/map' },
+  { icon: Trash2,          label: 'Bins',               href: '/dashboard/bins' },
+  { icon: Briefcase,       label: 'Jobs',               href: '/dashboard/jobs' },
+  { icon: Settings2,       label: 'Operations',         href: '/dashboard/operations' },
+  { icon: Settings2,       label: 'Operations (New)',   href: '/dashboard/operations-new' },
+  { icon: BarChart3,       label: 'Analytics',          href: '/dashboard/analytics' },
+  { icon: DatabaseZap,     label: 'System Mgmt',        href: '/dashboard/system-management' },
 ]
 
 export function Sidebar() {
@@ -50,9 +49,7 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href)
 
-  const visibleItems = NAV_ITEMS.filter((item) =>
-    !item.roles || item.roles.includes(role)
-  )
+  const visibleItems = NAV_ITEMS
 
   return (
     <aside className="relative flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white/80 backdrop-blur-xl transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/80">

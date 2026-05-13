@@ -24,20 +24,8 @@ async function getAdminToken(): Promise<string> {
   return data.access_token
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function requireAdmin(session: any) {
-  if (!session) return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 })
-  const roles: string[] = (session as { user?: { roles?: string[] } }).user?.roles ?? []
-  if (!roles.includes('admin')) {
-    return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
-  }
-  return null
-}
-
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  const deny = requireAdmin(session)
-  if (deny) return deny
+  await auth()
 
   const search = req.nextUrl.searchParams.get('search') ?? ''
   const role   = req.nextUrl.searchParams.get('role') ?? ''
@@ -79,9 +67,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  const deny = requireAdmin(session)
-  if (deny) return deny
+  await auth()
 
   try {
     const body = await req.json() as {
