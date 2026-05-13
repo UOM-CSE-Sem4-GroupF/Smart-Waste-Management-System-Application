@@ -50,7 +50,7 @@ function JobCard({
       className={`rounded-xl shadow-sm transition-shadow cursor-pointer ${selected ? 'ring-2 ring-emerald-500 shadow-md' : 'hover:shadow-md'}`}
       onClick={() => onSelect?.(job.job_id)}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="p-5 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
@@ -192,7 +192,7 @@ export default function JobsPage() {
   )
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-6 px-8 py-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
         <p className="text-sm text-muted-foreground mt-1">Track active, completed and escalated collection jobs.</p>
@@ -200,8 +200,8 @@ export default function JobsPage() {
 
       {selectedJobId ? (
         /* Split layout — list + detail panel */
-        <div className="flex gap-4 min-h-0 flex-1">
-          <div className="w-96 shrink-0 overflow-y-auto">
+        <div className="flex gap-8 min-h-0 flex-1">
+          <div className="w-96 shrink-0 overflow-y-auto pr-2">
             {jobListContent}
           </div>
           <div className="flex-1 min-h-0 rounded-xl border border-border overflow-hidden">
