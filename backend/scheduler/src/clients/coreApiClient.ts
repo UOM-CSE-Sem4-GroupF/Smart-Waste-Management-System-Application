@@ -106,7 +106,7 @@ export interface CreateRoutePlanParams {
   vehicle_id:            string;
   zone_id:               number;
   route_type:            'emergency' | 'routine';
-  waypoints:             Array<{ cluster_id: string; bins: string[]; estimated_arrival?: string | null; cumulative_weight_kg?: number }>;
+  waypoints:             Array<{ cluster_id: string; bins: string[]; estimated_arrival?: string | null; cumulative_weight_kg?: number; lat?: number; lng?: number; cluster_name?: string }>;
   polyline?:             string;
   total_clusters:        number;
   total_bins:            number;

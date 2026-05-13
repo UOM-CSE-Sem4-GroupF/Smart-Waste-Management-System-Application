@@ -17,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { JobStateBadge } from '@/components/jobs/JobStateBadge'
 import { JobTypeBadge } from '@/components/jobs/JobTypeBadge'
 import { JobProgressBar } from '@/components/jobs/JobProgressBar'
-import { JobDetailDrawer } from '@/components/jobs/JobDetailDrawer'
+import { JobDetailPanel } from '@/components/jobs/JobDetailPanel'
 import type { CollectionJobListItem, JobState } from '@/types'
 
 const ACTIVE_STATES: JobState[] = [
@@ -32,10 +32,12 @@ const CANCELLED_STATES: JobState[] = ['CANCELLED', 'FAILED', 'AUDIT_FAILED']
 
 function JobCard({
   job,
+  selected,
   onSelect,
   onCancel,
 }: {
   job:       CollectionJobListItem
+  selected?: boolean
   onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
@@ -45,7 +47,7 @@ function JobCard({
 
   return (
     <Card
-      className="rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      className={`rounded-xl shadow-sm transition-shadow cursor-pointer ${selected ? 'ring-2 ring-emerald-500 shadow-md' : 'hover:shadow-md'}`}
       onClick={() => onSelect?.(job.job_id)}
     >
       <CardContent className="p-4 space-y-3">
@@ -95,22 +97,16 @@ function JobCard({
 
 function JobList({
   filter,
+  selectedJobId,
   onSelect,
   onCancel,
 }: {
-  filter:    { state?: string }
-  onSelect?: (id: string) => void
-  onCancel?: (id: string) => void
+  filter:        { state?: string }
+  selectedJobId: string | null
+  onSelect?:     (id: string) => void
+  onCancel?:     (id: string) => void
 }) {
-  const { data, isLoading, error } = useJobs({ state: filter.state, limit: 50 })
-
-  console.debug('[JobList] query state', {
-    filter: filter.state,
-    isLoading,
-    total: data?.total,
-    count: data?.data?.length,
-    error: error?.message,
-  })
+  const { data, isLoading } = useJobs({ state: filter.state, limit: 50 })
 
   if (isLoading) {
     return (
@@ -131,7 +127,13 @@ function JobList({
   return (
     <div className="space-y-3">
       {jobs.map((job) => (
-        <JobCard key={job.job_id} job={job} onSelect={onSelect} onCancel={onCancel} />
+        <JobCard
+          key={job.job_id}
+          job={job}
+          selected={job.job_id === selectedJobId}
+          onSelect={onSelect}
+          onCancel={onCancel}
+        />
       ))}
     </div>
   )
@@ -157,44 +159,62 @@ export default function JobsPage() {
     onError: (e: Error) => setCancelError(e.message),
   })
 
+  const jobListContent = (
+    <Tabs defaultValue="active">
+      <TabsList>
+        <TabsTrigger value="active">Active</TabsTrigger>
+        <TabsTrigger value="completed">Completed</TabsTrigger>
+        <TabsTrigger value="escalated">Escalated</TabsTrigger>
+        <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="active" className="mt-4">
+        <JobList
+          filter={{ state: ACTIVE_STATES.join(',') }}
+          selectedJobId={selectedJobId}
+          onSelect={setSelectedJobId}
+          onCancel={(id) => { setCancelTarget(id); setCancelError(null) }}
+        />
+      </TabsContent>
+
+      <TabsContent value="completed" className="mt-4">
+        <JobList filter={{ state: COMPLETED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+
+      <TabsContent value="escalated" className="mt-4">
+        <JobList filter={{ state: ESCALATED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+
+      <TabsContent value="cancelled" className="mt-4">
+        <JobList filter={{ state: CANCELLED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+    </Tabs>
+  )
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full gap-4">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
         <p className="text-sm text-muted-foreground mt-1">Track active, completed and escalated collection jobs.</p>
       </div>
 
-      <Tabs defaultValue="active">
-        <TabsList>
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="escalated">Escalated</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="mt-4">
-          <JobList
-            filter={{ state: ACTIVE_STATES.join(',') }}
-            onSelect={setSelectedJobId}
-            onCancel={(id) => { setCancelTarget(id); setCancelError(null) }}
-          />
-        </TabsContent>
-
-        <TabsContent value="completed" className="mt-4">
-          <JobList filter={{ state: COMPLETED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-
-        <TabsContent value="escalated" className="mt-4">
-          <JobList filter={{ state: ESCALATED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-
-        <TabsContent value="cancelled" className="mt-4">
-          <JobList filter={{ state: CANCELLED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-      </Tabs>
-
-      {/* Detail drawer */}
-      <JobDetailDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
+      {selectedJobId ? (
+        /* Split layout — list + detail panel */
+        <div className="flex gap-4 min-h-0 flex-1">
+          <div className="w-96 shrink-0 overflow-y-auto">
+            {jobListContent}
+          </div>
+          <div className="flex-1 min-h-0 rounded-xl border border-border overflow-hidden">
+            <JobDetailPanel
+              jobId={selectedJobId}
+              onClose={() => setSelectedJobId(null)}
+            />
+          </div>
+        </div>
+      ) : (
+        /* Full-width list */
+        <div>{jobListContent}</div>
+      )}
 
       {/* Cancel confirmation dialog */}
       <Dialog open={cancelTarget !== null} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
@@ -235,6 +255,3 @@ export default function JobsPage() {
     </div>
   )
 }
-
-
-
