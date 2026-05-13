@@ -27,7 +27,7 @@ export interface ZoneForecastResponse {
 
 export async function getWasteGenerationTrends(
   api: KyInstance,
-  params: { zone_id?: number; days?: number },
+  params: { zone_id?: number; period?: 'week' | 'month' | 'quarter' },
 ): Promise<WasteTrendsResponse> {
   return api
     .get('api/v1/ml/trends/waste-generation', { searchParams: params })
