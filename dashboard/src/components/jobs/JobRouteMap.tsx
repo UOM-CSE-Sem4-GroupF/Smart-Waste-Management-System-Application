@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { MAPBOX_TOKEN } from '@/lib/mapbox'
+import { MAPBOX_TOKEN, DEPOT_LAT, DEPOT_LNG } from '@/lib/mapbox'
 
 function decodePolyline(encoded: string): [number, number][] {
   const coords: [number, number][] = []
@@ -77,9 +77,10 @@ export function JobRouteMap({ stops, polyline, className }: Props) {
     map.on('load', async () => {
       // Resolve route line coordinates
       const useStoredPolyline = typeof polyline === 'string' && polyline.length > 30
+      const osrmStops = [{ lat: DEPOT_LAT, lng: DEPOT_LNG }, ...valid]
       const routeCoords = useStoredPolyline
         ? decodePolyline(polyline!)
-        : await fetchOsrmRoute(valid)
+        : await fetchOsrmRoute(osrmStops)
 
       map.addSource('route', {
         type: 'geojson',
