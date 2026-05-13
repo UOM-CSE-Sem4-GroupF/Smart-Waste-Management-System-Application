@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
 import { Truck, User, MapPin, Package, X } from 'lucide-react'
@@ -13,11 +14,16 @@ import { JobTypeBadge } from './JobTypeBadge'
 import { JobProgressBar } from './JobProgressBar'
 import { BinStopList } from './BinStopList'
 import { StateTimeline, StateTransition } from './StateTimeline'
-import { JobRouteMap, RouteStop } from './JobRouteMap'
+import type { RouteStop } from './JobRouteMap'
 import { createClientApiClient } from '@/lib/api-client'
-import { getJob, getJobProgress, getRoutePlan } from '@/lib/api/jobs'
+import { getJob, getJobProgress } from '@/lib/api/jobs'
 import { formatDistanceToNow } from 'date-fns'
 import type { CollectionJobDetail } from '@/types'
+
+const JobRouteMap = dynamic(
+  () => import('./JobRouteMap').then(m => ({ default: m.JobRouteMap })),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full rounded-lg" /> },
+)
 
 interface Props {
   jobId:   string
@@ -52,26 +58,17 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
     retry: false,
   })
 
-  const routePlanId = (job as CollectionJobDetail)?.route_plan_id ?? null
-
-  const { data: routePlan } = useQuery({
-    queryKey: ['route-plan', routePlanId],
-    queryFn:  () => getRoutePlan(api, routePlanId!),
-    enabled:  !!routePlanId,
-    staleTime: 60_000,
-    retry: false,
-  })
-
-  const routeStops: RouteStop[] = (routePlan?.waypoints?.stops ?? []).map((s, idx) => ({
-    sequence:     s.sequence ?? idx + 1,
-    cluster_id:   s.cluster_id,
-    cluster_name: s.cluster_name ?? s.cluster_id,
-    lat:          s.lat,
-    lng:          s.lng,
-    status:       progress?.waypoints?.find(w => w.cluster_id === s.cluster_id)?.status,
-  }))
-
-  const polyline = routePlan?.waypoints?.route_polyline ?? null
+  // Build route stops from progress waypoints (lat/lng provided by scheduler clusterCoordinates)
+  const routeStops: RouteStop[] = (progress?.waypoints ?? [])
+    .filter(w => w.lat && w.lng)
+    .map(w => ({
+      sequence:     w.sequence,
+      cluster_id:   w.cluster_id,
+      cluster_name: w.cluster_name,
+      lat:          w.lat as number,
+      lng:          w.lng as number,
+      status:       w.status,
+    }))
 
   const hasRoute = routeStops.length > 0
 
@@ -110,13 +107,12 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Route</p>
                 <span className="text-[10px] text-muted-foreground">
-                  {polyline && polyline.length > 30 ? 'OR-Tools polyline' : 'OSRM road network'}
-                  {' · '}{routeStops.length} stops
+                  OSRM road network · {routeStops.length} stops
                 </span>
               </div>
               <JobRouteMap
                 stops={routeStops}
-                polyline={polyline}
+                polyline={null}
                 className="h-64 w-full rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700"
               />
             </div>
@@ -157,9 +153,6 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
               <Row label="Actual weight"  value={job.actual_weight_kg  ? `${job.actual_weight_kg} kg`  : null} />
               {(job as CollectionJobDetail).planned_distance_km && (
                 <Row label="Distance" value={`${(job as CollectionJobDetail).planned_distance_km} km`} />
-              )}
-              {routePlan?.estimated_minutes && (
-                <Row label="Est. duration" value={`${routePlan.estimated_minutes} min`} />
               )}
               <Row label="Created" value={formatDistanceToNow(new Date(job.created_at), { addSuffix: true })} />
               {job.completed_at && (
