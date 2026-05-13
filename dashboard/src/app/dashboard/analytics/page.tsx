@@ -3,11 +3,12 @@
 import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, startOfDay } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
-import { useJobStore } from '@/store/jobStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends } from '@/lib/api/ml'
+import { getJobs } from '@/lib/api/jobs'
+import { getBins } from '@/lib/api/bins'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -19,11 +20,38 @@ import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
 import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEfficiencyChart'
 import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
+import { JobTypeBreakdownChart } from '@/components/analytics/JobTypeBreakdownChart'
+
+const ACTIVE_STATES = new Set([
+  'CREATED', 'BIN_CONFIRMING', 'BIN_CONFIRMED', 'CLUSTER_ASSEMBLING',
+  'CLUSTER_ASSEMBLED', 'DISPATCHING', 'DISPATCHED', 'DRIVER_NOTIFIED',
+  'IN_PROGRESS', 'COMPLETING', 'COLLECTION_DONE', 'RECORDING_AUDIT',
+])
 
 export default function AnalyticsPage() {
   const { data: session } = useSession()
 
-  // ── Zone fill trends (REST /api/v1/ml/trends/waste-generation) ────────────
+  // ── REST: jobs (last 100) ──────────────────────────────────────────────────
+  const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
+    queryKey: ['analytics', 'jobs'],
+    queryFn:  () => getJobs(createClientApiClient(session!.accessToken), { limit: 100 }),
+    enabled:  !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry: false,
+  })
+  const jobsList = jobsResponse?.data ?? []
+
+  // ── REST: bins (limit 500) ─────────────────────────────────────────────────
+  const { data: binsResponse, isLoading: binsLoading } = useQuery({
+    queryKey: ['analytics', 'bins'],
+    queryFn:  () => getBins(createClientApiClient(session!.accessToken), { limit: 500 }),
+    enabled:  !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry: false,
+  })
+  const binsList = binsResponse?.data ?? []
+
+  // ── Zone fill trends (ML REST) ─────────────────────────────────────────────
   const { data: trendsRaw } = useQuery({
     queryKey: ['ml', 'waste-trends'],
     queryFn: () => getWasteGenerationTrends(
@@ -34,33 +62,44 @@ export default function AnalyticsPage() {
     retry: false,
   })
 
-  // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
+  // ── Zone stats from socket (fill trends chart + heatmap zone names) ────────
   const zones = useMapStore((s) => s.zoneStats)
-  const bins  = useMapStore((s) => s.bins)
 
-  // Waste category bar chart — sum totals across all zones
+  // ── KPI cards ─────────────────────────────────────────────────────────────
+  const kpi = useMemo(() => {
+    const todayStart = startOfDay(new Date()).getTime()
+    const activeJobs = jobsList.filter((j) => ACTIVE_STATES.has(j.state)).length
+    const completedToday = jobsList.filter((j) =>
+      (j.state === 'COMPLETED' || j.state === 'AUDIT_RECORDED') &&
+      j.completed_at != null &&
+      new Date(j.completed_at).getTime() >= todayStart,
+    ).length
+    const avgFill = binsList.length > 0
+      ? binsList.reduce((s, b) => s + b.fill_level_pct, 0) / binsList.length
+      : 0
+    const urgentCritical = binsList.filter((b) => b.status === 'urgent' || b.status === 'critical').length
+    return { activeJobs, completedToday, avgFill, urgentCritical }
+  }, [jobsList, binsList])
+
+  // ── Waste category chart — grouped from REST bins ─────────────────────────
   const categoryData = useMemo(() => {
     const totals: Record<string, { count: number; total_kg: number }> = {}
-    zones.forEach((z) => {
-      Object.entries(z.category_breakdown).forEach(([cat, v]) => {
-        const existing = totals[cat] ?? { count: 0, total_kg: 0 }
-        totals[cat] = {
-          count:    existing.count    + v.count,
-          total_kg: existing.total_kg + v.total_kg,
-        }
-      })
-    })
+    for (const bin of binsList) {
+      const cat = bin.waste_category ?? 'general'
+      const entry = totals[cat] ?? { count: 0, total_kg: 0 }
+      totals[cat] = { count: entry.count + 1, total_kg: entry.total_kg + bin.estimated_weight_kg }
+    }
     return Object.entries(totals).map(([name, v]) => ({
       name:  name.replace(/_/g, ' '),
       bins:  v.count,
       kg:    parseFloat(v.total_kg.toFixed(1)),
     }))
-  }, [zones])
+  }, [binsList])
 
-  // Bins predicted to hit urgent — derive from store
+  // ── Urgent bins table — filtered from REST bins ────────────────────────────
   const urgentPredictions = useMemo(() => {
     const now = Date.now()
-    return Array.from(bins.values())
+    return binsList
       .filter((b) => b.predicted_full_at != null)
       .map((b) => ({
         ...b,
@@ -69,13 +108,9 @@ export default function AnalyticsPage() {
       .filter((b) => b.hoursRemaining > 0 && b.hoursRemaining < 48)
       .sort((a, b) => a.hoursRemaining - b.hoursRemaining)
       .slice(0, 25)
-  }, [bins])
+  }, [binsList])
 
-  // Collection efficiency from job store — derive from jobs list (no stats endpoint yet)
-  const jobs = useJobStore((s) => s.jobs)
-  const jobsList = useMemo(() => Array.from(jobs.values()), [jobs])
-
-  // Heatmap: group trendsRaw series by zone + hour
+  // ── Heatmap data — from ML trends series ─────────────────────────────────
   const heatmapData = useMemo(() => {
     if (!trendsRaw || typeof trendsRaw !== 'object') return []
     const raw = trendsRaw as {
@@ -90,14 +125,14 @@ export default function AnalyticsPage() {
     }))
   }, [trendsRaw])
 
-  // Zone names map for fill trends chart
+  // ── Zone names map for fill trends chart ──────────────────────────────────
   const zoneNamesMap = useMemo(() => {
     const m: Record<string, string> = {}
     zones.forEach((z) => { m[`zone_${z.zone_id}`] = z.zone_name })
     return m
   }, [zones])
 
-  // Reshape trendsRaw into flat time-series rows keyed by zone (for ZoneFillTrendsChart)
+  // ── Zone fill trends chart data ────────────────────────────────────────────
   const trendsData = useMemo(() => {
     if (!trendsRaw || typeof trendsRaw !== 'object') return []
     const raw = trendsRaw as {
@@ -117,7 +152,22 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Analytics</h2>
-        <p className="text-sm text-muted-foreground mt-1">Fill trends, collection efficiency and waste category breakdowns.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Fill trends, collection efficiency and waste category breakdowns.
+        </p>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard label="Active Jobs"       value={kpi.activeJobs}               loading={jobsLoading} />
+        <KpiCard label="Completed Today"   value={kpi.completedToday}           loading={jobsLoading} />
+        <KpiCard label="Avg Fill Level"    value={`${kpi.avgFill.toFixed(1)}%`} loading={binsLoading} />
+        <KpiCard
+          label="Urgent / Critical"
+          value={kpi.urgentCritical}
+          loading={binsLoading}
+          accent={kpi.urgentCritical > 0}
+        />
       </div>
 
       {/* Row 1: Fill trends + Waste categories */}
@@ -126,11 +176,7 @@ export default function AnalyticsPage() {
           title="Zone Fill Level — Last 7 Days"
           description="Average fill % per zone from trend data"
         >
-          <ZoneFillTrendsChart
-            data={trendsData}
-            zoneNames={zoneNamesMap}
-            isLoading={false}
-          />
+          <ZoneFillTrendsChart data={trendsData} zoneNames={zoneNamesMap} isLoading={false} />
         </ChartCard>
 
         <ChartCard
@@ -155,18 +201,26 @@ export default function AnalyticsPage() {
           title="Collection Efficiency"
           description="Planned vs actual job duration across recent collections"
         >
-          <CollectionEfficiencyChart jobs={jobsList} />
+          <CollectionEfficiencyChart jobs={jobsList} isLoading={jobsLoading} />
         </ChartCard>
 
         <ChartCard
           title="Vehicle Utilisation"
           description="Job load per vehicle — grey under-utilised, emerald optimal, orange over-utilised"
         >
-          <VehicleUtilisationChart jobs={jobsList} />
+          <VehicleUtilisationChart jobs={jobsList} isLoading={jobsLoading} />
         </ChartCard>
       </div>
 
-      {/* Row 4: Zone forecast (full width) */}
+      {/* Row 4: Job distribution (full width) */}
+      <ChartCard
+        title="Job Distribution"
+        description="Breakdown by type (Emergency / Routine) and current state"
+      >
+        <JobTypeBreakdownChart jobs={jobsList} />
+      </ChartCard>
+
+      {/* Row 5: 7-day zone forecast (full width) */}
       <ChartCard
         title="7-Day Zone Forecast"
         description="Predicted fill level for next 7 days with confidence intervals"
@@ -174,7 +228,7 @@ export default function AnalyticsPage() {
         <ZoneForecastChart />
       </ChartCard>
 
-      {/* Bins predicted urgent — keeps existing table */}
+      {/* Bins predicted to hit urgent */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -209,7 +263,11 @@ export default function AnalyticsPage() {
                       {formatDistanceToNow(new Date(bin.predicted_full_at!), { addSuffix: true })}
                     </TableCell>
                     <TableCell className={`text-right tabular-nums font-medium ${
-                      bin.hoursRemaining < 6 ? 'text-red-500' : bin.hoursRemaining < 12 ? 'text-orange-500' : ''
+                      bin.hoursRemaining < 6
+                        ? 'text-red-500'
+                        : bin.hoursRemaining < 12
+                          ? 'text-orange-500'
+                          : ''
                     }`}>
                       {bin.hoursRemaining.toFixed(1)} h
                     </TableCell>
@@ -221,5 +279,32 @@ export default function AnalyticsPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function KpiCard({
+  label,
+  value,
+  loading,
+  accent,
+}: {
+  label:    string
+  value:    number | string
+  loading?: boolean
+  accent?:  boolean
+}) {
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardContent className="pt-6">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        {loading ? (
+          <div className="mt-1 h-8 w-16 animate-pulse rounded bg-muted" />
+        ) : (
+          <p className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-orange-500' : ''}`}>
+            {value}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
