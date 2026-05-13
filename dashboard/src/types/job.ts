@@ -155,5 +155,7 @@ export interface JobProgress {
     status:       'completed' | 'current' | 'pending'
     arrived_at:   string | null
     completed_at: string | null
+    lat:          number | null
+    lng:          number | null
   }>
 }

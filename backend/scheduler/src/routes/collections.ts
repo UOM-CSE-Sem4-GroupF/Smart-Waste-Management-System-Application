@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { BinCollectedRequest, BinSkipRequest, JobProgressResponse } from '../types';
-import { activeJobs, routePlans } from '../store';
+import { activeJobs, routePlans, clusterCoordinates } from '../store';
 import * as db from '../db/queries';
 
 const CORE_API = process.env.CORE_API_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
@@ -176,7 +176,8 @@ export default async function collectionsRoutes(app: FastifyInstance) {
 
     const waypoints = Array.from(clusterMap.entries())
       .map(([cluster_id, entry], idx) => {
-        const meta = waypointMeta.get(cluster_id);
+        const meta   = waypointMeta.get(cluster_id);
+        const coords = clusterCoordinates.get(cluster_id);
         const status: 'completed' | 'current' | 'pending' =
           entry.all_done ? 'completed' :
           entry.any_arrived ? 'current' :
@@ -189,6 +190,8 @@ export default async function collectionsRoutes(app: FastifyInstance) {
           status,
           arrived_at:   entry.arrived_at,
           completed_at: entry.all_done ? entry.collected_at : null,
+          lat:          coords?.lat ?? null,
+          lng:          coords?.lng ?? null,
         };
       })
       .sort((a, b) => a.sequence - b.sequence);
