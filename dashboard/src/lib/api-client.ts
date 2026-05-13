@@ -11,7 +11,7 @@ export async function createApiClient() {
   const token = session?.accessToken
 
   return ky.create({
-    prefix: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://139.59.219.173',
+    prefix: process.env.NEXT_PUBLIC_API_BASE_URL,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -25,7 +25,7 @@ export async function createApiClient() {
  */
 export function createClientApiClient(token?: string) {
   // Always use the explicit base URL to bypass flaky Next.js dev server rewrites
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://139.59.219.173'
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   
   return ky.create({
     prefix: baseUrl,
