@@ -25,7 +25,7 @@ async function fetchOsrmRoute(stops: { lat: number; lng: number }[]): Promise<[n
   try {
     const coords = stops.map(s => `${s.lng},${s.lat}`).join(';')
     const res = await fetch(
-      `http://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
+      `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
       { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) throw new Error()
@@ -40,6 +40,20 @@ function stopColor(status?: string) {
   if (status === 'completed') return '#22c55e'
   if (status === 'current')   return '#3b82f6'
   return '#f59e0b'
+}
+
+function makeDepotMarkerEl() {
+  const el = document.createElement('div')
+  el.style.cssText = [
+    'width:30px', 'height:30px', 'border-radius:50%',
+    'background:#6366f1',
+    'color:white', 'display:flex', 'align-items:center', 'justify-content:center',
+    'border:2.5px solid white', 'box-shadow:0 1px 4px rgba(0,0,0,0.35)', 'cursor:pointer',
+  ].join(';')
+  el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="white">
+    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+  </svg>`
+  return el
 }
 
 export interface RouteStop {
@@ -75,7 +89,6 @@ export function JobRouteMap({ stops, polyline, className }: Props) {
     mapRef.current = map
 
     map.on('load', async () => {
-      // Resolve route line coordinates
       const useStoredPolyline = typeof polyline === 'string' && polyline.length > 30
       const osrmStops = [{ lat: DEPOT_LAT, lng: DEPOT_LNG }, ...valid]
       const routeCoords = useStoredPolyline
@@ -94,7 +107,16 @@ export function JobRouteMap({ stops, polyline, className }: Props) {
         paint:  { 'line-color': '#10b981', 'line-width': 3.5, 'line-opacity': 0.85 },
       })
 
-      // Numbered stop markers
+      // Depot home marker
+      new mapboxgl.Marker({ element: makeDepotMarkerEl() })
+        .setLngLat([DEPOT_LNG, DEPOT_LAT])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 14, closeButton: false })
+            .setHTML('<div style="font-size:12px;font-weight:600">Depot</div>'),
+        )
+        .addTo(map)
+
+      // Numbered cluster stop markers
       valid.forEach((stop, idx) => {
         const el = document.createElement('div')
         el.style.cssText = [
@@ -115,16 +137,14 @@ export function JobRouteMap({ stops, polyline, className }: Props) {
           .addTo(map)
       })
 
-      // Fit all stops in view
-      if (valid.length > 1) {
-        const bounds = valid.reduce(
-          (b, s) => b.extend([s.lng, s.lat] as [number, number]),
-          new mapboxgl.LngLatBounds(
-            [valid[0].lng, valid[0].lat],
-            [valid[0].lng, valid[0].lat],
-          ),
+      // Fit depot + all stops in view
+      const allPoints: [number, number][] = [[DEPOT_LNG, DEPOT_LAT], ...valid.map(s => [s.lng, s.lat] as [number, number])]
+      if (allPoints.length > 1) {
+        const bounds = allPoints.reduce(
+          (b, p) => b.extend(p),
+          new mapboxgl.LngLatBounds(allPoints[0], allPoints[0]),
         )
-        map.fitBounds(bounds, { padding: 40, maxZoom: 15 })
+        map.fitBounds(bounds, { padding: 48, maxZoom: 15 })
       }
     })
 
