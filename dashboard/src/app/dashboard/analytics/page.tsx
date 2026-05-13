@@ -7,6 +7,7 @@ import { formatDistanceToNow, startOfDay } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends } from '@/lib/api/ml'
+import type { CollectionJobListItem, Bin } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -36,7 +37,7 @@ export default function AnalyticsPage() {
       const api = createClientApiClient(session?.accessToken)
       const result = await api
         .get('api/v1/collection-jobs', { searchParams: { limit: 100 } })
-        .json<{ data: import('@/types').CollectionJobListItem[]; total: number; page: number }>()
+        .json<{ data: CollectionJobListItem[]; total: number; page: number }>()
         .catch((e) => { console.warn('[Analytics] jobs fetch failed:', e); return { data: [], total: 0, page: 1 } })
       console.log('[Analytics] jobs:', result.data.length, 'total:', result.total)
       return result
@@ -53,7 +54,7 @@ export default function AnalyticsPage() {
       const api = createClientApiClient(session?.accessToken)
       const result = await api
         .get('api/v1/bins', { searchParams: { limit: 500 } })
-        .json<{ data: import('@/types').Bin[]; total: number; page: number; limit: number }>()
+        .json<{ data: Bin[]; total: number; page: number; limit: number }>()
         .catch((e) => { console.warn('[Analytics] bins fetch failed:', e); return { data: [], total: 0, page: 1, limit: 500 } })
       console.log('[Analytics] bins:', result.data.length, 'total:', result.total)
       return result
