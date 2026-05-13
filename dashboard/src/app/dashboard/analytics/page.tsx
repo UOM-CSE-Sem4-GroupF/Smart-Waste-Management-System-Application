@@ -1,14 +1,12 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow, startOfDay } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
 import { createClientApiClient } from '@/lib/api-client'
 import { getWasteGenerationTrends } from '@/lib/api/ml'
-import { getJobs } from '@/lib/api/jobs'
-import { getBins } from '@/lib/api/bins'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -32,72 +30,54 @@ export default function AnalyticsPage() {
   const { data: session } = useSession()
 
   // ── REST: jobs (last 100) ──────────────────────────────────────────────────
-  const { data: jobsResponse, isLoading: jobsLoading, error: jobsError } = useQuery({
-    queryKey: ['analytics', 'jobs'],
+  const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
+    queryKey: ['analytics', 'jobs', session?.accessToken ?? 'unauthenticated'],
     queryFn: async () => {
-      console.log('[Analytics] fetching jobs, token present:', !!session?.accessToken)
-      const result = await getJobs(createClientApiClient(session!.accessToken), { limit: 100 })
-      console.log('[Analytics] jobs result:', result)
+      const api = createClientApiClient(session?.accessToken)
+      const result = await api
+        .get('api/v1/collection-jobs', { searchParams: { limit: 100 } })
+        .json<{ data: import('@/types').CollectionJobListItem[]; total: number; page: number }>()
+        .catch((e) => { console.warn('[Analytics] jobs fetch failed:', e); return { data: [], total: 0, page: 1 } })
+      console.log('[Analytics] jobs:', result.data.length, 'total:', result.total)
       return result
     },
-    enabled:  !!session?.accessToken,
     staleTime: 2 * 60_000,
-    retry: false,
+    retry: 1,
   })
   const jobsList = jobsResponse?.data ?? []
 
   // ── REST: bins (limit 500) ─────────────────────────────────────────────────
-  const { data: binsResponse, isLoading: binsLoading, error: binsError } = useQuery({
-    queryKey: ['analytics', 'bins'],
+  const { data: binsResponse, isLoading: binsLoading } = useQuery({
+    queryKey: ['analytics', 'bins', session?.accessToken ?? 'unauthenticated'],
     queryFn: async () => {
-      console.log('[Analytics] fetching bins, token present:', !!session?.accessToken)
-      const result = await getBins(createClientApiClient(session!.accessToken), { limit: 500 })
-      console.log('[Analytics] bins result:', result)
+      const api = createClientApiClient(session?.accessToken)
+      const result = await api
+        .get('api/v1/bins', { searchParams: { limit: 500 } })
+        .json<{ data: import('@/types').Bin[]; total: number; page: number; limit: number }>()
+        .catch((e) => { console.warn('[Analytics] bins fetch failed:', e); return { data: [], total: 0, page: 1, limit: 500 } })
+      console.log('[Analytics] bins:', result.data.length, 'total:', result.total)
       return result
     },
-    enabled:  !!session?.accessToken,
     staleTime: 2 * 60_000,
-    retry: false,
+    retry: 1,
   })
   const binsList = binsResponse?.data ?? []
 
-  // ── Zone fill trends (ML REST) ─────────────────────────────────────────────
-  const { data: trendsRaw, error: trendsError } = useQuery({
+  // ── Zone fill trends (ML REST) — graceful fallback on error ───────────────
+  const { data: trendsRaw } = useQuery({
     queryKey: ['ml', 'waste-trends'],
     queryFn: async () => {
-      console.log('[Analytics] fetching ML trends...')
-      const result = await getWasteGenerationTrends(
-        createClientApiClient(session?.accessToken),
-        { period: 'week' },
-      )
+      const api = createClientApiClient(session?.accessToken)
+      const result = await api
+        .get('api/v1/ml/trends/waste-generation', { searchParams: { period: 'week' } })
+        .json<unknown>()
+        .catch((e) => { console.warn('[Analytics] ML trends fetch failed:', e); return null })
       console.log('[Analytics] ML trends result:', result)
-      return result as unknown
+      return result
     },
     staleTime: 5 * 60_000,
     retry: false,
   })
-
-  // ── Debug logging ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    console.log('[Analytics] session state:', {
-      email: session?.user?.email,
-      hasToken: !!session?.accessToken,
-    })
-  }, [session])
-
-  useEffect(() => {
-    if (jobsError) console.error('[Analytics] jobs query error:', jobsError)
-    else console.log('[Analytics] jobsList.length:', jobsList.length)
-  }, [jobsError, jobsList.length])
-
-  useEffect(() => {
-    if (binsError) console.error('[Analytics] bins query error:', binsError)
-    else console.log('[Analytics] binsList.length:', binsList.length)
-  }, [binsError, binsList.length])
-
-  useEffect(() => {
-    if (trendsError) console.error('[Analytics] ML trends error:', trendsError)
-  }, [trendsError])
 
   // ── Zone stats from socket (fill trends chart + heatmap zone names) ────────
   const zones = useMapStore((s) => s.zoneStats)
