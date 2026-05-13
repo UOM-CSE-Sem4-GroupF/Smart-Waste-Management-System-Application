@@ -23,8 +23,12 @@ export function CollectionEfficiencyChart({ jobs, isLoading }: CollectionEfficie
   const chartData = useMemo<ChartPoint[]>(() => {
     if (!jobs || jobs.length === 0) return []
 
-    return jobs
-      .filter((j) => j.state === 'COMPLETED' || j.state === 'AUDIT_RECORDED')
+    const completed = jobs.filter((j) => j.state === 'COMPLETED' || j.state === 'AUDIT_RECORDED')
+    const source = completed.length > 0
+      ? completed
+      : jobs.filter((j) => j.state !== 'CANCELLED' && j.state !== 'FAILED' && j.state !== 'AUDIT_FAILED')
+
+    return source
       .slice(-14)
       .map((job, idx) => {
         const created = (job as CollectionJobListItem).created_at
