@@ -17,6 +17,7 @@ import { StateTimeline, StateTransition } from './StateTimeline'
 import type { RouteStop } from './JobRouteMap'
 import { createClientApiClient } from '@/lib/api-client'
 import { getJob, getJobProgress } from '@/lib/api/jobs'
+import { listClusters } from '@/lib/api/metadata'
 import { formatDistanceToNow } from 'date-fns'
 import type { CollectionJobDetail } from '@/types'
 
@@ -50,7 +51,7 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
     staleTime: 30_000,
   })
 
-  const { data: progress } = useQuery({
+  const { data: progress, isLoading: isProgressLoading } = useQuery({
     queryKey: ['job-progress', jobId],
     queryFn:  () => getJobProgress(api, jobId),
     enabled:  !!jobId,
@@ -58,8 +59,8 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
     retry: false,
   })
 
-  // Build route stops from progress waypoints (lat/lng provided by scheduler clusterCoordinates)
-  const routeStops: RouteStop[] = (progress?.waypoints ?? [])
+  // Primary: stops from progress endpoint (populated when job was dispatched)
+  const progressStops: RouteStop[] = (progress?.waypoints ?? [])
     .filter(w => w.lat && w.lng)
     .map(w => ({
       sequence:     w.sequence,
@@ -70,7 +71,34 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
       status:       w.status,
     }))
 
-  const hasRoute = routeStops.length > 0
+  // Fallback: fetch cluster coordinates from Core API for escalated/un-dispatched jobs
+  const jobZoneId = job
+    ? (typeof job.zone_id === 'string' ? parseInt(job.zone_id, 10) : job.zone_id)
+    : undefined
+  const jobClusterIds = new Set((job as CollectionJobDetail | undefined)?.clusters ?? job?.clusters ?? [])
+  const needClusterFallback = !isProgressLoading && progressStops.length === 0 && !!jobZoneId
+
+  const { data: clusterList } = useQuery({
+    queryKey: ['clusters-for-map', jobZoneId],
+    queryFn:  () => listClusters(api, jobZoneId),
+    enabled:  needClusterFallback,
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  const fallbackStops: RouteStop[] = (clusterList ?? [])
+    .filter(c => jobClusterIds.has(c.id) && c.lat && c.lng)
+    .map((c, idx) => ({
+      sequence:     idx + 1,
+      cluster_id:   c.id,
+      cluster_name: c.name ?? c.id,
+      lat:          Number(c.lat),
+      lng:          Number(c.lng),
+      status:       undefined,
+    }))
+
+  const routeStops = progressStops.length > 0 ? progressStops : fallbackStops
+  const hasRoute   = routeStops.length > 0
 
   const timeline: StateTransition[] = (job as CollectionJobDetail)?.step_log
     ?.filter(s => s.success)
@@ -100,7 +128,7 @@ export function JobDetailPanel({ jobId, onClose }: Props) {
         <div className="px-5 pb-6 pt-4 space-y-4">
 
           {/* Route map */}
-          {isLoading && !hasRoute ? (
+          {(isLoading || isProgressLoading) && !hasRoute ? (
             <Skeleton className="h-64 w-full rounded-lg" />
           ) : hasRoute ? (
             <div className="space-y-1.5">
