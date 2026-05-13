@@ -376,7 +376,7 @@ export async function completeJob(job: CollectionJob, request: JobCompleteReques
 }
 
 export async function cancelJob(job: CollectionJob, reason: string): Promise<boolean> {
-  const noCancel: JobState[] = ['IN_PROGRESS', 'COMPLETING', 'COLLECTION_DONE', 'RECORDING_AUDIT', 'AUDIT_RECORDED', 'COMPLETED', 'FAILED', 'ESCALATED', 'CANCELLED', 'AUDIT_FAILED'];
+  const noCancel: JobState[] = ['COMPLETING', 'COLLECTION_DONE', 'RECORDING_AUDIT', 'AUDIT_RECORDED', 'COMPLETED', 'FAILED', 'ESCALATED', 'CANCELLED', 'AUDIT_FAILED'];
   slog('DEBUG', `cancelJob: checking if state is cancellable`, job.job_id, { state: job.state, in_noCancel_list: noCancel.includes(job.state) });
 
   if (noCancel.includes(job.state)) {
