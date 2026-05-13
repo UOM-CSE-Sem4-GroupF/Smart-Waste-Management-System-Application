@@ -108,6 +108,7 @@ export default async function internalRoutes(app: FastifyInstance) {
         zone_id:              parsedZoneId,
         route_type:           'emergency',
         waypoints:            routeResult.waypoints,
+        polyline:             routeResult.polyline,
         total_clusters:       clusters.length,
         total_bins:           bins_to_collect.length,
         estimated_weight_kg:  total_estimated_weight_kg,

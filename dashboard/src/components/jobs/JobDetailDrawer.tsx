@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useQuery } from '@tanstack/react-query'
 import { MapPin, Truck, User, Package } from 'lucide-react'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -66,6 +66,9 @@ export function JobDetailDrawer({ jobId, onClose }: JobDetailDrawerProps) {
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
           <DialogTitle className="text-base font-semibold">Job Detail</DialogTitle>
+          <DialogDescription className="sr-only">
+            Detailed information about the selected collection job.
+          </DialogDescription>
           {job && (
             <div className="mt-1 flex flex-wrap gap-2">
               <JobStateBadge state={job.state} />

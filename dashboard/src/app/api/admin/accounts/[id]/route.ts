@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
 
 const KEYCLOAK_URL    = process.env.KEYCLOAK_URL   ?? 'http://localhost:30180'
 const KEYCLOAK_REALM  = process.env.KEYCLOAK_REALM ?? 'waste-management'
@@ -24,24 +23,10 @@ async function getAdminToken(): Promise<string> {
   return data.access_token
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function requireAdmin(session: any) {
-  if (!session) return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 })
-  const roles: string[] = (session as { user?: { roles?: string[] } }).user?.roles ?? []
-  if (!roles.includes('admin')) {
-    return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
-  }
-  return null
-}
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth()
-  const deny = requireAdmin(session)
-  if (deny) return deny
-
   const { id } = await params
 
   try {

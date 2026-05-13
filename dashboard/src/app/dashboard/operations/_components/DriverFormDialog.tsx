@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -81,9 +81,12 @@ export function DriverFormDialog({ open, onClose, driver, zoneOptions, vehicleOp
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent aria-describedby={undefined} className="max-w-lg">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Edit Driver ${driver?.driver_id}` : 'Add New Driver'}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Enter the driver's name, assigned zone, and vehicle details below.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit((v) => mutate(v))} className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
