@@ -85,6 +85,9 @@ export function ZoneForecastChart() {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <ZoneSelector value={selectedZone} onChange={setSelectedZone} showAll={false} />
+        {isMock && (
+          <span className="text-xs italic text-muted-foreground">Simulated forecast</span>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
