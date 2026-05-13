@@ -57,14 +57,6 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
 
       slog('INFO', `cancelJob: job found`, { job_id: id, state: job.state, job_type: job.job_type, zone_id: job.zone_id });
 
-      if (job.state === 'IN_PROGRESS') {
-        slog('WARN', `cancelJob: rejected — IN_PROGRESS`, { job_id: id });
-        return reply.code(409).send({
-          error:   'CANNOT_CANCEL_IN_PROGRESS',
-          message: 'Cannot cancel a job that is currently IN_PROGRESS — driver is already collecting',
-        });
-      }
-
       let ok: boolean;
       try {
         ok = await cancelJob(job, reason);
