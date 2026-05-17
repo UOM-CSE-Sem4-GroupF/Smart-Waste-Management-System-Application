@@ -30,6 +30,7 @@ import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEffi
 import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
 import type { ActiveVehicle } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
+import { JobTypeBreakdownChart } from '@/components/analytics/JobTypeBreakdownChart'
 import { AnomalyDetectionTab } from '@/components/analytics/AnomalyDetectionTab'
 
 interface ApiZone {
@@ -374,7 +375,15 @@ export default function AnalyticsPage() {
             </ChartCard>
           </div>
 
-          {/* Row 4: Zone forecast */}
+          {/* Row 4: Job distribution */}
+          <ChartCard
+            title="Job Distribution"
+            description="Breakdown by type (Emergency / Routine) and current state"
+          >
+            <JobTypeBreakdownChart jobs={jobsList as unknown as import('@/types').CollectionJobListItem[]} />
+          </ChartCard>
+
+          {/* Row 5: Zone forecast */}
           <ChartCard
             title="Zone Waste Generation Forecast"
             description="Predicted daily waste output by category for selected zone"
