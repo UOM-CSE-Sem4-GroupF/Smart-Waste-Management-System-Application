@@ -43,7 +43,7 @@ services:
       - name: cors
         config:
           origins: ["*"]
-          methods: ["GET", "POST", "OPTIONS"]
+          methods: ["GET", "POST", "PATCH", "OPTIONS"]
           headers: ["Accept", "Content-Type", "Authorization", "X-Trace-Id"]
           max_age: 3600
       - name: rate-limiting
@@ -103,7 +103,7 @@ services:
     routes:
       - name:       vehicles-list
         paths:      ["/api/v1/vehicles"]
-        methods:    ["GET", "OPTIONS"]
+        methods:    ["GET", "POST", "OPTIONS"]
         strip_path: false
       - name:       vehicles-active
         paths:      ["/api/v1/vehicles/active"]
@@ -111,11 +111,11 @@ services:
         strip_path: false
       - name:       vehicles-detail
         paths:      ["~/api/v1/vehicles/(?<id>[^/]+)$"]
-        methods:    ["GET", "OPTIONS"]
+        methods:    ["GET", "PATCH", "OPTIONS"]
         strip_path: false
       - name:       drivers-list
         paths:      ["/api/v1/drivers"]
-        methods:    ["GET", "OPTIONS"]
+        methods:    ["GET", "POST", "OPTIONS"]
         strip_path: false
       - name:       drivers-available
         paths:      ["/api/v1/drivers/available"]
@@ -123,7 +123,7 @@ services:
         strip_path: false
       - name:       drivers-detail
         paths:      ["~/api/v1/drivers/(?<id>[^/]+)$"]
-        methods:    ["GET", "OPTIONS"]
+        methods:    ["GET", "PATCH", "OPTIONS"]
         strip_path: false
       - name:       collections-bin-collected
         paths:      ["~/api/v1/collections/(?<job_id>[^/]+)/bins/(?<bin_id>[^/]+)/collected$"]

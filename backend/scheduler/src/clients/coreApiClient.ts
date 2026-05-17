@@ -106,7 +106,8 @@ export interface CreateRoutePlanParams {
   vehicle_id:            string;
   zone_id:               number;
   route_type:            'emergency' | 'routine';
-  waypoints:             Array<{ cluster_id: string; bins: string[]; estimated_arrival?: string | null; cumulative_weight_kg?: number }>;
+  waypoints:             Array<{ cluster_id: string; bins: string[]; estimated_arrival?: string | null; cumulative_weight_kg?: number; lat?: number; lng?: number; cluster_name?: string }>;
+  polyline?:             string;
   total_clusters:        number;
   total_bins:            number;
   estimated_weight_kg:   number;
@@ -168,12 +169,14 @@ export async function createRoutePlan(params: CreateRoutePlanParams): Promise<st
       route_type:            params.route_type,
       zone_id:               params.zone_id,
       valid_for_date:        new Date().toISOString(),
-      waypoints:             params.waypoints,
+      waypoints: {
+        route_polyline: params.polyline ?? null,
+        stops:          params.waypoints,
+      },
       total_clusters:        params.total_clusters,
       total_bins:            params.total_bins,
       estimated_weight_kg:   params.estimated_weight_kg,
       estimated_distance_km: params.estimated_distance_km ?? 0,
-      polyline:              null,
       status:                'planned',
     }),
   });

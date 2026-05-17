@@ -10,35 +10,38 @@ export type JobType = 'routine' | 'emergency'
 
 // Shape returned by REST GET /api/v1/collection-jobs (list)
 export interface CollectionJobListItem {
-  id:                  string
-  job_type:            JobType
-  zone_id:             number
-  zone_name:           string
-  state:               JobState
-  priority:            number
-  assigned_vehicle_id: string | null
-  assigned_driver_id:  string | null
-  clusters:            string[]
-  planned_weight_kg:   number | null
-  actual_weight_kg:    number | null
-  bins_total:          number
-  bins_collected:      number
-  bins_skipped:        number
-  created_at:          string
-  completed_at:        string | null
-  duration_minutes:    number | null
+  job_id:               string
+  job_type:             JobType
+  zone_id:              string | number
+  zone_name?:           string
+  state:                JobState
+  priority?:            number
+  assigned_vehicle_id?: string | null
+  assigned_driver_id?:  string | null
+  clusters:             string[]
+  bins_to_collect:      string[]
+  planned_weight_kg?:   number | null
+  actual_weight_kg?:    number | null
+  actual_duration_min?: number | null
+  bins_total?:          number
+  bins_collected?:      number
+  bins_skipped?:        number
+  created_at:           string
+  completed_at?:        string | null
+  duration_minutes?:    number | null
+  waste_category?:      string
+  trigger_bin_id?:      string
+  trigger_urgency_score?: number
+  failure_reason?:      string
 }
 
 // Shape returned by REST GET /api/v1/collection-jobs/:id (detail — extends list item)
 export interface CollectionJobDetail extends CollectionJobListItem {
-  trigger_bin_id:        string | null
-  trigger_urgency_score: number | null
   route_plan_id:         string | null
   planned_distance_km:   number | null
   actual_distance_km:    number | null
   planned_duration_min:  number | null
   hyperledger_tx_id:     string | null
-  failure_reason:        string | null
   escalated_at:          string | null
   bin_collections: Array<{
     bin_id:                   string
@@ -95,6 +98,35 @@ export interface CollectionJob {
   duration_minutes?:   number
 }
 
+export interface RoutePlanStop {
+  sequence:              number
+  cluster_id:            string
+  cluster_name?:         string
+  lat:                   number
+  lng:                   number
+  bins:                  string[]
+  estimated_weight_kg?:  number
+  cumulative_weight_kg?: number
+  estimated_arrival_iso?: string
+}
+
+export interface RoutePlan {
+  id:                   string
+  job_id:               string | null
+  vehicle_id:           string
+  route_type:           string
+  zone_id:              number
+  waypoints:            { route_polyline?: string | null; stops: RoutePlanStop[] }
+  total_clusters:       number
+  total_bins:           number
+  estimated_weight_kg:  number
+  estimated_distance_km?: number
+  estimated_minutes?:   number
+  solver_method?:       string
+  status:               string
+  created_at:           string
+}
+
 export interface JobProgress {
   job_id:                  string
   state:                   JobState
@@ -123,5 +155,7 @@ export interface JobProgress {
     status:       'completed' | 'current' | 'pending'
     arrived_at:   string | null
     completed_at: string | null
+    lat:          number | null
+    lng:          number | null
   }>
 }

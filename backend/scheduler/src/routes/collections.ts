@@ -1,7 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { BinCollectedRequest, BinSkipRequest, JobProgressResponse } from '../types';
-import { activeJobs } from '../store';
+import { activeJobs, routePlans, clusterCoordinates } from '../store';
 import * as db from '../db/queries';
+
+const CORE_API = process.env.CORE_API_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
 
 const slog = (level: string, msg: string) =>
   process.stdout.write(JSON.stringify({ timestamp: new Date().toISOString(), level, service: 'scheduler', message: msg }) + '\n');
@@ -127,10 +129,9 @@ export default async function collectionsRoutes(app: FastifyInstance) {
     };
   });
 
-  // GET /api/v1/jobs/:job_id/progress
-  app.get<{ Params: { job_id: string } }>('/api/v1/jobs/:job_id/progress', async (req, reply) => {
-    const { job_id } = req.params;
-
+  // GET /api/v1/collections/:job_id/progress  (canonical path used by dashboard)
+  // GET /api/v1/jobs/:job_id/progress          (legacy alias)
+  async function handleProgress(job_id: string, reply: any) {
     const job = activeJobs.get(job_id);
     if (!job) {
       return reply.code(404).send({ error: 'RESOURCE_NOT_FOUND', message: `Job ${job_id} not found` });
@@ -143,6 +144,57 @@ export default async function collectionsRoutes(app: FastifyInstance) {
     const cargoWeightKg = allRecords
       .filter(r => r.collected_at)
       .reduce((sum, r) => sum + Number(r.actual_weight_kg ?? r.estimated_weight_kg ?? 0), 0);
+
+    // Build per-cluster waypoint status from bin records
+    const clusterMap = new Map<string, { bins: string[]; arrived_at: string | null; collected_at: string | null; all_done: boolean; any_arrived: boolean }>();
+    for (const rec of allRecords) {
+      if (!clusterMap.has(rec.cluster_id)) {
+        clusterMap.set(rec.cluster_id, { bins: [], arrived_at: null, collected_at: null, all_done: true, any_arrived: false });
+      }
+      const entry = clusterMap.get(rec.cluster_id)!;
+      entry.bins.push(rec.bin_id);
+      if (!rec.collected_at && !rec.skipped_at) entry.all_done = false;
+      if (rec.arrived_at) {
+        entry.any_arrived = true;
+        const arrivedIso = rec.arrived_at instanceof Date ? rec.arrived_at.toISOString() : String(rec.arrived_at);
+        if (!entry.arrived_at || arrivedIso < entry.arrived_at) entry.arrived_at = arrivedIso;
+      }
+      if (rec.collected_at) {
+        const ts = rec.collected_at.toString();
+        if (!entry.collected_at || ts > entry.collected_at) entry.collected_at = ts;
+      }
+    }
+
+    // Get cluster name + sequence from in-memory route plan if available
+    const routePlan = Array.from(routePlans.values()).find(rp => rp.job_id === job_id);
+    const waypointMeta = new Map<string, { sequence: number; cluster_name: string }>();
+    if (routePlan) {
+      routePlan.waypoints.forEach((wp, idx) => {
+        waypointMeta.set(wp.cluster_id, { sequence: idx + 1, cluster_name: wp.cluster_id });
+      });
+    }
+
+    const waypoints = Array.from(clusterMap.entries())
+      .map(([cluster_id, entry], idx) => {
+        const meta   = waypointMeta.get(cluster_id);
+        const coords = clusterCoordinates.get(cluster_id);
+        const status: 'completed' | 'current' | 'pending' =
+          entry.all_done ? 'completed' :
+          entry.any_arrived ? 'current' :
+          'pending';
+        return {
+          sequence:     meta?.sequence ?? idx + 1,
+          cluster_id,
+          cluster_name: meta?.cluster_name ?? cluster_id,
+          bins:         entry.bins,
+          status,
+          arrived_at:   entry.arrived_at,
+          completed_at: entry.all_done ? entry.collected_at : null,
+          lat:          coords?.lat ?? null,
+          lng:          coords?.lng ?? null,
+        };
+      })
+      .sort((a, b) => a.sequence - b.sequence);
 
     const response: JobProgressResponse = {
       job_id,
@@ -159,9 +211,31 @@ export default async function collectionsRoutes(app: FastifyInstance) {
       cargo_utilisation_pct:   (cargoWeightKg / 8000) * 100,
       estimated_completion_at: null,
       current_stop:            null,
-      waypoints:               [],
+      waypoints,
     };
 
     return response;
+  }
+
+  app.get<{ Params: { job_id: string } }>('/api/v1/collections/:job_id/progress', (req, reply) =>
+    handleProgress(req.params.job_id, reply),
+  );
+
+  app.get<{ Params: { job_id: string } }>('/api/v1/jobs/:job_id/progress', (req, reply) =>
+    handleProgress(req.params.job_id, reply),
+  );
+
+  // GET /api/v1/route-plans/:id  — proxy to Core API (stores waypoints with lat/lng + polyline)
+  app.get<{ Params: { id: string } }>('/api/v1/route-plans/:id', async (req, reply) => {
+    try {
+      const res = await fetch(`${CORE_API}/api/v1/route-plans/${req.params.id}`);
+      if (!res.ok) {
+        return reply.code(res.status).send({ error: 'ROUTE_PLAN_NOT_FOUND', message: `Route plan ${req.params.id} not found` });
+      }
+      const body = await res.json() as { data?: unknown };
+      return body.data ?? body;
+    } catch (e) {
+      return reply.code(502).send({ error: 'CORE_API_UNAVAILABLE', message: (e as Error).message });
+    }
   });
 }

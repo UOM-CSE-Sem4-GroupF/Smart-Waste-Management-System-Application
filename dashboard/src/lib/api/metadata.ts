@@ -184,45 +184,45 @@ export function normaliseBin(bin: CoreBin): HierarchyBin {
 }
 
 export async function listZones(api: KyInstance): Promise<ZoneOption[]> {
-  const res = await api.get('api/metadata/zones').json<CoreListResponse<CoreZone>>()
+  const res = await api.get('data-analysis/api/v1/city-zones').json<CoreListResponse<CoreZone>>()
   return res.data.map(normaliseZone).filter((z) => Number.isFinite(z.id))
 }
 
 export async function createZone(api: KyInstance, payload: CreateZonePayload): Promise<ZoneOption> {
-  const res = await api.post('api/metadata/city-zones', { json: payload }).json<{ data: CoreZone }>()
+  const res = await api.post('data-analysis/api/v1/city-zones', { json: payload }).json<{ data: CoreZone }>()
   return normaliseZone(res.data)
 }
 
 export async function updateZone(api: KyInstance, id: number, payload: Partial<CreateZonePayload> & { active?: boolean }) {
-  return api.patch(`api/metadata/city-zones/${id}`, { json: payload }).json()
+  return api.patch(`data-analysis/api/v1/city-zones/${id}`, { json: payload }).json()
 }
 
 export async function deleteZone(api: KyInstance, id: number) {
-  return api.delete(`api/metadata/city-zones/${id}`)
+  return api.delete(`data-analysis/api/v1/city-zones/${id}`)
 }
 
 export async function listClusters(api: KyInstance, zoneId?: number): Promise<CoreCluster[]> {
-  const res = await api.get('api/metadata/clusters', {
+  const res = await api.get('data-analysis/api/v1/clusters', {
     searchParams: zoneId ? { zone_id: zoneId } : undefined,
   }).json<CoreListResponse<CoreCluster>>()
   return res.data
 }
 
 export async function createCluster(api: KyInstance, payload: CreateClusterPayload): Promise<CoreCluster> {
-  const res = await api.post('api/metadata/clusters', { json: payload }).json<{ data: CoreCluster }>()
+  const res = await api.post('data-analysis/api/v1/clusters', { json: payload }).json<{ data: CoreCluster }>()
   return res.data
 }
 
 export async function updateCluster(api: KyInstance, id: string, payload: Partial<CreateClusterPayload> & { active?: boolean }) {
-  return api.patch(`api/metadata/clusters/${id}`, { json: payload }).json()
+  return api.patch(`data-analysis/api/v1/clusters/${id}`, { json: payload }).json()
 }
 
 export async function deleteCluster(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/clusters/${id}`)
+  return api.delete(`data-analysis/api/v1/clusters/${id}`)
 }
 
 export async function listWasteCategories(api: KyInstance): Promise<CoreWasteCategory[]> {
-  const res = await api.get('api/metadata/waste-categories').json<CoreListResponse<CoreWasteCategory>>()
+  const res = await api.get('data-analysis/api/v1/waste-categories').json<CoreListResponse<CoreWasteCategory>>()
   return res.data
 }
 
@@ -234,7 +234,7 @@ export async function listBins(api: KyInstance, params: { zoneId?: number; clust
   if (params.zoneId) searchParams.zone_id = params.zoneId
   if (params.clusterId) searchParams.cluster_id = params.clusterId
 
-  const res = await api.get('api/metadata/bins', { searchParams }).json<CoreListResponse<CoreBin>>()
+  const res = await api.get('data-analysis/api/v1/bins', { searchParams }).json<CoreListResponse<CoreBin>>()
   return {
     data: res.data.map(normaliseBin),
     total: res.pagination?.total ?? res.total ?? res.data.length,
@@ -244,14 +244,14 @@ export async function listBins(api: KyInstance, params: { zoneId?: number; clust
 }
 
 export async function createBin(api: KyInstance, payload: CreateBinPayload): Promise<HierarchyBin> {
-  const res = await api.post('api/metadata/bins', { json: payload }).json<{ data: CoreBin }>()
+  const res = await api.post('data-analysis/api/v1/bins', { json: payload }).json<{ data: CoreBin }>()
   return normaliseBin(res.data)
 }
 
 export async function updateBin(api: KyInstance, id: string, payload: Partial<CreateBinPayload> & { active?: boolean }) {
-  return api.patch(`api/metadata/bins/${id}`, { json: payload }).json()
+  return api.patch(`data-analysis/api/v1/bins/${id}`, { json: payload }).json()
 }
 
 export async function deleteBin(api: KyInstance, id: string) {
-  return api.delete(`api/metadata/bins/${id}`)
+  return api.delete(`data-analysis/api/v1/bins/${id}`)
 }

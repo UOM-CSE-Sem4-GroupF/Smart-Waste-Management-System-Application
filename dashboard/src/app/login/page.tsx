@@ -1,6 +1,14 @@
 import { signIn } from '@/auth'
+import { AuthError } from 'next-auth'
+import { redirect } from 'next/navigation'
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
+  const { error } = await searchParams
+
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left — brand panel (desktop only) */}
@@ -36,21 +44,64 @@ export default function LoginPage() {
           </div>
 
           <form
-            action={async () => {
+            className="space-y-4"
+            action={async (formData) => {
               'use server'
-              // Force Keycloak to show the credential screen instead of reusing SSO silently.
-              await signIn(
-                'keycloak',
-                { redirectTo: '/dashboard' },
-                { prompt: 'login' },
-              )
+              try {
+                await signIn('credentials', {
+                  username:   formData.get('username') as string,
+                  password:   formData.get('password') as string,
+                  redirectTo: '/dashboard',
+                })
+              } catch (err) {
+                if (err instanceof AuthError) {
+                  redirect('/login?error=invalid')
+                }
+                throw err
+              }
             }}
           >
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium leading-none">
+                Username
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                required
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
+                placeholder="Enter your username"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium leading-none">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
+                placeholder="Enter your password"
+              />
+            </div>
+
+            {error === 'invalid' && (
+              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
+                Invalid username or password. Please try again.
+              </p>
+            )}
+
             <button
               type="submit"
               className="w-full rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
             >
-              Sign in with Keycloak
+              Sign in
             </button>
           </form>
 

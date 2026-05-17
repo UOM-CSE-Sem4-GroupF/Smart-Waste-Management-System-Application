@@ -44,8 +44,8 @@ export const useJobStore = create<JobStore>((set) => ({
 
   setJobsFromList: (list) =>
     set(() => ({
-      // REST GET /api/v1/collection-jobs returns CollectionJobListItem with .id (not .job_id)
-      jobs: new Map(list.map((j) => [j.id, j as unknown as CollectionJob])),
+      // REST GET /api/v1/collection-jobs returns CollectionJobListItem with .job_id
+      jobs: new Map(list.map((j) => [j.job_id, j as unknown as CollectionJob])),
     })),
 
   setJobsList: (list) => set({ jobsList: list }),

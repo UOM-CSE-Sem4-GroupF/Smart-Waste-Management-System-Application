@@ -7,34 +7,51 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   ResponsiveContainer,
 } from 'recharts'
+import { format, addDays, startOfDay, getWeek } from 'date-fns'
+import { ZONE_COLOURS } from '@/lib/colours'
 import { createClientApiClient } from '@/lib/api-client'
 import { getZoneGenerationPrediction, type ZoneGenerationPrediction } from '@/lib/api/ml'
 import { ZoneSelector } from '@/components/shared/ZoneSelector'
 import { ChartSkeleton } from './ChartSkeleton'
-import { useMapStore } from '@/store/mapStore'
+import type { ZoneForecastPoint } from '@/lib/api/ml'
 
-const CATEGORY_COLORS: Record<string, string> = {
-  food_waste: '#22c55e',
-  paper:      '#3b82f6',
-  plastic:    '#f97316',
-  glass:      '#06b6d4',
-  general:    '#6b7280',
-  e_waste:    '#ec4899',
+// Deterministic mock: 7-day forecast seeded by zone_id + current ISO week
+function mockForecast(zoneId: number): ZoneForecastPoint[] {
+  const week = getWeek(new Date())
+  const seed = (zoneId * 31 + week * 7) % 100
+  const base = 55 + (seed % 20)
+  const today = startOfDay(new Date())
+  return Array.from({ length: 7 }, (_, i) => {
+    const phase = (seed + i * 13) % 100
+    const predicted = base + (phase % 15) - 7
+    const clamped = Math.max(45, Math.min(90, predicted))
+    return {
+      date:      format(addDays(today, i + 1), 'yyyy-MM-dd'),
+      predicted: parseFloat(clamped.toFixed(1)),
+      lower_ci:  parseFloat(Math.max(35, clamped - 8).toFixed(1)),
+      upper_ci:  parseFloat(Math.min(100, clamped + 8).toFixed(1)),
+    }
+  })
 }
 
 export function ZoneForecastChart() {
   const { data: session } = useSession()
-  const zoneStats = useMapStore((s) => s.zoneStats)
-  const firstZoneId = zoneStats.size > 0 ? Array.from(zoneStats.keys())[0] : 1
 
-  const [selectedZone, setSelectedZone] = useState<number | 'all'>(firstZoneId)
+  const [selectedZone, setSelectedZone] = useState<number | 'all'>(1)
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['ml', 'zone-forecast', selectedZone],
-    queryFn: () => getZoneGenerationPrediction(
-      createClientApiClient(session!.accessToken),
-      selectedZone as number,
-    ),
+    queryFn: async () => {
+      const api = createClientApiClient(session!.accessToken)
+      return api
+        .get('api/v1/ml/predict/zone-generation', {
+          searchParams: {
+            zone_id:    String(selectedZone),
+            date_range: 'next_7_days',
+          },
+        })
+        .json<{ zone_id: number; zone_name: string; forecasts: ZoneForecastPoint[] }>()
+    },
     enabled: !!session?.accessToken && selectedZone !== 'all',
     staleTime: 15 * 60_000,
     retry: false,
@@ -42,17 +59,12 @@ export function ZoneForecastChart() {
 
   if (isPending) return <ChartSkeleton />
 
-  if (isError) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
-        <p className="text-sm font-medium text-muted-foreground">
-          Zone forecast endpoint not yet available
-        </p>
-      </div>
-    )
-  }
+  const isMock = isError || (!isLoading && !data)
+  const forecastPoints: ZoneForecastPoint[] = isMock
+    ? mockForecast(typeof selectedZone === 'number' ? selectedZone : 1)
+    : (data?.forecasts ?? [])
 
-  if (!data) {
+  if (forecastPoints.length === 0) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-sm text-muted-foreground">Select a zone to view forecast</p>
@@ -61,22 +73,20 @@ export function ZoneForecastChart() {
     )
   }
 
-  const prediction = data as ZoneGenerationPrediction
-  const chartData = Object.entries(prediction.by_waste_category).map(([cat, kg]) => ({
-    name: cat.replace(/_/g, ' '),
-    kg:   parseFloat((kg as number).toFixed(1)),
-    key:  cat,
+  const chartData = forecastPoints.map((f) => ({
+    date:      format(new Date(f.date), 'MMM d'),
+    predicted: f.predicted,
+    lower_ci:  f.lower_ci,
+    upper_ci:  f.upper_ci,
   }))
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Predicted <span className="font-semibold text-foreground">
-            {prediction.predicted_kg_per_day.toFixed(0)} kg/day
-          </span> over next 7 days
-        </p>
         <ZoneSelector value={selectedZone} onChange={setSelectedZone} showAll={false} />
+        {isMock && (
+          <span className="text-xs italic text-muted-foreground">Simulated forecast</span>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 70 }}>
@@ -85,15 +95,38 @@ export function ZoneForecastChart() {
           <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={66} />
           <Tooltip
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter={((v: number) => [`${v} kg`, 'Predicted']) as any}
+            formatter={((v: number, name: string) => [`${v.toFixed(1)}%`, name]) as any}
             contentStyle={{ fontSize: 12 }}
           />
-          <Bar dataKey="kg" radius={[0, 4, 4, 0]}>
-            {chartData.map((entry) => (
-              <Cell key={entry.key} fill={CATEGORY_COLORS[entry.key] ?? '#94a3b8'} />
-            ))}
-          </Bar>
-        </BarChart>
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Area
+            type="monotone"
+            dataKey="upper_ci"
+            name="Upper CI"
+            stroke="none"
+            fill={color}
+            fillOpacity={0.12}
+            legendType="none"
+          />
+          <Area
+            type="monotone"
+            dataKey="lower_ci"
+            name="Lower CI"
+            stroke="none"
+            fill="white"
+            fillOpacity={1}
+            legendType="none"
+          />
+          <Area
+            type="monotone"
+            dataKey="predicted"
+            name="Predicted fill %"
+            stroke={color}
+            fill={color}
+            fillOpacity={0.15}
+            strokeWidth={2}
+          />
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   )

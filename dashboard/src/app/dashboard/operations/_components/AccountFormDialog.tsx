@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,9 +52,12 @@ export function AccountFormDialog({ open, onClose, zoneOptions, driverOptions }:
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Create Account</DialogTitle>
+          <DialogDescription className="sr-only">
+            Create or update system user accounts and permissions.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit((v) => mutate(v))} className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">

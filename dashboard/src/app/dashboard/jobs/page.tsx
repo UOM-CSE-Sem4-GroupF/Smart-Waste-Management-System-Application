@@ -5,7 +5,6 @@ import { formatDistanceToNow } from 'date-fns'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSession } from 'next-auth/react'
 import { useJobs } from '@/hooks/useJobs'
-import { useJobStore } from '@/store/jobStore'
 import { cancelJob } from '@/lib/api/jobs'
 import { createClientApiClient } from '@/lib/api-client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -18,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { JobStateBadge } from '@/components/jobs/JobStateBadge'
 import { JobTypeBadge } from '@/components/jobs/JobTypeBadge'
 import { JobProgressBar } from '@/components/jobs/JobProgressBar'
-import { JobDetailDrawer } from '@/components/jobs/JobDetailDrawer'
+import { JobDetailPanel } from '@/components/jobs/JobDetailPanel'
 import type { CollectionJobListItem, JobState } from '@/types'
 
 const ACTIVE_STATES: JobState[] = [
@@ -33,29 +32,34 @@ const CANCELLED_STATES: JobState[] = ['CANCELLED', 'FAILED', 'AUDIT_FAILED']
 
 function JobCard({
   job,
+  selected,
   onSelect,
   onCancel,
 }: {
   job:       CollectionJobListItem
+  selected?: boolean
   onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
-  const jobId = job.id ?? (job as unknown as { job_id: string }).job_id ?? ''
+  const binsTotal     = job.bins_total     ?? job.bins_to_collect?.length ?? 0
+  const binsCollected = job.bins_collected ?? 0
+  const zoneName      = job.zone_name      ?? `Zone ${job.zone_id}`
+
   return (
     <Card
-      className="rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      onClick={() => onSelect?.(jobId)}
+      className={`rounded-xl shadow-sm transition-shadow cursor-pointer ${selected ? 'ring-2 ring-emerald-500 shadow-md' : 'hover:shadow-md'}`}
+      onClick={() => onSelect?.(job.job_id)}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="p-5 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm font-mono">{jobId.slice(0, 8)}…</span>
+              <span className="font-medium text-sm font-mono">{job.job_id.slice(0, 8)}…</span>
               <JobTypeBadge type={job.job_type.toUpperCase()} />
               <JobStateBadge state={job.state} />
             </div>
             <p className="text-xs text-muted-foreground">
-              {job.zone_name} · Priority {job.priority} ·{' '}
+              {zoneName}{job.priority != null ? ` · Priority ${job.priority}` : ''} ·{' '}
               {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -63,7 +67,7 @@ function JobCard({
             </p>
           </div>
           <div className="flex flex-col items-end gap-2 text-xs text-muted-foreground">
-            <span>{job.bins_collected}/{job.bins_total} bins</span>
+            <span>{binsCollected}/{binsTotal} bins</span>
             {job.planned_weight_kg != null && (
               <span>{job.planned_weight_kg.toFixed(0)} kg planned</span>
             )}
@@ -71,18 +75,17 @@ function JobCard({
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={(e) => { e.stopPropagation(); onCancel(jobId) }}
+                onClick={(e) => { e.stopPropagation(); onCancel(job.job_id) }}
               >
                 Cancel
               </Button>
             )}
           </div>
         </div>
-        {/* Inline progress bar for active jobs */}
         {ACTIVE_STATES.includes(job.state) && (
           <JobProgressBar
-            binsCollected={job.bins_collected}
-            binsTotal={job.bins_total}
+            binsCollected={binsCollected}
+            binsTotal={binsTotal}
             cargoKg={job.actual_weight_kg ?? undefined}
             capacityKg={job.planned_weight_kg ?? undefined}
           />
@@ -94,16 +97,16 @@ function JobCard({
 
 function JobList({
   filter,
+  selectedJobId,
   onSelect,
   onCancel,
 }: {
-  filter:    { state?: string }
-  onSelect?: (id: string) => void
-  onCancel?: (id: string) => void
+  filter:        { state?: string }
+  selectedJobId: string | null
+  onSelect?:     (id: string) => void
+  onCancel?:     (id: string) => void
 }) {
   const { data, isLoading } = useJobs({ state: filter.state, limit: 50 })
-  // Fallback: use the store list seeded by MockSocketInjector when REST is unavailable
-  const storeJobsList = useJobStore((s) => s.jobsList)
 
   if (isLoading) {
     return (
@@ -115,11 +118,7 @@ function JobList({
     )
   }
 
-  const stateSet = filter.state ? new Set(filter.state.split(',')) : null
-  const restJobs = data?.data ?? []
-  const jobs = restJobs.length > 0
-    ? restJobs
-    : storeJobsList.filter((j) => !stateSet || stateSet.has(j.state))
+  const jobs = data?.data ?? []
 
   if (jobs.length === 0) {
     return <p className="text-sm text-muted-foreground py-4">No jobs in this category.</p>
@@ -127,10 +126,15 @@ function JobList({
 
   return (
     <div className="space-y-3">
-      {jobs.map((job) => {
-        const key = job.id ?? (job as unknown as { job_id: string }).job_id
-        return <JobCard key={key} job={job} onSelect={onSelect} onCancel={onCancel} />
-      })}
+      {jobs.map((job) => (
+        <JobCard
+          key={job.job_id}
+          job={job}
+          selected={job.job_id === selectedJobId}
+          onSelect={onSelect}
+          onCancel={onCancel}
+        />
+      ))}
     </div>
   )
 }
@@ -145,7 +149,7 @@ export default function JobsPage() {
 
   const { mutate: doCancel, isPending } = useMutation({
     mutationFn: (jobId: string) =>
-      cancelJob(createClientApiClient(session!.accessToken), jobId, cancelReason),
+      cancelJob(createClientApiClient(session?.accessToken), jobId, cancelReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setCancelTarget(null)
@@ -155,44 +159,62 @@ export default function JobsPage() {
     onError: (e: Error) => setCancelError(e.message),
   })
 
+  const jobListContent = (
+    <Tabs defaultValue="active">
+      <TabsList>
+        <TabsTrigger value="active">Active</TabsTrigger>
+        <TabsTrigger value="completed">Completed</TabsTrigger>
+        <TabsTrigger value="escalated">Escalated</TabsTrigger>
+        <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="active" className="mt-4">
+        <JobList
+          filter={{ state: ACTIVE_STATES.join(',') }}
+          selectedJobId={selectedJobId}
+          onSelect={setSelectedJobId}
+          onCancel={(id) => { setCancelTarget(id); setCancelError(null) }}
+        />
+      </TabsContent>
+
+      <TabsContent value="completed" className="mt-4">
+        <JobList filter={{ state: COMPLETED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+
+      <TabsContent value="escalated" className="mt-4">
+        <JobList filter={{ state: ESCALATED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+
+      <TabsContent value="cancelled" className="mt-4">
+        <JobList filter={{ state: CANCELLED_STATES.join(',') }} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
+      </TabsContent>
+    </Tabs>
+  )
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full gap-6 px-8 py-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Collection Jobs</h2>
         <p className="text-sm text-muted-foreground mt-1">Track active, completed and escalated collection jobs.</p>
       </div>
 
-      <Tabs defaultValue="active">
-        <TabsList>
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="escalated">Escalated</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="mt-4">
-          <JobList
-            filter={{ state: ACTIVE_STATES.join(',') }}
-            onSelect={setSelectedJobId}
-            onCancel={(id) => { setCancelTarget(id); setCancelError(null) }}
-          />
-        </TabsContent>
-
-        <TabsContent value="completed" className="mt-4">
-          <JobList filter={{ state: COMPLETED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-
-        <TabsContent value="escalated" className="mt-4">
-          <JobList filter={{ state: ESCALATED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-
-        <TabsContent value="cancelled" className="mt-4">
-          <JobList filter={{ state: CANCELLED_STATES.join(',') }} onSelect={setSelectedJobId} />
-        </TabsContent>
-      </Tabs>
-
-      {/* Detail drawer */}
-      <JobDetailDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
+      {selectedJobId ? (
+        /* Split layout — list + detail panel */
+        <div className="flex gap-8 min-h-0 flex-1">
+          <div className="w-96 shrink-0 overflow-y-auto pr-2">
+            {jobListContent}
+          </div>
+          <div className="flex-1 min-h-0 rounded-xl border border-border overflow-hidden">
+            <JobDetailPanel
+              jobId={selectedJobId}
+              onClose={() => setSelectedJobId(null)}
+            />
+          </div>
+        </div>
+      ) : (
+        /* Full-width list */
+        <div>{jobListContent}</div>
+      )}
 
       {/* Cancel confirmation dialog */}
       <Dialog open={cancelTarget !== null} onOpenChange={(open) => { if (!open) setCancelTarget(null) }}>
@@ -233,6 +255,3 @@ export default function JobsPage() {
     </div>
   )
 }
-
-
-

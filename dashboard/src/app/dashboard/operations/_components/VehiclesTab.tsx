@@ -6,13 +6,21 @@ import { useSession } from 'next-auth/react'
 import { Plus, Pencil, PowerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog'
+import dynamic from 'next/dynamic'
 import { createClientApiClient } from '@/lib/api-client'
-import { VehicleFormDialog } from './VehicleFormDialog'
+import { getDrivers } from '@/lib/api/drivers'
+import { deactivateVehicle, getVehicles } from '@/lib/api/vehicles'
 import type { VehicleAsset } from '@/types'
+
+const VehicleFormDialog = dynamic(() => import('./VehicleFormDialog').then(m => ({ default: m.VehicleFormDialog })))
 
 interface VehicleListResponse { data: VehicleAsset[]; total: number }
 
-export function VehiclesTab() {
+interface Props {
+  driverOptions: Array<{ driver_id: string; name: string }>
+}
+
+export function VehiclesTab({ driverOptions }: Props) {
   const { data: session } = useSession()
   const queryClient = useQueryClient()
 
@@ -23,16 +31,24 @@ export function VehiclesTab() {
   const { data, isLoading } = useQuery<VehicleListResponse>({
     queryKey: ['vehicles'],
     queryFn: () => {
-      const api = createClientApiClient(session!.accessToken)
-      return api.get('api/v1/vehicles').json<VehicleListResponse>()
+      const api = createClientApiClient(session?.accessToken)
+      return getVehicles(api)
     },
-    enabled: !!session,
+  })
+
+  const { data: driversData } = useQuery({
+    queryKey: ['drivers'],
+    queryFn: () => {
+      const api = createClientApiClient(session?.accessToken)
+      return getDrivers(api)
+    },
+    enabled: driverOptions.length === 0,
   })
 
   const { mutate: doDeactivate, isPending: deactivating } = useMutation({
     mutationFn: (vehicleId: string) => {
-      const api = createClientApiClient(session!.accessToken)
-      return api.patch(`api/v1/vehicles/${vehicleId}`, { json: { active: false } }).json()
+      const api = createClientApiClient(session?.accessToken)
+      return deactivateVehicle(api, vehicleId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] })
@@ -41,6 +57,9 @@ export function VehiclesTab() {
   })
 
   const vehicles = data?.data ?? []
+  const availableDriverOptions = driverOptions.length > 0
+    ? driverOptions
+    : driversData?.data.map((driver) => ({ driver_id: driver.driver_id, name: driver.name })) ?? []
 
   return (
     <div className="space-y-4">
@@ -54,7 +73,7 @@ export function VehiclesTab() {
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/50">
             <tr>
-              {['Vehicle ID', 'Type', 'Capacity', 'Registration', 'Year', 'Status', 'Actions'].map((h) => (
+              {['Vehicle ID', 'Type', 'Capacity', 'Registration', 'Driver', 'Status', 'Actions'].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left font-medium text-muted-foreground">{h}</th>
               ))}
             </tr>
@@ -71,47 +90,58 @@ export function VehiclesTab() {
             ) : vehicles.length === 0 ? (
               <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">No vehicles found.</td></tr>
             ) : (
-              vehicles.map((v) => (
-                <tr key={v.vehicle_id} className="border-b hover:bg-muted/30">
-                  <td className="px-3 py-2.5 font-mono text-xs">{v.vehicle_id}</td>
-                  <td className="px-3 py-2.5">{v.vehicle_type}</td>
-                  <td className="px-3 py-2.5">{v.capacity_kg ? `${v.capacity_kg / 1000}t` : '—'}</td>
-                  <td className="px-3 py-2.5">{v.registration ?? '—'}</td>
-                  <td className="px-3 py-2.5">{v.year ?? '—'}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      v.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {v.status ?? 'unknown'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditVehicle(v)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-destructive"
-                        onClick={() => setDeactivate(v.vehicle_id)}
-                      >
-                        <PowerOff className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              vehicles.map((v: any) => {
+                const id = v.id || v.vehicle_id
+                const capacity = v.max_cargo_kg || v.capacity_kg
+                return (
+                  <tr key={id} className="border-b hover:bg-muted/30">
+                    <td className="px-3 py-2.5 font-mono text-xs">{id}</td>
+                    <td className="px-3 py-2.5">{v.vehicle_type ?? '—'}</td>
+                    <td className="px-3 py-2.5">{capacity ? `${capacity / 1000}t` : '—'}</td>
+                    <td className="px-3 py-2.5">{v.registration ?? '—'}</td>
+                    <td className="px-3 py-2.5">{v.driver_name ?? v.driver_id ?? '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        v.status === 'available'
+                          ? 'bg-green-100 text-green-800'
+                          : v.status === 'dispatched'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {v.status?.replace(/_/g, ' ') ?? 'unknown'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditVehicle(v)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => setDeactivate(id)}
+                        >
+                          <PowerOff className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      <VehicleFormDialog
-        open={addOpen || editVehicle !== null}
-        onClose={() => { setAddOpen(false); setEditVehicle(null) }}
-        vehicle={editVehicle ?? undefined}
-      />
+      {(addOpen || editVehicle !== null) && (
+        <VehicleFormDialog
+          open
+          onClose={() => { setAddOpen(false); setEditVehicle(null) }}
+          vehicle={editVehicle ?? undefined}
+          driverOptions={availableDriverOptions}
+        />
+      )}
 
       <AlertDialog open={deactivate !== null} onOpenChange={(v) => { if (!v) setDeactivate(null) }}>
         <AlertDialogContent>

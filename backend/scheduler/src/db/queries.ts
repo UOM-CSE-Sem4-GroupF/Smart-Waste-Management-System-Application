@@ -9,6 +9,19 @@ export interface DbDriver {
   status:             string;
 }
 
+export interface DbVehicle {
+  id:              string;
+  registration:    string;
+  vehicle_type:    string;
+  max_cargo_kg:    number;
+  volume_m3:       number | null;
+  driver_id:       string | null;
+  status:          string;
+  active:          boolean;
+  last_service_at: Date | null;
+  notes:           string | null;
+}
+
 export interface DbBinRecord {
   id:                       string;
   job_id:                   string;
@@ -97,6 +110,125 @@ export async function updateDriver(
     if (e?.code === 'P2025') return null;
     throw e;
   }
+}
+
+export async function assignVehicleToDriver(driver_id: string, vehicle_id: string | null): Promise<DbDriver | null> {
+  try {
+    return await prisma.driver.update({
+      where: { id: driver_id },
+      data:  { current_vehicle_id: vehicle_id },
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2025') return null;
+    throw e;
+  }
+}
+
+// ── Vehicles ───────────────────────────────────────────────────────────────
+
+// Read-only logic: vehicles are managed by Core API (F2). 
+// Scheduler only keeps track of driver-to-vehicle association in F3.
+
+export async function getVehicleById(vehicle_id: string): Promise<DbVehicle | null> {
+  // Call Core API for single vehicle data
+  const CORE_API = process.env.CORE_API_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
+  try {
+    const res = await fetch(`${CORE_API}/api/v1/vehicles/${vehicle_id}`);
+    if (!res.ok) return null;
+    const body = await res.json() as { data: any };
+    const v = body.data;
+    return {
+      id: v.id,
+      registration: v.registration,
+      vehicle_type: v.vehicle_type,
+      max_cargo_kg: Number(v.max_cargo_kg),
+      volume_m3: v.volume_m3 ? Number(v.volume_m3) : null,
+      driver_id: null, // Core API doesn't store F3 driver associations
+      status: v.status,
+      active: v.active ?? true,
+      last_service_at: v.last_service_at ? new Date(v.last_service_at) : null,
+      notes: v.notes ?? null
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function getAllVehicles(params?: {
+  status?: string;
+  active?: boolean;
+  limit?:  number;
+  offset?: number;
+}): Promise<{ vehicles: DbVehicle[]; total: number }> {
+  const CORE_API = process.env.CORE_API_URL ?? 'http://core-api-base-service.waste-dev.svc.cluster.local:8001';
+  try {
+    const query = new URLSearchParams();
+    if (params?.status) query.append('status', params.status);
+    if (params?.limit)  query.append('limit', String(params.limit));
+    if (params?.offset) query.append('offset', String(params.offset));
+    
+    const res = await fetch(`${CORE_API}/api/v1/vehicles?${query.toString()}`);
+    if (!res.ok) return { vehicles: [], total: 0 };
+    const body = await res.json() as { data: any[], pagination?: { total: number } };
+    
+    return {
+      vehicles: body.data.map(v => ({
+        id: v.id,
+        registration: v.registration,
+        vehicle_type: v.vehicle_type,
+        max_cargo_kg: Number(v.max_cargo_kg),
+        volume_m3: v.volume_m3 ? Number(v.volume_m3) : null,
+        driver_id: null,
+        status: v.status,
+        active: v.active ?? true,
+        last_service_at: v.last_service_at ? new Date(v.last_service_at) : null,
+        notes: v.notes ?? null
+      })),
+      total: body.pagination?.total ?? body.data.length
+    };
+  } catch (e) {
+    return { vehicles: [], total: 0 };
+  }
+}
+
+export async function assignDriverToVehicle(vehicle_id: string, driver_id: string | null): Promise<DbDriver | null> {
+  try {
+    if (!driver_id) {
+       // Find the driver currently assigned to this vehicle
+       const assigned = await prisma.driver.findFirst({
+         where: { current_vehicle_id: vehicle_id }
+       });
+       if (!assigned) return null;
+       
+       return await prisma.driver.update({
+         where: { id: assigned.id },
+         data:  { current_vehicle_id: null },
+       });
+    }
+
+    return await prisma.driver.update({
+      where: { id: driver_id },
+      data:  { current_vehicle_id: vehicle_id },
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2025') return null;
+    throw e;
+  }
+}
+
+// These are required for test compatibility but the scheduler no longer owns vehicle CRUD
+export async function getDriversByVehicleIds(ids: string[]): Promise<DbDriver[]> {
+  return prisma.driver.findMany({
+    where: { current_vehicle_id: { in: ids } }
+  });
+}
+
+export async function createVehicle(data: any): Promise<DbVehicle> {
+  throw new Error("Vehicle creation moved to Core API");
+}
+
+export async function updateVehicle(id: string, data: any): Promise<DbVehicle> {
+  throw new Error("Vehicle update moved to Core API");
 }
 
 // ── Bin collection records ─────────────────────────────────────────────────

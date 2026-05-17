@@ -15,8 +15,8 @@ import type { BinUpdatePayload, CollectionJob } from '@/types'
 const MiniMap = dynamic(() => import('@/components/map/DashboardMap'), { ssr: false })
 
 interface OverviewClientProps {
-  initialBins:    BinUpdatePayload[]
-  initialJobs:    CollectionJob[]
+  initialBins: BinUpdatePayload[]
+  initialJobs: CollectionJob[]
 }
 
 // Active job states (CREATED → IN_PROGRESS)
@@ -28,26 +28,90 @@ const ACTIVE_STATES = new Set([
   'RECORDING_AUDIT',
 ])
 
+import { useSession } from 'next-auth/react'
+import { useQuery } from '@tanstack/react-query'
+import { createClientApiClient } from '@/lib/api-client'
+import { normaliseBin, type CoreBin, type CoreCluster, type CoreListResponse } from '@/lib/api/metadata'
+import { Loader2 } from 'lucide-react'
+
 export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps) {
+  const { data: session } = useSession()
   const { setBins, bins, zoneStats, vehicles } = useMapStore()
-  const { setJobs }                            = useJobStore()
-  const jobs                                   = useJobStore((s) => s.jobs)
+  const { setJobs } = useJobStore()
+  const jobs = useJobStore((s) => s.jobs)
 
-  // Seed stores once with initial SSR data
-  useEffect(() => {
-    if (initialBins.length > 0) setBins(initialBins)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // 1. Fetch Bins + Clusters → merge real coordinates → seed map store
+  const { isLoading: isLoadingBins } = useQuery({
+    queryKey: ['bins-overview-initial', session?.accessToken ?? 'unauthenticated'],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const [binsRes, clustersRes] = await Promise.all([
+        api.get('data-analysis/api/v1/bins', { searchParams: { limit: 500 } })
+           .json<CoreListResponse<CoreBin>>(),
+        api.get('data-analysis/api/v1/clusters', { searchParams: { limit: 200 } })
+           .json<CoreListResponse<CoreCluster>>()
+           .catch(() => ({ data: [] as CoreCluster[] })),
+      ])
 
-  useEffect(() => {
-    if (initialJobs.length > 0) setJobs(initialJobs)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      const clusterCoords = new Map(
+        clustersRes.data
+          .filter(c => Number(c.lat) !== 0 && Number(c.lng) !== 0)
+          .map(c => [c.id, { lat: Number(c.lat), lng: Number(c.lng) }])
+      )
+
+      const payload: BinUpdatePayload[] = binsRes.data.map(raw => {
+        const bin = normaliseBin(raw)
+        const lat = bin.lat || clusterCoords.get(raw.cluster_id)?.lat || 0
+        const lng = bin.lng || clusterCoords.get(raw.cluster_id)?.lng || 0
+        return {
+          bin_id:                bin.bin_id,
+          cluster_id:            bin.cluster_id,
+          cluster_name:          bin.cluster_name,
+          zone_id:               bin.zone_id,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          waste_category:        bin.waste_category as any,
+          waste_category_colour: bin.waste_category_colour,
+          fill_level_pct:        bin.fill_level_pct ?? 0,
+          status:                bin.status,
+          urgency_score:         bin.urgency_score,
+          estimated_weight_kg:   bin.estimated_weight_kg ?? 0,
+          battery_level_pct:     bin.battery_level_pct ?? 100,
+          predicted_full_at:     bin.predicted_full_at,
+          last_collected_at:     bin.last_collected_at,
+          fill_rate_pct_per_hour: 0,
+          has_active_job:        false,
+          collection_triggered:  false,
+          lat,
+          lng,
+        }
+      })
+
+      setBins(payload)
+      return payload
+    },
+  })
+
+  // 2. Fetch Jobs (for active jobs list)
+  const { isLoading: isLoadingJobs } = useQuery({
+    queryKey: ['jobs-overview-initial'],
+    queryFn: async () => {
+      const api = createClientApiClient(session?.accessToken)
+      const res = await api.get('api/v1/collection-jobs', { searchParams: { limit: 100 } }).json<{ data: any[] }>()
+      const payload = res.data as unknown as CollectionJob[]
+      setJobs(payload)
+      return payload
+    },
+    enabled: !!session?.accessToken,
+  })
 
   // Derived stats
-  const allBins        = useMemo(() => Array.from(bins.values()), [bins])
-  const allZones       = useMemo(() => Array.from(zoneStats.values()), [zoneStats])
-  const totalBins      = allBins.length
-  const urgentCount    = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
-  const activeJobs     = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
+  const allBins = useMemo(() => Array.from(bins.values()), [bins])
+  const allZones = useMemo(() => Array.from(zoneStats.values()), [zoneStats])
+  const totalBins = allBins.length
+  const urgentCount = allBins.filter((b) => b.status === 'urgent' || b.status === 'critical').length
+  const activeJobs = Array.from(jobs.values()).filter((j) => ACTIVE_STATES.has(j.state ?? 'CREATED')).length
   const activeVehicles = vehicles.size
 
   // Top 5 active jobs for the right column
@@ -75,7 +139,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
           </div>
         </CardHeader>
         <CardContent className="p-0 h-[calc(100%-3rem)]">
-          <MiniMap compact className="w-full h-full" />
+          <MiniMap className="w-full h-full" bins={allBins} />
         </CardContent>
       </Card>
 
@@ -114,7 +178,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
       {/* Row 3 — Zone Cards (3/5) + right column (2/5) */}
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Zone cards */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 space-y-4">
           {allZones.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {allZones.map((zone) => (
@@ -126,7 +190,7 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               ))}
             </div>
           ) : (
-            <Card className="rounded-xl shadow-sm h-full">
+            <Card className="rounded-xl shadow-sm">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">
                   Zone data will appear here once real-time updates arrive.
@@ -134,23 +198,8 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               </CardContent>
             </Card>
           )}
-        </div>
 
-        {/* Right column — Alerts + Active Jobs */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Alert Feed */}
-          <Card className="rounded-xl shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Recent Alerts
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              <AlertFeed limit={8} />
-            </CardContent>
-          </Card>
-
-          {/* Active Jobs preview */}
+          {/* Active Jobs moved here to fill free space */}
           <Card className="rounded-xl shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -167,24 +216,41 @@ export function OverviewClient({ initialBins, initialJobs }: OverviewClientProps
               {recentActiveJobs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No active jobs right now.</p>
               ) : (
-                recentActiveJobs.map((job) => (
-                  <Link
-                    key={job.job_id}
-                    href={`/dashboard/jobs`}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
-                  >
-                    <div>
-                      <span className="font-medium">{job.job_id.slice(0, 8)}…</span>
-                      <span className="ml-2 text-xs text-muted-foreground capitalize">
-                        {job.job_type} · {job.zone_name}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {recentActiveJobs.map((job) => (
+                    <Link
+                      key={job.job_id}
+                      href={`/dashboard/jobs`}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"
+                    >
+                      <div>
+                        <span className="font-medium">{job.job_id.slice(0, 8)}…</span>
+                        <span className="ml-2 text-xs text-muted-foreground capitalize">
+                          {job.job_type} · {job.zone_name}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
                       </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {(job.state ?? 'active').toLowerCase().replace(/_/g, ' ')}
-                    </span>
-                  </Link>
-                ))
+                    </Link>
+                  ))}
+                </div>
               )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column — Alerts + Active Jobs */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Alert Feed */}
+          <Card className="rounded-xl shadow-sm h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Recent Alerts
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-0 pb-0 h-[calc(100%-4rem)] overflow-y-auto">
+              <AlertFeed limit={12} />
             </CardContent>
           </Card>
         </div>

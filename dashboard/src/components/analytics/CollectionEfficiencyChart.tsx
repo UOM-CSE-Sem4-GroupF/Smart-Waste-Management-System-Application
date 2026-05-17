@@ -6,44 +6,43 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { ChartSkeleton } from './ChartSkeleton'
-import type { CollectionJob } from '@/types'
+import type { CollectionJob, CollectionJobListItem } from '@/types'
 
 interface CollectionEfficiencyChartProps {
-  jobs?:      CollectionJob[]
+  jobs?:      (CollectionJob | CollectionJobListItem)[]
   isLoading?: boolean
 }
 
 interface ChartPoint {
   date:    string
-  planned: number  // minutes (estimated from state transitions)
-  actual:  number  // minutes (actual_duration_minutes if available)
+  planned: number  // minutes
+  actual:  number  // minutes
 }
 
 export function CollectionEfficiencyChart({ jobs, isLoading }: CollectionEfficiencyChartProps) {
   const chartData = useMemo<ChartPoint[]>(() => {
     if (!jobs || jobs.length === 0) return []
 
-    // Include all non-cancelled jobs — completed ones have duration; active ones show bins progress
-    const active = jobs.filter(
-      (j) => j.state !== 'CANCELLED',
-    )
-    if (active.length === 0) return []
-
-    return active
+    return jobs
+      .filter((j) => j.state === 'COMPLETED' || j.state === 'AUDIT_RECORDED')
       .slice(-14)
       .map((job, idx) => {
-        const planned = job.total_bins ?? 10
-        // For completed jobs prefer duration_minutes; otherwise derive from bins ratio
-        const actual = job.duration_minutes != null
-          ? job.duration_minutes
-          : job.bins_collected != null && planned > 0
-            ? Math.round((job.bins_collected / planned) * planned * 3)
-            : planned * 3
-        return {
-          date:    `Job ${idx + 1}`,
-          planned: planned * 3,  // 3 min per bin estimate
-          actual,
-        }
+        const created = (job as CollectionJobListItem).created_at
+        const date = created
+          ? new Date(created).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+          : `Job ${idx + 1}`
+
+        const totalBins = (job as CollectionJob).total_bins
+          ?? (job as CollectionJobListItem).bins_total
+          ?? 10
+        const planned = totalBins * 3
+
+        // CollectionJobListItem uses actual_duration_min; CollectionJob uses duration_minutes
+        const actual = (job as CollectionJobListItem).actual_duration_min
+          ?? (job as CollectionJob).duration_minutes
+          ?? planned
+
+        return { date, planned, actual: Math.round(actual) }
       })
   }, [jobs])
 

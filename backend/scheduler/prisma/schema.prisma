@@ -12,6 +12,7 @@ datasource db {
 
 // ── F3 tables owned or read by the scheduler ───────────────────────────────
 
+
 model Driver {
   id                  String   @id @db.VarChar(20)
   name                String   @db.VarChar(100)

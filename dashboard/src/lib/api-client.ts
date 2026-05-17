@@ -24,8 +24,11 @@ export async function createApiClient() {
  * Use this inside TanStack Query queryFn callbacks in Client Components.
  */
 export function createClientApiClient(token?: string) {
+  // Always use the explicit base URL to bypass flaky Next.js dev server rewrites
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+  
   return ky.create({
-    prefix: typeof window === 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:30080') : '/',
+    prefix: baseUrl,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },

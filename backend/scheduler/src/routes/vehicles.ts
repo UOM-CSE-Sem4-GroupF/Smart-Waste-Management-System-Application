@@ -1,6 +1,47 @@
 import { FastifyInstance } from 'fastify';
 import { vehicles, drivers, activeJobs, getVehicleType } from '../store';
 import { ActiveVehiclesResponse } from '../types';
+import * as db from '../db/queries';
+
+const VALID_VEHICLE_TYPES = new Set(['small', 'medium', 'large', 'extra_large']);
+const VALID_VEHICLE_STATUSES = new Set(['available', 'dispatched', 'maintenance', 'decommissioned']);
+
+function normaliseVehicleType(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  const lower = raw.toLowerCase().replace(/\s+/g, '_');
+  const aliases: Record<string, string> = {
+    garbage_truck: 'medium',
+    compactor: 'large',
+    mini_truck: 'small',
+    electric_van: 'small',
+    tractor: 'medium',
+    truck: 'medium',
+    lorry: 'large',
+    large_truck: 'large',
+    medium_truck: 'medium',
+    small_van: 'small',
+  };
+  return aliases[lower] ?? lower;
+}
+
+function vehicleTypeLabel(vehicle_type: string): string {
+  return vehicle_type;
+}
+
+function toVehicleResponse(v: db.DbVehicle, driver?: db.DbDriver | null) {
+  return {
+    vehicle_id:   v.id,
+    vehicle_type: vehicleTypeLabel(v.vehicle_type),
+    capacity_kg:  Number(v.max_cargo_kg),
+    max_cargo_kg: Number(v.max_cargo_kg),
+    registration: v.registration,
+    year:         null,
+    status:       v.active ? v.status : 'inactive',
+    active:       v.active,
+    driver_id:    driver?.id ?? v.driver_id ?? null,
+    driver_name:  driver?.name ?? null,
+  };
+}
 
 export default async function vehiclesRoutes(app: FastifyInstance) {
   // GET /api/v1/vehicles/active

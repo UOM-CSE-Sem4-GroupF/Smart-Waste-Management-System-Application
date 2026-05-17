@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { Bin, ZoneSummary, BinHistory, ZoneStatsPayload } from '@/types'
-import type { ActiveVehicle, VehiclePositionPayload } from '@/types'
-import type { CollectionJobListItem } from '@/types'
+import type { ActiveVehicle, Driver, VehicleAsset, VehiclePositionPayload } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Static mock data — exported so MockSocketInjector can use the same records
@@ -37,38 +36,9 @@ export const MOCK_BINS: Bin[] = [
   { bin_id: 'BIN-020', cluster_id: 'CLU-I', cluster_name: 'Uyanwatta West',    zone_id: 3, zone_name: 'Uyanwatta',      lat: 6.7984, lng: 79.8957, address: '61 Panadura Road',        fill_level_pct: 68, status: 'monitor',  urgency_score: 0.68, estimated_weight_kg: 34.0, waste_category: 'food_waste', waste_category_colour: '#f97316', predicted_full_at: new Date(NOW + 7 * 3600_000).toISOString(),  battery_level_pct: 72, last_reading_at: new Date(NOW - 750_000).toISOString(),   last_collected_at: new Date(NOW - 42 * 3600_000).toISOString(), has_active_job: false },
 ]
 
-export const MOCK_VEHICLE_POSITIONS: VehiclePositionPayload[] = [
-  { vehicle_id: 'VEH-001', driver_id: 'DRV-001', lat: 6.7978, lng: 79.8860, speed_kmh: 22, heading_degrees: 45,  job_id: 'JOB-001', zone_id: 1, current_cluster: 'CLU-B', next_cluster: 'CLU-C', bins_collected: 3, bins_total: 7, cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, weight_limit_warning: false },
-  { vehicle_id: 'VEH-002', driver_id: 'DRV-002', lat: 6.7913, lng: 79.8895, speed_kmh: 18, heading_degrees: 180, job_id: 'JOB-002', zone_id: 2, current_cluster: 'CLU-E', next_cluster: 'CLU-F', bins_collected: 5, bins_total: 7, cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, weight_limit_warning: false },
-  { vehicle_id: 'VEH-003', driver_id: 'DRV-003', lat: 6.8006, lng: 79.8933, speed_kmh: 0,  heading_degrees: 270, job_id: 'JOB-003', zone_id: 3, current_cluster: 'CLU-G', next_cluster: 'CLU-H', bins_collected: 1, bins_total: 6, cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  weight_limit_warning: false },
-]
+// Vehicle and Driver mock data removed
 
-export const MOCK_VEHICLES_REST: ActiveVehicle[] = [
-  { vehicle_id: 'VEH-001', vehicle_type: 'compactor', driver_id: 'DRV-001', driver_name: 'Amal Perera',    job_id: 'JOB-001', job_type: 'routine',   zone_id: 1, state: 'IN_PROGRESS', current_lat: 6.7978, current_lng: 79.8860, last_seen_at: new Date(NOW - 60_000).toISOString(),   cargo_weight_kg: 108, cargo_limit_kg: 500, cargo_utilisation_pct: 21.6, bins_collected: 3, bins_total: 7 },
-  { vehicle_id: 'VEH-002', vehicle_type: 'compactor', driver_id: 'DRV-002', driver_name: 'Nimal Silva',    job_id: 'JOB-002', job_type: 'emergency', zone_id: 2, state: 'IN_PROGRESS', current_lat: 6.7913, current_lng: 79.8895, last_seen_at: new Date(NOW - 30_000).toISOString(),   cargo_weight_kg: 196, cargo_limit_kg: 500, cargo_utilisation_pct: 39.2, bins_collected: 5, bins_total: 7 },
-  { vehicle_id: 'VEH-003', vehicle_type: 'mini_truck', driver_id: 'DRV-003', driver_name: 'Kasun Fernando', job_id: 'JOB-003', job_type: 'routine',   zone_id: 3, state: 'IN_PROGRESS', current_lat: 6.8006, current_lng: 79.8933, last_seen_at: new Date(NOW - 90_000).toISOString(),   cargo_weight_kg: 42,  cargo_limit_kg: 500, cargo_utilisation_pct: 8.4,  bins_collected: 1, bins_total: 6 },
-]
 
-export const MOCK_JOBS: CollectionJobListItem[] = [
-  // Active jobs
-  { id: 'JOB-001', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'IN_PROGRESS',    priority: 2, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A','CLU-B','CLU-C'], planned_weight_kg: 280,  actual_weight_kg: 108,  bins_total: 7, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 2   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-002', job_type: 'emergency', zone_id: 2, zone_name: 'Moratuwa South',  state: 'IN_PROGRESS',    priority: 1, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E','CLU-F'], planned_weight_kg: 320,  actual_weight_kg: 196,  bins_total: 7, bins_collected: 5, bins_skipped: 0, created_at: new Date(NOW - 3   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-003', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'DISPATCHED',     priority: 3, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-G','CLU-H','CLU-I'], planned_weight_kg: 240,  actual_weight_kg: 42,   bins_total: 6, bins_collected: 1, bins_skipped: 0, created_at: new Date(NOW - 1   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  // Completed jobs (feed CollectionEfficiencyChart + VehicleUtilisationChart)
-  { id: 'JOB-004', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A'],                planned_weight_kg: 150,  actual_weight_kg: 143,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 28  * 3600_000).toISOString(), completed_at: new Date(NOW - 24  * 3600_000).toISOString(), duration_minutes: 95  },
-  { id: 'JOB-005', job_type: 'routine',   zone_id: 2, zone_name: 'Moratuwa South',  state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E'],         planned_weight_kg: 200,  actual_weight_kg: 187,  bins_total: 5, bins_collected: 5, bins_skipped: 0, created_at: new Date(NOW - 50  * 3600_000).toISOString(), completed_at: new Date(NOW - 46  * 3600_000).toISOString(), duration_minutes: 78  },
-  { id: 'JOB-006', job_type: 'emergency', zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 1, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-B'],                planned_weight_kg: 120,  actual_weight_kg: 115,  bins_total: 3, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 72  * 3600_000).toISOString(), completed_at: new Date(NOW - 70  * 3600_000).toISOString(), duration_minutes: 42  },
-  { id: 'JOB-007', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'COMPLETED',      priority: 2, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-G','CLU-H'],         planned_weight_kg: 180,  actual_weight_kg: 172,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 96  * 3600_000).toISOString(), completed_at: new Date(NOW - 92  * 3600_000).toISOString(), duration_minutes: 110 },
-  { id: 'JOB-008', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-A','CLU-C'],         planned_weight_kg: 160,  actual_weight_kg: 154,  bins_total: 4, bins_collected: 4, bins_skipped: 0, created_at: new Date(NOW - 120 * 3600_000).toISOString(), completed_at: new Date(NOW - 116 * 3600_000).toISOString(), duration_minutes: 88  },
-  { id: 'JOB-009', job_type: 'routine',   zone_id: 2, zone_name: 'Moratuwa South',  state: 'AUDIT_RECORDED', priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-F'],                planned_weight_kg: 100,  actual_weight_kg: 94,   bins_total: 3, bins_collected: 3, bins_skipped: 0, created_at: new Date(NOW - 144 * 3600_000).toISOString(), completed_at: new Date(NOW - 140 * 3600_000).toISOString(), duration_minutes: 55  },
-  { id: 'JOB-010', job_type: 'emergency', zone_id: 3, zone_name: 'Uyanwatta',       state: 'COMPLETED',      priority: 1, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-I'],                planned_weight_kg: 80,   actual_weight_kg: 76,   bins_total: 2, bins_collected: 2, bins_skipped: 0, created_at: new Date(NOW - 168 * 3600_000).toISOString(), completed_at: new Date(NOW - 167 * 3600_000).toISOString(), duration_minutes: 35  },
-  { id: 'JOB-011', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'COMPLETED',      priority: 3, assigned_vehicle_id: 'VEH-001', assigned_driver_id: 'DRV-001', clusters: ['CLU-A','CLU-B','CLU-C'], planned_weight_kg: 290,  actual_weight_kg: 261,  bins_total: 7, bins_collected: 6, bins_skipped: 1, created_at: new Date(NOW - 192 * 3600_000).toISOString(), completed_at: new Date(NOW - 188 * 3600_000).toISOString(), duration_minutes: 125 },
-  // Escalated job
-  { id: 'JOB-012', job_type: 'emergency', zone_id: 2, zone_name: 'Moratuwa South',  state: 'ESCALATED',      priority: 1, assigned_vehicle_id: 'VEH-002', assigned_driver_id: 'DRV-002', clusters: ['CLU-D','CLU-E','CLU-F'], planned_weight_kg: 340,  actual_weight_kg: null, bins_total: 8, bins_collected: 2, bins_skipped: 1, created_at: new Date(NOW - 4   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  // Cancelled / Failed jobs
-  { id: 'JOB-013', job_type: 'routine',   zone_id: 3, zone_name: 'Uyanwatta',       state: 'CANCELLED',      priority: 3, assigned_vehicle_id: null,       assigned_driver_id: null,       clusters: ['CLU-H','CLU-I'],         planned_weight_kg: 130,  actual_weight_kg: null, bins_total: 3, bins_collected: 0, bins_skipped: 0, created_at: new Date(NOW - 6   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-  { id: 'JOB-014', job_type: 'routine',   zone_id: 1, zone_name: 'Katubedda',       state: 'FAILED',         priority: 2, assigned_vehicle_id: 'VEH-003', assigned_driver_id: 'DRV-003', clusters: ['CLU-C'],                planned_weight_kg: 90,   actual_weight_kg: null, bins_total: 2, bins_collected: 0, bins_skipped: 0, created_at: new Date(NOW - 8   * 3600_000).toISOString(), completed_at: null,                                                       duration_minutes: null },
-]
 
 const ZONE_SUMMARIES: Record<number, ZoneSummary> = {
   1: { zone_id: 1, zone_name: 'Katubedda',      total_bins: 7, total_clusters: 3, status_breakdown: { normal: 2, monitor: 1, urgent: 2, critical: 1, offline: 1 }, category_breakdown: { food_waste: { total_bins: 2, avg_fill_pct: 76, total_weight_kg: 76.5, urgent_count: 2 }, paper: { total_bins: 1, avg_fill_pct: 45, total_weight_kg: 22.5, urgent_count: 0 }, general: { total_bins: 1, avg_fill_pct: 95, total_weight_kg: 47.5, urgent_count: 1 }, plastic: { total_bins: 1, avg_fill_pct: 58, total_weight_kg: 29.0, urgent_count: 0 }, glass: { total_bins: 1, avg_fill_pct: 22, total_weight_kg: 11.0, urgent_count: 0 } }, total_estimated_weight_kg: 186.5, active_jobs_count: 1, last_updated: new Date(NOW - 300_000).toISOString() },
@@ -205,160 +175,11 @@ function makeBinHistory(binId: string): BinHistory {
 }
 
 export const handlers = [
-  http.get('/api/metadata/zones', () => {
-    return HttpResponse.json({ data: MOCK_METADATA_ZONES, total: MOCK_METADATA_ZONES.length })
-  }),
+  // api/metadata/... handlers removed — BinsTab now calls data-analysis/api/v1/... (Core API via Kong)
+  // Mock data arrays above kept for reference.
 
-  http.post('/api/metadata/city-zones', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = {
-      id: MOCK_METADATA_ZONES.length ? Math.max(...MOCK_METADATA_ZONES.map((z) => z.id)) + 1 : 1,
-      name: String(body.name),
-      code: String(body.code),
-      active: true,
-    }
-    MOCK_METADATA_ZONES.push(zone)
-    return HttpResponse.json({ data: zone }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/city-zones/:zoneId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = MOCK_METADATA_ZONES.find((z) => z.id === Number(params.zoneId))
-    if (!zone) return HttpResponse.json({ message: 'Zone not found' }, { status: 404 })
-    Object.assign(zone, body)
-    return HttpResponse.json({ data: zone })
-  }),
-
-  http.delete('/api/metadata/city-zones/:zoneId', ({ params }) => {
-    const index = MOCK_METADATA_ZONES.findIndex((z) => z.id === Number(params.zoneId))
-    if (index >= 0) MOCK_METADATA_ZONES.splice(index, 1)
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  http.get('/api/metadata/clusters', ({ request }) => {
-    const url = new URL(request.url)
-    const zoneId = url.searchParams.get('zone_id')
-    let data = metadataClusters()
-    if (zoneId) data = data.filter((cluster) => cluster.zone_id === Number(zoneId))
-    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
-  }),
-
-  http.post('/api/metadata/clusters', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const zone = MOCK_METADATA_ZONES.find((item) => item.id === Number(body.zone_id))
-    const cluster = {
-      id: String(body.id),
-      zone_id: Number(body.zone_id),
-      name: String(body.name),
-      lat: Number(body.lat ?? 0),
-      lng: Number(body.lng ?? 0),
-      address: String(body.address ?? ''),
-      cluster_type: String(body.cluster_type ?? 'public_space'),
-      active: true,
-      zone: {
-        id: Number(body.zone_id),
-        name: zone?.name ?? `Zone ${body.zone_id}`,
-        code: zone?.code ?? `ZONE-${body.zone_id}`,
-      },
-      bins: [],
-    }
-    EXTRA_METADATA_CLUSTERS.push(cluster)
-    return HttpResponse.json({ data: cluster }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/clusters/:clusterId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const cluster = EXTRA_METADATA_CLUSTERS.find((item: MetadataCluster) => item.id === String(params.clusterId))
-    if (cluster) Object.assign(cluster, body)
-    return HttpResponse.json({ data: { id: params.clusterId, ...body } })
-  }),
-
-  http.delete('/api/metadata/clusters/:clusterId', ({ params }) => {
-    const index = EXTRA_METADATA_CLUSTERS.findIndex((item: MetadataCluster) => item.id === String(params.clusterId))
-    if (index >= 0) EXTRA_METADATA_CLUSTERS.splice(index, 1)
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  http.get('/api/metadata/waste-categories', () => {
-    return HttpResponse.json({ data: MOCK_WASTE_CATEGORIES })
-  }),
-
-  http.get('/api/metadata/bins', ({ request }) => {
-    const url = new URL(request.url)
-    const zoneId = url.searchParams.get('zone_id')
-    const clusterId = url.searchParams.get('cluster_id')
-    let data = metadataBins()
-    if (zoneId) data = data.filter((bin) => bin.cluster.zone_id === Number(zoneId))
-    if (clusterId) data = data.filter((bin) => bin.cluster_id === clusterId)
-    return HttpResponse.json({ data, pagination: { page: 1, limit: 50, total: data.length, pages: 1 } })
-  }),
-
-  http.post('/api/metadata/bins', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    const cluster = metadataClusters().find((item: MetadataCluster) => item.id === String(body.cluster_id))
-    const category = MOCK_WASTE_CATEGORIES.find((item) => item.id === Number(body.waste_category_id)) ?? MOCK_WASTE_CATEGORIES[4]
-    const bin = {
-      bin_id: String(body.id),
-      cluster_id: String(body.cluster_id),
-      cluster_name: cluster?.name ?? String(body.cluster_id),
-      zone_id: cluster?.zone_id ?? 1,
-      zone_name: cluster?.zone.name ?? 'Zone 1',
-      lat: Number(body.lat ?? cluster?.lat ?? 0),
-      lng: Number(body.lng ?? cluster?.lng ?? 0),
-      address: String(body.address ?? cluster?.address ?? ''),
-      fill_level_pct: 0,
-      status: 'normal' as const,
-      urgency_score: 0,
-      estimated_weight_kg: 0,
-      waste_category: category.name as typeof MOCK_BINS[number]['waste_category'],
-      waste_category_colour: category.colour_code,
-      predicted_full_at: null,
-      battery_level_pct: 100,
-      last_reading_at: new Date().toISOString(),
-      last_collected_at: null,
-      has_active_job: false,
-    }
-    MOCK_BINS.push(bin)
-    return HttpResponse.json({ data: metadataBins().find((item) => item.id === bin.bin_id) }, { status: 201 })
-  }),
-
-  http.patch('/api/metadata/bins/:binId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ data: { id: params.binId, ...body } })
-  }),
-
-  http.delete('/api/metadata/bins/:binId', () => {
-    return new HttpResponse(null, { status: 204 })
-  }),
-
-  // GET /api/v1/bins — supports ?zone_id= ?status= ?waste_category= ?page= ?limit=
-  http.get('/api/v1/bins', ({ request }) => {
-    const url      = new URL(request.url)
-    const zoneId   = url.searchParams.get('zone_id')
-    const status   = url.searchParams.get('status')
-    const category = url.searchParams.get('waste_category')
-    const page     = Math.max(1, Number(url.searchParams.get('page')  ?? 1))
-    const limit    = Math.max(1, Number(url.searchParams.get('limit') ?? 25))
-    let filtered   = MOCK_BINS
-    if (zoneId)   filtered = filtered.filter((b) => b.zone_id       === Number(zoneId))
-    if (status)   filtered = filtered.filter((b) => b.status        === status)
-    if (category) filtered = filtered.filter((b) => b.waste_category === category)
-    const total = filtered.length
-    const data  = filtered.slice((page - 1) * limit, page * limit)
-    return HttpResponse.json({ data, total, page, limit })
-  }),
-
-  // GET /api/v1/bins/:binId
-  http.get('/api/v1/bins/:binId', ({ params }) => {
-    const bin = MOCK_BINS.find((b) => b.bin_id === params.binId)
-    if (!bin) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
-    return HttpResponse.json({
-      ...bin,
-      recent_collections: [
-        { job_id: 'JOB-004', collected_at: new Date(Date.now() - 48 * 3600_000).toISOString(), driver_id: 'DRV-001', fill_level_at_collection: 87, actual_weight_kg: 43.5, job_type: 'routine' },
-      ],
-    })
-  }),
+  // GET /api/v1/bins — unwired: falls through to real bin-status service
+  // (MOCK_BINS data kept above for reference; re-wire by restoring these handlers)
 
   // GET /api/v1/bins/:binId/history
   http.get('/api/v1/bins/:binId/history', ({ params }) => {
@@ -378,31 +199,8 @@ export const handlers = [
     return HttpResponse.json(summary)
   }),
 
-  // GET /api/v1/collection-jobs — supports ?state= (comma-separated), ?zone_id=, ?job_type=
-  http.get('/api/v1/collection-jobs', ({ request }) => {
-    const url      = new URL(request.url)
-    const stateRaw = url.searchParams.get('state')
-    const zoneId   = url.searchParams.get('zone_id')
-    const jobType  = url.searchParams.get('job_type')
-    const states   = stateRaw ? stateRaw.split(',').map((s) => s.trim()) : null
-    let filtered   = MOCK_JOBS
-    if (states)  filtered = filtered.filter((j) => states.includes(j.state))
-    if (zoneId)  filtered = filtered.filter((j) => j.zone_id  === Number(zoneId))
-    if (jobType) filtered = filtered.filter((j) => j.job_type === jobType)
-    return HttpResponse.json({ data: filtered, total: filtered.length, page: 1 })
-  }),
+  // collection-jobs handlers removed — real orchestrator API at /api/v1/collection-jobs
 
-  // GET /api/v1/collection-jobs/:jobId
-  http.get('/api/v1/collection-jobs/:jobId', ({ params }) => {
-    const job = MOCK_JOBS.find((j) => j.id === params.jobId)
-    if (!job) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
-    return HttpResponse.json(job)
-  }),
-
-  // GET /api/v1/vehicles/active
-  http.get('/api/v1/vehicles/active', () => {
-    return HttpResponse.json({ vehicles: MOCK_VEHICLES_REST })
-  }),
 
   // GET /api/v1/ml/waste-generation
   http.get('/api/v1/ml/waste-generation', () => {
@@ -479,39 +277,8 @@ export const handlers = [
     return HttpResponse.json({ bin_id: params.binId, ...body })
   }),
 
-  // GET /api/v1/vehicles
-  http.get('/api/v1/vehicles', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
+  // Vehicle and Driver handlers removed — now calling real backend services
 
-  // POST /api/v1/vehicles
-  http.post('/api/v1/vehicles', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/vehicles/:vehicleId
-  http.patch('/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
-  }),
-
-  // GET /api/v1/drivers
-  http.get('/api/v1/drivers', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
-
-  // POST /api/v1/drivers
-  http.post('/api/v1/drivers', async ({ request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
-  }),
-
-  // PATCH /api/v1/drivers/:driverId
-  http.patch('/api/v1/drivers/:driverId', async ({ params, request }) => {
-    const body = await request.json() as Record<string, unknown>
-    return HttpResponse.json({ driver_id: params.driverId, ...body })
-  }),
 
   // GET /api/v1/collections/:id/progress
   http.get('/api/v1/collections/:id/progress', ({ params }) => {

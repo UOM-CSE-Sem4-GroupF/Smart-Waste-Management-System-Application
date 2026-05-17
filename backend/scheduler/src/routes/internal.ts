@@ -103,11 +103,16 @@ export default async function internalRoutes(app: FastifyInstance) {
     });
     let route_plan_id: string;
     try {
+      const enrichedWaypoints = routeResult.waypoints.map(wp => {
+        const cluster = clusters.find(c => c.cluster_id === wp.cluster_id);
+        return { ...wp, lat: cluster?.lat, lng: cluster?.lng, cluster_name: cluster?.cluster_name ?? wp.cluster_id };
+      });
       route_plan_id = await coreApi.createRoutePlan({
         vehicle_id:           vehicle.vehicle_id,
         zone_id:              parsedZoneId,
         route_type:           'emergency',
-        waypoints:            routeResult.waypoints,
+        waypoints:            enrichedWaypoints,
+        polyline:             routeResult.polyline,
         total_clusters:       clusters.length,
         total_bins:           bins_to_collect.length,
         estimated_weight_kg:  total_estimated_weight_kg,

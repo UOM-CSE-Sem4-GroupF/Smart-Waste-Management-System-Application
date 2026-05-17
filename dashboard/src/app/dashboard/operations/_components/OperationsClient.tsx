@@ -1,29 +1,14 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BinsTab } from './BinsTab'
-import { VehiclesTab } from './VehiclesTab'
-import { DriversTab } from './DriversTab'
-import { AccountsTab } from './AccountsTab'
 
-interface Props {
-  zoneOptions:    Array<{ id: number; name: string }>
-  vehicleOptions: Array<{ vehicle_id: string; vehicle_type: string }>
-  driverOptions:  Array<{ driver_id: string; name: string }>
-}
-
-export function OperationsClient({ zoneOptions, vehicleOptions, driverOptions }: Props) {
-  const { data: session } = useSession()
-  const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? []
-  const isAdmin = roles.includes('admin')
-
+export function OperationsClient({ zoneOptions, vehicleOptions, driverOptions }: any) {
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Operations</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Management panel — add, update, or deactivate assets in the SWMS.
+          Management panel — (Simplified Mode)
         </p>
       </div>
 
@@ -32,26 +17,19 @@ export function OperationsClient({ zoneOptions, vehicleOptions, driverOptions }:
           <TabsTrigger value="bins">Bins</TabsTrigger>
           <TabsTrigger value="vehicles">Vehicles</TabsTrigger>
           <TabsTrigger value="drivers">Drivers</TabsTrigger>
-          {isAdmin && <TabsTrigger value="accounts">Accounts</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="bins" className="mt-4">
-          <BinsTab zoneOptions={zoneOptions} />
+        <TabsContent value="bins" className="mt-4 p-4 rounded-lg border bg-card">
+          <p className="text-sm text-muted-foreground">Bin management is currently being rebuilt for stability.</p>
         </TabsContent>
 
-        <TabsContent value="vehicles" className="mt-4">
-          <VehiclesTab />
+        <TabsContent value="vehicles" className="mt-4 p-4 rounded-lg border bg-card">
+          <p className="text-sm text-muted-foreground">Vehicle management is currently being rebuilt for stability.</p>
         </TabsContent>
 
-        <TabsContent value="drivers" className="mt-4">
-          <DriversTab zoneOptions={zoneOptions} vehicleOptions={vehicleOptions} />
+        <TabsContent value="drivers" className="mt-4 p-4 rounded-lg border bg-card">
+          <p className="text-sm text-muted-foreground">Driver management is currently being rebuilt for stability.</p>
         </TabsContent>
-
-        {isAdmin && (
-          <TabsContent value="accounts" className="mt-4">
-            <AccountsTab zoneOptions={zoneOptions} driverOptions={driverOptions} />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   )

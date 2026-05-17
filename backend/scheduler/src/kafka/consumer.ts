@@ -67,26 +67,11 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
     vehicle.lng = lng;
   }
 
-  // Only track vehicles with an active or dispatched job
-  const activeJob = Array.from(activeJobs.values()).find(
-    job => job.assigned_vehicle_id === vehicle_id &&
-           (job.state === 'IN_PROGRESS' || job.state === 'DISPATCHED')
-  );
-
-  if (!activeJob) {
-    slog('DEBUG', `handleVehicleLocation: no active/dispatched job for ${vehicle_id} — dropping`, { vehicle_id, known_jobs: activeJobs.size });
-    return;
-  }
-
-  slog('DEBUG', `handleVehicleLocation: found active job ${activeJob.job_id} for ${vehicle_id}`, {
-    vehicle_id, job_id: activeJob.job_id, job_state: activeJob.state, zone_id: activeJob.zone_id,
-  });
-
-  // Gap 5: movement deduplication — skip if < 10m moved AND < 30s elapsed
+  // Movement deduplication — applies to all vehicles regardless of job state
   const now = Date.now();
   const last = lastPublished.get(vehicle_id);
   if (last) {
-    const movedKm  = haversineKm(last.lat, last.lng, lat, lng);
+    const movedKm   = haversineKm(last.lat, last.lng, lat, lng);
     const elapsedMs = now - last.ts;
     if (movedKm < 0.01 && elapsedMs < 30_000) {
       slog('DEBUG', `handleVehicleLocation: dedup skip for ${vehicle_id} — moved ${(movedKm * 1000).toFixed(1)}m in ${elapsedMs}ms`, {
@@ -98,6 +83,43 @@ async function handleVehicleLocation(event: VehicleLocationEvent): Promise<void>
       vehicle_id, moved_m: (movedKm * 1000).toFixed(1), elapsed_ms: elapsedMs,
     });
   }
+
+  // Find active or dispatched job for this vehicle
+  const activeJob = Array.from(activeJobs.values()).find(
+    job => job.assigned_vehicle_id === vehicle_id &&
+           (job.state === 'IN_PROGRESS' || job.state === 'DISPATCHED')
+  );
+
+  if (!activeJob) {
+    // No active job — publish idle position so the map still shows the vehicle
+    slog('DEBUG', `handleVehicleLocation: no active job for ${vehicle_id} — publishing idle position`, {
+      vehicle_id, lat, lng, known_jobs: activeJobs.size,
+    });
+    const idleUpdate: VehiclePositionUpdate = {
+      event_type:            'vehicle:position',
+      vehicle_id,
+      driver_id,
+      job_id:                '',
+      zone_id:               vehicle?.zone_id ?? 0,
+      lat,
+      lng,
+      speed_kmh,
+      heading_degrees,
+      accuracy_m:            0,
+      bins_collected:        0,
+      bins_total:            0,
+      cargo_weight_kg:       0,
+      cargo_limit_kg:        vehicle?.max_cargo_kg ?? 0,
+      cargo_utilisation_pct: 0,
+    };
+    await publish(vehicle_id, idleUpdate, timestamp);
+    lastPublished.set(vehicle_id, { lat, lng, ts: now });
+    return;
+  }
+
+  slog('DEBUG', `handleVehicleLocation: found active job ${activeJob.job_id} for ${vehicle_id}`, {
+    vehicle_id, job_id: activeJob.job_id, job_state: activeJob.state, zone_id: activeJob.zone_id,
+  });
 
   // Gap 6: DISPATCHED — vehicle assigned but job not yet started, send minimal update
   if (activeJob.state === 'DISPATCHED') {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,7 +64,10 @@ export function ZoneFormDialog({ open, onClose, zone, value, onChange, onSubmit,
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{zone ? `Edit ${zone.name}` : 'Create Zone'}</DialogTitle>
+          <DialogTitle>{zone ? `Edit Zone ${zone.id}` : 'Create New Zone'}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Define the zone name and its geographic boundaries.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <ZoneFormFields value={value} onChange={onChange} />

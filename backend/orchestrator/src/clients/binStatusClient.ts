@@ -3,6 +3,8 @@ import { getClustersForZone } from './coreApiClient';
 
 const BASE = process.env.BIN_STATUS_URL ?? 'http://bin-status:3002';
 const SERVICE_HEADER = { 'X-Service-Name': 'workflow-orchestrator', 'Content-Type': 'application/json' };
+// No Content-Type for requests without a body — Fastify 400s on empty JSON body
+const SERVICE_HEADER_NO_BODY = { 'X-Service-Name': 'workflow-orchestrator' };
 
 const slog = (level: string, msg: string, extra?: Record<string, unknown>): void => {
   process.stdout.write(JSON.stringify({
@@ -28,7 +30,7 @@ export async function getClusterSnapshot(cluster_id: string): Promise<ClusterSna
   try {
     const res = await timedFetch('getClusterSnapshot', `${BASE}/internal/clusters/${cluster_id}/snapshot`, {
       method: 'POST',
-      headers: SERVICE_HEADER,
+      headers: SERVICE_HEADER_NO_BODY,
     });
 
     if (!res.ok) {

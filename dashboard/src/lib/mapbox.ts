@@ -18,3 +18,7 @@ export function getMapboxStyle(theme: 'light' | 'dark' | string): string {
 /** University of Moratuwa fallback coordinates [lng, lat] */
 export const DEFAULT_CENTER: [number, number] = [79.8864, 6.7967]
 export const DEFAULT_ZOOM = 13
+
+/** Depot / vehicle yard coordinates */
+export const DEPOT_LAT = 6.777656
+export const DEPOT_LNG = 79.883930

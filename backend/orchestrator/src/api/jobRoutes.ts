@@ -3,6 +3,12 @@ import { JobCompleteRequest } from '../types';
 import { getJob, getJobs, getStats, getStateHistory, getStepLog, insertJob } from '../db/queries';
 import { executeEmergencyWorkflow, executeRoutineWorkflow, completeJob, cancelJob, handleWorkflowFailure } from '../core/orchestrator';
 
+const slog = (level: string, msg: string, extra?: Record<string, unknown>): void => {
+  process.stdout.write(JSON.stringify({
+    timestamp: new Date().toISOString(), level, service: 'orchestrator:routes', message: msg, ...extra,
+  }) + '\n');
+};
+
 const err404 = (id: string) => ({ error: 'RESOURCE_NOT_FOUND', message: `Job ${id} not found`, timestamp: new Date().toISOString() });
 
 export default async function jobRoutes(app: FastifyInstance): Promise<void> {
@@ -39,20 +45,33 @@ export default async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: { reason?: string } }>(
     '/api/v1/collection-jobs/:id/cancel',
     async (req, reply) => {
-      const job = await getJob(req.params.id);
-      if (!job) return reply.code(404).send(err404(req.params.id));
+      const { id } = req.params;
+      const reason = req.body?.reason ?? 'Cancelled by supervisor';
+      slog('INFO', `cancelJob requested`, { job_id: id, reason });
 
-      if (job.state === 'IN_PROGRESS') {
-        return reply.code(409).send({
-          error:   'CANNOT_CANCEL_IN_PROGRESS',
-          message: 'Cannot cancel a job that is currently IN_PROGRESS — driver is already collecting',
-        });
+      const job = await getJob(id);
+      if (!job) {
+        slog('WARN', `cancelJob: job not found`, { job_id: id });
+        return reply.code(404).send(err404(id));
       }
 
-      const ok = await cancelJob(job, req.body?.reason ?? 'Cancelled by supervisor');
+      slog('INFO', `cancelJob: job found`, { job_id: id, state: job.state, job_type: job.job_type, zone_id: job.zone_id });
+
+      let ok: boolean;
+      try {
+        ok = await cancelJob(job, reason);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        slog('ERROR', `cancelJob: orchestrator threw — ${msg}`, { job_id: id, state: job.state, error: msg });
+        return reply.code(500).send({ error: 'CANCEL_FAILED', message: msg });
+      }
+
       if (!ok) {
+        slog('WARN', `cancelJob: orchestrator returned false — invalid state`, { job_id: id, state: job.state });
         return reply.code(409).send({ error: 'INVALID_STATE', message: `Cannot cancel job in state ${job.state}` });
       }
+
+      slog('INFO', `cancelJob: success`, { job_id: id, new_state: job.state });
       return { job_id: job.job_id, state: job.state };
     },
   );
