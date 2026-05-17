@@ -100,6 +100,73 @@ export default async function binsRoutes(app: FastifyInstance) {
   });
 
   // =========================================================================
+  // GET /api/v1/bins/anomalies
+  // =========================================================================
+  app.get('/api/v1/bins/anomalies', async (req, reply) => {
+    if (!requireAuth(req, reply)) return;
+
+    try {
+      const LOW_BATTERY_THRESHOLD = 20;
+      const allBins = store.getAllBins();
+
+      const anomalousBins = allBins
+        .filter((b) => {
+          const isOffline    = b.status === 'offline';
+          const isCritical   = b.status === 'critical';
+          const isUrgent     = b.status === 'urgent';
+          const isLowBattery = b.battery_level_pct != null && b.battery_level_pct < LOW_BATTERY_THRESHOLD;
+          return isOffline || isCritical || isUrgent || isLowBattery;
+        })
+        .map((b) => {
+          const anomaly_types: string[] = [];
+          if (b.status === 'offline') anomaly_types.push('offline');
+          if (b.status === 'critical') anomaly_types.push('critical_fill');
+          if (b.status === 'urgent') anomaly_types.push('urgent_fill');
+          if (b.battery_level_pct != null && b.battery_level_pct < LOW_BATTERY_THRESHOLD) {
+            anomaly_types.push('low_battery');
+          }
+          return {
+            bin_id:                b.bin_id,
+            cluster_id:            b.cluster_id    ?? null,
+            cluster_name:          b.cluster_name  ?? null,
+            zone_id:               Number(b.zone_id),
+            waste_category:        b.waste_category,
+            waste_category_colour: b.waste_category_colour ?? '#808080',
+            anomaly_types,
+            status:                b.status,
+            fill_level_pct:        b.fill_level_pct,
+            battery_level_pct:     b.battery_level_pct ?? null,
+            urgency_score:         b.urgency_score,
+            last_reading_at:       b.last_reading_at,
+          };
+        })
+        .sort((a, b) => {
+          const priority: Record<string, number> = { offline: 0, critical_fill: 1, urgent_fill: 2, low_battery: 3 };
+          const aPri = Math.min(...a.anomaly_types.map((t) => priority[t] ?? 99));
+          const bPri = Math.min(...b.anomaly_types.map((t) => priority[t] ?? 99));
+          return aPri !== bPri ? aPri - bPri : b.urgency_score - a.urgency_score;
+        });
+
+      const summary = {
+        total:         anomalousBins.length,
+        offline:       anomalousBins.filter((b) => b.anomaly_types.includes('offline')).length,
+        critical_fill: anomalousBins.filter((b) => b.anomaly_types.includes('critical_fill')).length,
+        urgent_fill:   anomalousBins.filter((b) => b.anomaly_types.includes('urgent_fill')).length,
+        low_battery:   anomalousBins.filter((b) => b.anomaly_types.includes('low_battery')).length,
+      };
+
+      logger.debug({ total: summary.total }, 'GET /api/v1/bins/anomalies');
+      return { data: { summary, bins: anomalousBins } };
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to fetch anomalies',
+      );
+      return reply.code(500).send({ error: 'INTERNAL_ERROR', message: 'Failed to fetch anomalies' });
+    }
+  });
+
+  // =========================================================================
   // GET /api/v1/bins/:bin_id
   // =========================================================================
   app.get<{ Params: { bin_id: string } }>('/api/v1/bins/:bin_id', async (req, reply) => {

@@ -18,6 +18,7 @@ import {
   type FillTimePrediction,
 } from '@/lib/api/ml'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -29,6 +30,7 @@ import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEffi
 import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
 import type { ActiveVehicle } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
+import { AnomalyDetectionTab } from '@/components/analytics/AnomalyDetectionTab'
 
 interface ApiZone {
   zone_id:                  string
@@ -257,6 +259,20 @@ export default function AnalyticsPage() {
     return Array.from(result.values())
   }, [jobsApiData, socketJobs])
 
+  // Anomaly count for tab badge — lightweight poll
+  const { data: anomalyData } = useQuery({
+    queryKey: ['bins', 'anomalies', 'count'],
+    queryFn:  () =>
+      import('@/lib/api/anomalies').then(({ getAnomalies }) =>
+        getAnomalies(createClientApiClient(session?.accessToken)),
+      ),
+    enabled:       !!session?.accessToken,
+    staleTime:     30_000,
+    refetchInterval: 60_000,
+    retry:         false,
+  })
+  const anomalyCount = anomalyData?.summary.total ?? 0
+
   // Active vehicles — real cargo utilisation from the fleet service
   const { data: vehiclesApiData } = useQuery({
     queryKey: ['vehicles', 'active', 'analytics'],
@@ -297,110 +313,132 @@ export default function AnalyticsPage() {
         <p className="text-sm text-muted-foreground mt-1">Waste generation trends, collection efficiency and category breakdowns.</p>
       </div>
 
-      {/* Row 1: Waste generation trends + Waste categories */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard
-          title="Zone Waste Generation — Last 7 Days"
-          description="Total waste kg per zone across 7 periods"
-        >
-          <ZoneFillTrendsChart
-            data={trendsData}
-            zoneNames={zoneNamesMap}
-            isLoading={trendsFetching}
-            unit=" kg"
-          />
-        </ChartCard>
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="anomalies" className="gap-2">
+            Anomaly Detection
+            {anomalyCount > 0 && (
+              <span className="inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-4 px-1">
+                {anomalyCount}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-        <ChartCard
-          title="Waste Category Breakdown"
-          description="Predicted weight by waste type across all zones"
-        >
-          <WasteCategoryChart data={categoryData} />
-        </ChartCard>
-      </div>
+        {/* ── Overview tab ─────────────────────────────────────────────── */}
+        <TabsContent value="overview" className="mt-6 space-y-6">
+          {/* Row 1: Waste generation trends + Waste categories */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCard
+              title="Zone Waste Generation — Last 7 Days"
+              description="Total waste kg per zone across 7 periods"
+            >
+              <ZoneFillTrendsChart
+                data={trendsData}
+                zoneNames={zoneNamesMap}
+                isLoading={trendsFetching}
+                unit=" kg"
+              />
+            </ChartCard>
 
-      {/* Row 2: Fill rate heatmap — current hour fill % per zone */}
-      <ChartCard
-        title="Fill Rate Heatmap"
-        description="Current fill % by zone — showing live snapshot for the current hour"
-      >
-        <FillRateHeatmap data={heatmapData} />
-      </ChartCard>
+            <ChartCard
+              title="Waste Category Breakdown"
+              description="Predicted weight by waste type across all zones"
+            >
+              <WasteCategoryChart data={categoryData} />
+            </ChartCard>
+          </div>
 
-      {/* Row 3: Collection efficiency + Vehicle utilisation */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard
-          title="Collection Efficiency"
-          description="Planned vs actual collection progress across recent jobs"
-        >
-          <CollectionEfficiencyChart jobs={jobsList as unknown as CollectionJob[]} />
-        </ChartCard>
+          {/* Row 2: Fill rate heatmap */}
+          <ChartCard
+            title="Fill Rate Heatmap"
+            description="Current fill % by zone — showing live snapshot for the current hour"
+          >
+            <FillRateHeatmap data={heatmapData} />
+          </ChartCard>
 
-        <ChartCard
-          title="Vehicle Utilisation"
-          description="Cargo utilisation per active vehicle — grey under-utilised, emerald optimal, orange over-utilised"
-        >
-          <VehicleUtilisationChart
-            vehicles={activeVehicles}
-            jobs={jobsList as unknown as CollectionJob[]}
-          />
-        </ChartCard>
-      </div>
+          {/* Row 3: Collection efficiency + Vehicle utilisation */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCard
+              title="Collection Efficiency"
+              description="Planned vs actual collection progress across recent jobs"
+            >
+              <CollectionEfficiencyChart jobs={jobsList as unknown as CollectionJob[]} />
+            </ChartCard>
 
-      {/* Row 4: Zone forecast (full width) */}
-      <ChartCard
-        title="Zone Waste Generation Forecast"
-        description="Predicted daily waste output by category for selected zone"
-      >
-        <ZoneForecastChart />
-      </ChartCard>
+            <ChartCard
+              title="Vehicle Utilisation"
+              description="Cargo utilisation per active vehicle — grey under-utilised, emerald optimal, orange over-utilised"
+            >
+              <VehicleUtilisationChart
+                vehicles={activeVehicles}
+                jobs={jobsList as unknown as CollectionJob[]}
+              />
+            </ChartCard>
+          </div>
 
-      {/* Bins predicted urgent */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Bins Predicted to Hit Urgent (next 48 h)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {urgentPredictions.length === 0 ? (
-            <p className="px-6 py-4 text-sm text-muted-foreground">
-              No bins with imminent fill predictions.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bin ID</TableHead>
-                  <TableHead>Zone</TableHead>
-                  <TableHead className="text-right">Fill %</TableHead>
-                  <TableHead>Predicted Full</TableHead>
-                  <TableHead className="text-right">Hours Left</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {urgentPredictions.map((bin) => (
-                  <TableRow key={bin.bin_id} className="hover:bg-accent/50">
-                    <TableCell className="font-medium">{bin.bin_id}</TableCell>
-                    <TableCell>Zone {bin.zone_id}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {bin.fill_level_pct.toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {formatDistanceToNow(new Date(bin.predicted_full_at!), { addSuffix: true })}
-                    </TableCell>
-                    <TableCell className={`text-right tabular-nums font-medium ${
-                      bin.hoursRemaining < 6 ? 'text-red-500' : bin.hoursRemaining < 12 ? 'text-orange-500' : ''
-                    }`}>
-                      {bin.hoursRemaining.toFixed(1)} h
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          {/* Row 4: Zone forecast */}
+          <ChartCard
+            title="Zone Waste Generation Forecast"
+            description="Predicted daily waste output by category for selected zone"
+          >
+            <ZoneForecastChart />
+          </ChartCard>
+
+          {/* Bins predicted urgent */}
+          <Card className="rounded-xl shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Bins Predicted to Hit Urgent (next 48 h)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {urgentPredictions.length === 0 ? (
+                <p className="px-6 py-4 text-sm text-muted-foreground">
+                  No bins with imminent fill predictions.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bin ID</TableHead>
+                      <TableHead>Zone</TableHead>
+                      <TableHead className="text-right">Fill %</TableHead>
+                      <TableHead>Predicted Full</TableHead>
+                      <TableHead className="text-right">Hours Left</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {urgentPredictions.map((bin) => (
+                      <TableRow key={bin.bin_id} className="hover:bg-accent/50">
+                        <TableCell className="font-medium">{bin.bin_id}</TableCell>
+                        <TableCell>Zone {bin.zone_id}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {bin.fill_level_pct.toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {formatDistanceToNow(new Date(bin.predicted_full_at!), { addSuffix: true })}
+                        </TableCell>
+                        <TableCell className={`text-right tabular-nums font-medium ${
+                          bin.hoursRemaining < 6 ? 'text-red-500' : bin.hoursRemaining < 12 ? 'text-orange-500' : ''
+                        }`}>
+                          {bin.hoursRemaining.toFixed(1)} h
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Anomaly Detection tab ─────────────────────────────────────── */}
+        <TabsContent value="anomalies" className="mt-6">
+          <AnomalyDetectionTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
