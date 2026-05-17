@@ -263,12 +263,12 @@ export default function AnalyticsPage() {
     queryFn: () =>
       createClientApiClient(session?.accessToken)
         .get('api/v1/vehicles/active')
-        .json<{ data: ActiveVehicle[] }>(),
+        .json<{ vehicles: ActiveVehicle[] }>(),
     enabled:   !!session?.accessToken,
     staleTime: 2 * 60_000,
     retry:     false,
   })
-  const activeVehicles = vehiclesApiData?.data ?? []
+  const activeVehicles = vehiclesApiData?.vehicles ?? []
 
   // Fill-rate heatmap — use current zone fill % for the current hour
   const heatmapData = useMemo(() => {
