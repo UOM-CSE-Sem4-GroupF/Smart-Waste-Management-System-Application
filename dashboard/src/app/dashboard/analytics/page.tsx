@@ -171,12 +171,12 @@ export default function AnalyticsPage() {
     return []
   }, [zones, allZonePredictions])
 
-  // Fetch all bins from REST (backend doesn't populate predicted_full_at on the bins endpoint)
-  const { data: binsApiData } = useQuery({
+  // Fetch all bins — limit=200 covers most deployments; used for fill predictions + anomaly detection
+  const { data: binsApiData, isFetching: binsLoading } = useQuery({
     queryKey: ['bins', 'analytics'],
     queryFn: () =>
       createClientApiClient(session?.accessToken)
-        .get('api/v1/bins')
+        .get('api/v1/bins', { searchParams: { limit: '200' } })
         .json<{ data: Bin[] }>(),
     enabled:   !!session?.accessToken,
     staleTime: 2 * 60_000,
@@ -259,19 +259,15 @@ export default function AnalyticsPage() {
     return Array.from(result.values())
   }, [jobsApiData, socketJobs])
 
-  // Anomaly count for tab badge — lightweight poll
-  const { data: anomalyData } = useQuery({
-    queryKey: ['bins', 'anomalies', 'count'],
-    queryFn:  () =>
-      import('@/lib/api/anomalies').then(({ getAnomalies }) =>
-        getAnomalies(createClientApiClient(session?.accessToken)),
-      ),
-    enabled:       !!session?.accessToken,
-    staleTime:     30_000,
-    refetchInterval: 60_000,
-    retry:         false,
-  })
-  const anomalyCount = anomalyData?.summary.total ?? 0
+  // Anomaly count for tab badge — derived from the bins already fetched above
+  const allBinsData = binsApiData?.data ?? []
+  const anomalyCount = useMemo(
+    () => allBinsData.filter((b) => {
+      const lowBat = b.battery_level_pct != null && b.battery_level_pct < 20
+      return b.status === 'offline' || b.status === 'critical' || b.status === 'urgent' || lowBat
+    }).length,
+    [allBinsData],
+  )
 
   // Active vehicles — real cargo utilisation from the fleet service
   const { data: vehiclesApiData } = useQuery({
@@ -436,7 +432,7 @@ export default function AnalyticsPage() {
 
         {/* ── Anomaly Detection tab ─────────────────────────────────────── */}
         <TabsContent value="anomalies" className="mt-6">
-          <AnomalyDetectionTab />
+          <AnomalyDetectionTab bins={allBinsData} isLoading={binsLoading} />
         </TabsContent>
       </Tabs>
     </div>
