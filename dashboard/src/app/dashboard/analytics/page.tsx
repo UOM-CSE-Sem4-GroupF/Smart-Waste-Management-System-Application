@@ -35,7 +35,14 @@ interface ApiZone {
 export default function AnalyticsPage() {
   const { data: session } = useSession()
 
-  // ── Zones from REST API ───────────────────────────────────────────────────
+  // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
+  const zones = useMapStore((s) => s.zoneStats)
+  const bins  = useMapStore((s) => s.bins)
+
+  // Zone IDs from socket store (immediate, no extra fetch needed)
+  const socketZoneIds = useMemo(() => Array.from(zones.keys()), [zones])
+
+  // REST API zones: always fetch when session available (socket fallback if it beats this)
   const { data: zonesApiData } = useQuery({
     queryKey: ['zones'],
     queryFn: () =>
@@ -48,10 +55,16 @@ export default function AnalyticsPage() {
   })
 
   const apiZones = zonesApiData?.data ?? []
-  const zoneIds  = useMemo(() => apiZones.map((z) => Number(z.zone_id)), [apiZones])
+  // Prefer socket zone IDs; fall back to REST API zone IDs
+  const zoneIds = useMemo(
+    () => socketZoneIds.length > 0
+      ? socketZoneIds
+      : apiZones.map((z) => Number(z.zone_id)),
+    [socketZoneIds, apiZones],
+  )
 
   // ── Waste generation trends per zone (parallel) ───────────────────────────
-  const { data: allZoneTrends, isPending: trendsPending } = useQuery({
+  const { data: allZoneTrends, isFetching: trendsFetching } = useQuery({
     queryKey: ['ml', 'waste-trends', zoneIds],
     queryFn:  async () => {
       const api = createClientApiClient(session?.accessToken)
@@ -78,15 +91,11 @@ export default function AnalyticsPage() {
     retry:     false,
   })
 
-  // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
-  const zones = useMapStore((s) => s.zoneStats)
-  const bins  = useMapStore((s) => s.bins)
-
-  // Zone names map — merge REST API zones + socket zones
+  // Zone names map — prefer socket store names, supplement with REST API
   const zoneNamesMap = useMemo(() => {
     const m: Record<string, string> = {}
     apiZones.forEach((z) => { m[`zone_${z.zone_id}`] = z.zone_name })
-    zones.forEach((z) => { m[`zone_${z.zone_id}`] = z.zone_name })
+    zones.forEach((z, id) => { m[`zone_${id}`] = z.zone_name })
     return m
   }, [apiZones, zones])
 
@@ -189,7 +198,7 @@ export default function AnalyticsPage() {
           <ZoneFillTrendsChart
             data={trendsData}
             zoneNames={zoneNamesMap}
-            isLoading={trendsPending}
+            isLoading={trendsFetching}
             unit=" kg"
           />
         </ChartCard>

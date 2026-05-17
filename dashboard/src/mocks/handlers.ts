@@ -332,7 +332,7 @@ export const handlers = [
   }),
 
   // GET /api/v1/bins — supports ?zone_id= ?status= ?waste_category= ?page= ?limit=
-  http.get('http://localhost:30080/api/v1/bins', ({ request }) => {
+  http.get('/api/v1/bins', ({ request }) => {
     const url      = new URL(request.url)
     const zoneId   = url.searchParams.get('zone_id')
     const status   = url.searchParams.get('status')
@@ -349,7 +349,7 @@ export const handlers = [
   }),
 
   // GET /api/v1/bins/:binId
-  http.get('http://localhost:30080/api/v1/bins/:binId', ({ params }) => {
+  http.get('/api/v1/bins/:binId', ({ params }) => {
     const bin = MOCK_BINS.find((b) => b.bin_id === params.binId)
     if (!bin) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
     return HttpResponse.json({
@@ -361,25 +361,25 @@ export const handlers = [
   }),
 
   // GET /api/v1/bins/:binId/history
-  http.get('http://localhost:30080/api/v1/bins/:binId/history', ({ params }) => {
+  http.get('/api/v1/bins/:binId/history', ({ params }) => {
     return HttpResponse.json(makeBinHistory(params.binId as string))
   }),
 
   // GET /api/v1/zones — returns all zone summaries
-  http.get('http://localhost:30080/api/v1/zones', () => {
+  http.get('/api/v1/zones', () => {
     const data = Object.values(ZONE_SUMMARIES)
     return HttpResponse.json({ data, total: data.length })
   }),
 
   // GET /api/v1/zones/:zoneId/summary
-  http.get('http://localhost:30080/api/v1/zones/:zoneId/summary', ({ params }) => {
+  http.get('/api/v1/zones/:zoneId/summary', ({ params }) => {
     const summary = ZONE_SUMMARIES[Number(params.zoneId)]
     if (!summary) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
     return HttpResponse.json(summary)
   }),
 
   // GET /api/v1/collection-jobs — supports ?state= (comma-separated), ?zone_id=, ?job_type=
-  http.get('http://localhost:30080/api/v1/collection-jobs', ({ request }) => {
+  http.get('/api/v1/collection-jobs', ({ request }) => {
     const url      = new URL(request.url)
     const stateRaw = url.searchParams.get('state')
     const zoneId   = url.searchParams.get('zone_id')
@@ -393,19 +393,19 @@ export const handlers = [
   }),
 
   // GET /api/v1/collection-jobs/:jobId
-  http.get('http://localhost:30080/api/v1/collection-jobs/:jobId', ({ params }) => {
+  http.get('/api/v1/collection-jobs/:jobId', ({ params }) => {
     const job = MOCK_JOBS.find((j) => j.id === params.jobId)
     if (!job) return HttpResponse.json({ error: 'Not found' }, { status: 404 })
     return HttpResponse.json(job)
   }),
 
   // GET /api/v1/vehicles/active
-  http.get('http://localhost:30080/api/v1/vehicles/active', () => {
+  http.get('/api/v1/vehicles/active', () => {
     return HttpResponse.json({ vehicles: MOCK_VEHICLES_REST })
   }),
 
   // GET /api/v1/ml/waste-generation
-  http.get('http://localhost:30080/api/v1/ml/waste-generation', () => {
+  http.get('/api/v1/ml/waste-generation', () => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     return HttpResponse.json({
       predictions: days.map((day, i) => ({
@@ -416,63 +416,49 @@ export const handlers = [
     })
   }),
 
-  // GET /api/v1/ml/trends/waste-generation — feeds ZoneFillTrendsChart + FillRateHeatmap
-  http.get('http://localhost:30080/api/v1/ml/trends/waste-generation', ({ request }) => {
-    const url  = new URL(request.url)
-    const days = Math.min(30, Math.max(1, Number(url.searchParams.get('days') ?? 7)))
-    const now  = Date.now()
-    const ZONE_BASES = [
-      { zone_id: 1, zone_name: 'Katubedda',      base: 52 },
-      { zone_id: 2, zone_name: 'Moratuwa South', base: 48 },
-      { zone_id: 3, zone_name: 'Uyanwatta',      base: 45 },
-    ]
-    // One data point per zone per day (plus hourly noise for heatmap)
-    const series = ZONE_BASES.flatMap((z) =>
-      Array.from({ length: days * 4 }, (_, i) => {
-        const dayOffset = Math.floor(i / 4)
-        const hourOffset = (i % 4) * 6
-        const trend = dayOffset * 3.2
-        const hourBump = hourOffset >= 12 && hourOffset <= 18 ? 8 : 0
-        return {
-          timestamp:    new Date(now - (days - 1 - dayOffset) * 86_400_000 + hourOffset * 3_600_000).toISOString(),
-          zone_id:      z.zone_id,
-          zone_name:    z.zone_name,
-          avg_fill_pct: parseFloat(Math.min(95, Math.max(10,
-            z.base + trend + hourBump + (Math.random() - 0.5) * 6,
-          )).toFixed(1)),
-        }
-      })
-    )
-    return HttpResponse.json({ series, generated_at: new Date().toISOString() })
-  }),
-
-  // GET /api/v1/ml/predict/zone-generation — feeds ZoneForecastChart
-  http.get('http://localhost:30080/api/v1/ml/predict/zone-generation', ({ request }) => {
+  // GET /api/v1/ml/trends/waste-generation — returns WasteGenerationTrend for one zone
+  http.get('/api/v1/ml/trends/waste-generation', ({ request }) => {
     const url    = new URL(request.url)
     const zoneId = Number(url.searchParams.get('zone_id') ?? 1)
-    const ZONE_NAMES: Record<number, string> = { 1: 'Katubedda', 2: 'Moratuwa South', 3: 'Uyanwatta' }
-    const ZONE_BASES: Record<number, number> = { 1: 55, 2: 50, 3: 47 }
-    const base   = ZONE_BASES[zoneId] ?? 50
-    const now    = Date.now()
-    const forecasts = Array.from({ length: 7 }, (_, i) => {
-      const predicted = Math.min(95, base + (i + 1) * 5.5 + (Math.random() - 0.5) * 4)
-      const margin    = 8 + i * 0.5
-      return {
-        date:      new Date(now + (i + 1) * 86_400_000).toISOString().slice(0, 10),
-        predicted: parseFloat(predicted.toFixed(1)),
-        lower_ci:  parseFloat(Math.max(0,   predicted - margin).toFixed(1)),
-        upper_ci:  parseFloat(Math.min(100, predicted + margin).toFixed(1)),
-      }
-    })
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    const ZONE_BASES: Record<number, number> = { 1: 52, 2: 48, 3: 45 }
+    const base = ZONE_BASES[zoneId] ?? 50
+    const series = DAY_LABELS.map((label, i) => ({
+      label,
+      food_waste: parseFloat((base * 0.35 + i * 1.2 + Math.random() * 4).toFixed(1)),
+      paper:      parseFloat((base * 0.18 + i * 0.5 + Math.random() * 2).toFixed(1)),
+      glass:      parseFloat((base * 0.08 + i * 0.2 + Math.random() * 1).toFixed(1)),
+      plastic:    parseFloat((base * 0.12 + i * 0.4 + Math.random() * 2).toFixed(1)),
+      general:    parseFloat((base * 0.20 + i * 0.7 + Math.random() * 3).toFixed(1)),
+      e_waste:    parseFloat((base * 0.07 + i * 0.1 + Math.random() * 0.5).toFixed(1)),
+    }))
+    return HttpResponse.json({ zone_id: zoneId, period: 'week', series, model_version: 'v1.0-mock' })
+  }),
+
+  // GET /api/v1/ml/predict/zone-generation — returns ZoneGenerationPrediction for one zone
+  http.get('/api/v1/ml/predict/zone-generation', ({ request }) => {
+    const url    = new URL(request.url)
+    const zoneId = Number(url.searchParams.get('zone_id') ?? 1)
+    const ZONE_BASES: Record<number, number> = { 1: 67, 2: 62, 3: 58 }
+    const base = ZONE_BASES[zoneId] ?? 60
     return HttpResponse.json({
-      zone_id:   zoneId,
-      zone_name: ZONE_NAMES[zoneId] ?? `Zone ${zoneId}`,
-      forecasts,
+      zone_id:              zoneId,
+      date_range:           'next_7_days',
+      predicted_kg_per_day: parseFloat(base.toFixed(1)),
+      by_waste_category: {
+        food_waste: parseFloat((base * 0.35).toFixed(1)),
+        paper:      parseFloat((base * 0.18).toFixed(1)),
+        glass:      parseFloat((base * 0.08).toFixed(1)),
+        plastic:    parseFloat((base * 0.12).toFixed(1)),
+        general:    parseFloat((base * 0.20).toFixed(1)),
+        e_waste:    parseFloat((base * 0.07).toFixed(1)),
+      },
+      model_version: 'v1.0-mock',
     })
   }),
 
   // GET /api/v1/ml/fill-time/:binId
-  http.get('http://localhost:30080/api/v1/ml/fill-time/:binId', ({ params }) => {
+  http.get('/api/v1/ml/fill-time/:binId', ({ params }) => {
     return HttpResponse.json({
       bin_id: params.binId,
       predicted_full_at: new Date(Date.now() + 8 * 3600_000).toISOString(),
@@ -482,58 +468,53 @@ export const handlers = [
   }),
 
   // POST /api/v1/bins
-  http.post('http://localhost:30080/api/v1/bins', async ({ request }) => {
+  http.post('/api/v1/bins', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ ...body, bin_id: body.bin_id ?? `BIN-${Date.now()}` }, { status: 201 })
   }),
 
   // PATCH /api/v1/bins/:binId
-  http.patch('http://localhost:30080/api/v1/bins/:binId', async ({ params, request }) => {
+  http.patch('/api/v1/bins/:binId', async ({ params, request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ bin_id: params.binId, ...body })
   }),
 
   // GET /api/v1/vehicles
-  http.get('http://localhost:30080/api/v1/vehicles', () => {
+  http.get('/api/v1/vehicles', () => {
     return HttpResponse.json({ data: [], total: 0 })
   }),
 
   // POST /api/v1/vehicles
-  http.post('http://localhost:30080/api/v1/vehicles', async ({ request }) => {
+  http.post('/api/v1/vehicles', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ ...body, vehicle_id: body.vehicle_id ?? `VEH-${Date.now()}` }, { status: 201 })
   }),
 
   // PATCH /api/v1/vehicles/:vehicleId
-  http.patch('http://localhost:30080/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
+  http.patch('/api/v1/vehicles/:vehicleId', async ({ params, request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ vehicle_id: params.vehicleId, ...body })
   }),
 
   // GET /api/v1/drivers
-  http.get('http://localhost:30080/api/v1/drivers', () => {
+  http.get('/api/v1/drivers', () => {
     return HttpResponse.json({ data: [], total: 0 })
   }),
 
   // POST /api/v1/drivers
-  http.post('http://localhost:30080/api/v1/drivers', async ({ request }) => {
+  http.post('/api/v1/drivers', async ({ request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ ...body, driver_id: `DRV-${Date.now()}` }, { status: 201 })
   }),
 
   // PATCH /api/v1/drivers/:driverId
-  http.patch('http://localhost:30080/api/v1/drivers/:driverId', async ({ params, request }) => {
+  http.patch('/api/v1/drivers/:driverId', async ({ params, request }) => {
     const body = await request.json() as Record<string, unknown>
     return HttpResponse.json({ driver_id: params.driverId, ...body })
   }),
 
-  // GET /api/v1/zones
-  http.get('http://localhost:30080/api/v1/zones', () => {
-    return HttpResponse.json({ data: [], total: 0 })
-  }),
-
   // GET /api/v1/collections/:id/progress
-  http.get('http://localhost:30080/api/v1/collections/:id/progress', ({ params }) => {
+  http.get('/api/v1/collections/:id/progress', ({ params }) => {
     return HttpResponse.json({
       collection_id: params.id,
       completed_stops: 3,
