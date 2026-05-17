@@ -40,16 +40,17 @@ function JobCard({
   onSelect?: (id: string) => void
   onCancel?: (id: string) => void
 }) {
+  const jobId = job.id ?? (job as unknown as { job_id: string }).job_id ?? ''
   return (
     <Card
       className="rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      onClick={() => onSelect?.(job.id)}
+      onClick={() => onSelect?.(jobId)}
     >
       <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm font-mono">{job.id.slice(0, 8)}…</span>
+              <span className="font-medium text-sm font-mono">{jobId.slice(0, 8)}…</span>
               <JobTypeBadge type={job.job_type.toUpperCase()} />
               <JobStateBadge state={job.state} />
             </div>
@@ -70,7 +71,7 @@ function JobCard({
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={(e) => { e.stopPropagation(); onCancel(job.id) }}
+                onClick={(e) => { e.stopPropagation(); onCancel(jobId) }}
               >
                 Cancel
               </Button>
@@ -126,9 +127,10 @@ function JobList({
 
   return (
     <div className="space-y-3">
-      {jobs.map((job) => (
-        <JobCard key={job.id} job={job} onSelect={onSelect} onCancel={onCancel} />
-      ))}
+      {jobs.map((job) => {
+        const key = job.id ?? (job as unknown as { job_id: string }).job_id
+        return <JobCard key={key} job={job} onSelect={onSelect} onCancel={onCancel} />
+      })}
     </div>
   )
 }
