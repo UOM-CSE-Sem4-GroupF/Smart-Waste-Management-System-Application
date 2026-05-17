@@ -163,9 +163,11 @@ export function AnomalyDetectionTab({ bins, isLoading, binsTotal }: AnomalyDetec
             </p>
           ) : filtered.length === 0 ? (
             <p className="px-6 py-10 text-center text-sm text-muted-foreground">
-              {anomalousBins.length === 0
-                ? 'No anomalies detected across all bins.'
-                : 'No bins match this filter.'}
+              {anomalousBins.length > 0
+                ? 'No bins match this filter.'
+                : (binsTotal ?? bins.length) === 0
+                  ? 'No bin data available — the bin-status service may have an empty store.'
+                  : `All ${binsTotal ?? bins.length} bins are healthy — no anomalies detected.`}
             </p>
           ) : (
             <Table>

@@ -461,7 +461,7 @@ export default function AnalyticsPage() {
 
         {/* ── Anomaly Detection tab ─────────────────────────────────────── */}
         <TabsContent value="anomalies" className="mt-6">
-          <AnomalyDetectionTab bins={allBinsData} isLoading={binsLoading} />
+          <AnomalyDetectionTab bins={allBinsData} isLoading={binsLoading} binsTotal={allBinsData.length} />
         </TabsContent>
       </Tabs>
     </div>
