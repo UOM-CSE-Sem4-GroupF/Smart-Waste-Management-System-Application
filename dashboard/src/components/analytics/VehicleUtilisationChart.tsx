@@ -8,8 +8,18 @@ import {
 import { ChartSkeleton } from './ChartSkeleton'
 import type { CollectionJob } from '@/types'
 
+export interface ActiveVehicle {
+  vehicle_id:             string
+  cargo_utilisation_pct:  number
+  cargo_weight_kg:        number
+  cargo_limit_kg:         string | number
+  bins_collected:         number
+  bins_total:             number
+}
+
 interface VehicleUtilisationChartProps {
   jobs?:      CollectionJob[]
+  vehicles?:  ActiveVehicle[]
   isLoading?: boolean
 }
 
@@ -25,8 +35,20 @@ function barColor(pct: number): string {
   return '#94a3b8'                  // gray — under-utilised
 }
 
-export function VehicleUtilisationChart({ jobs, isLoading }: VehicleUtilisationChartProps) {
+export function VehicleUtilisationChart({ jobs, vehicles, isLoading }: VehicleUtilisationChartProps) {
   const chartData = useMemo<UtilisationPoint[]>(() => {
+    // Prefer real cargo utilisation from the active-vehicles endpoint
+    if (vehicles && vehicles.length > 0) {
+      return vehicles
+        .map((v) => ({
+          vehicle_id:  v.vehicle_id,
+          utilisation: Math.round(v.cargo_utilisation_pct),
+          job_count:   v.bins_total,
+        }))
+        .sort((a, b) => b.utilisation - a.utilisation)
+        .slice(0, 10)
+    }
+
     if (!jobs || jobs.length === 0) return []
 
     const byVehicle = new Map<string, { count: number; totalLoad: number }>()
@@ -35,7 +57,6 @@ export function VehicleUtilisationChart({ jobs, isLoading }: VehicleUtilisationC
       const vid = job.vehicle_id
       if (!vid) continue
       const existing = byVehicle.get(vid) ?? { count: 0, totalLoad: 0 }
-      // cargo_weight_kg / 8000 kg capacity as proxy for utilisation
       const load = ((job as CollectionJob & { cargo_weight_kg?: number }).cargo_weight_kg ?? 0)
       byVehicle.set(vid, {
         count:     existing.count + 1,
@@ -52,8 +73,8 @@ export function VehicleUtilisationChart({ jobs, isLoading }: VehicleUtilisationC
         job_count:   count,
       }))
       .sort((a, b) => b.utilisation - a.utilisation)
-      .slice(0, 10)  // top 10 vehicles
-  }, [jobs])
+      .slice(0, 10)
+  }, [jobs, vehicles])
 
   if (isLoading) return <ChartSkeleton />
 

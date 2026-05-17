@@ -27,6 +27,7 @@ import { WasteCategoryChart } from '@/components/analytics/WasteCategoryChart'
 import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
 import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEfficiencyChart'
 import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
+import type { ActiveVehicle } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
 
 interface ApiZone {
@@ -256,6 +257,39 @@ export default function AnalyticsPage() {
     return Array.from(result.values())
   }, [jobsApiData, socketJobs])
 
+  // Active vehicles — real cargo utilisation from the fleet service
+  const { data: vehiclesApiData } = useQuery({
+    queryKey: ['vehicles', 'active', 'analytics'],
+    queryFn: () =>
+      createClientApiClient(session?.accessToken)
+        .get('api/v1/vehicles/active')
+        .json<{ data: ActiveVehicle[] }>(),
+    enabled:   !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry:     false,
+  })
+  const activeVehicles = vehiclesApiData?.data ?? []
+
+  // Fill-rate heatmap — use current zone fill % for the current hour
+  const heatmapData = useMemo(() => {
+    const currentHour = new Date().getHours()
+    // Prefer socket zone stats (more up-to-date); fall back to REST zones
+    if (zones.size > 0) {
+      return Array.from(zones.entries()).map(([id, z]) => ({
+        zone_id:   id,
+        zone_name: z.zone_name,
+        hour:      currentHour,
+        avg_fill:  z.avg_fill_level_pct,
+      }))
+    }
+    return apiZones.map((z) => ({
+      zone_id:   Number(z.zone_id),
+      zone_name: z.zone_name,
+      hour:      currentHour,
+      avg_fill:  z.avg_fill_pct,
+    }))
+  }, [zones, apiZones])
+
   return (
     <div className="space-y-6">
       <div>
@@ -285,28 +319,31 @@ export default function AnalyticsPage() {
         </ChartCard>
       </div>
 
-      {/* Row 2: Fill rate heatmap — requires hourly fill data not yet in API */}
+      {/* Row 2: Fill rate heatmap — current hour fill % per zone */}
       <ChartCard
         title="Fill Rate Heatmap"
-        description="Average fill % by zone and hour of day"
+        description="Current fill % by zone — showing live snapshot for the current hour"
       >
-        <FillRateHeatmap data={[]} />
+        <FillRateHeatmap data={heatmapData} />
       </ChartCard>
 
       {/* Row 3: Collection efficiency + Vehicle utilisation */}
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard
           title="Collection Efficiency"
-          description="Planned vs actual job duration across recent collections"
+          description="Planned vs actual collection progress across recent jobs"
         >
           <CollectionEfficiencyChart jobs={jobsList as unknown as CollectionJob[]} />
         </ChartCard>
 
         <ChartCard
           title="Vehicle Utilisation"
-          description="Job load per vehicle — grey under-utilised, emerald optimal, orange over-utilised"
+          description="Cargo utilisation per active vehicle — grey under-utilised, emerald optimal, orange over-utilised"
         >
-          <VehicleUtilisationChart jobs={jobsList as unknown as CollectionJob[]} />
+          <VehicleUtilisationChart
+            vehicles={activeVehicles}
+            jobs={jobsList as unknown as CollectionJob[]}
+          />
         </ChartCard>
       </div>
 
