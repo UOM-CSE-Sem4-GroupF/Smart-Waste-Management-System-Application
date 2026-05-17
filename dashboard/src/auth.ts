@@ -21,7 +21,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       session.accessToken = token.accessToken as string
       const decoded = decodeJwt(token.accessToken as string)
-      session.user.role   = decoded.realm_access?.roles?.[0] ?? 'viewer'
+      const APP_ROLES = ['admin', 'supervisor', 'fleet-operator', 'driver', 'viewer']
+      const realmRoles: string[] = decoded.realm_access?.roles ?? []
+      const clientRoles: string[] = decoded.resource_access?.['swms-dashboard']?.roles ?? []
+      const appRole = [...clientRoles, ...realmRoles].find((r) => APP_ROLES.includes(r))
+      // Authenticated users with no explicit app role get full admin access
+      session.user.role   = (appRole ?? 'admin') as 'admin' | 'supervisor' | 'fleet-operator' | 'driver' | 'viewer'
       session.user.zoneId = decoded.zone_id ?? null
       return session
     },

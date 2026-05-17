@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
+import type { CollectionJob } from '@/types/job'
 import { createClientApiClient } from '@/lib/api-client'
 import {
   getWasteGenerationTrends,
@@ -178,9 +179,31 @@ export default function AnalyticsPage() {
       .slice(0, 25)
   }, [bins])
 
-  // Collection efficiency + vehicle utilisation from job store
-  const jobs     = useJobStore((s) => s.jobs)
-  const jobsList = useMemo(() => Array.from(jobs.values()), [jobs])
+  // Collection efficiency + vehicle utilisation — REST fetch so analytics works standalone
+  const { data: jobsApiData } = useQuery({
+    queryKey: ['collection-jobs', 'analytics'],
+    queryFn: () =>
+      createClientApiClient(session?.accessToken)
+        .get('api/v1/collection-jobs')
+        .json<{ data: Record<string, unknown>[] }>(),
+    enabled:   !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry:     false,
+  })
+
+  // Merge REST jobs with socket-pushed jobs (socket wins for live jobs)
+  const socketJobs = useJobStore((s) => s.jobs)
+  const jobsList = useMemo(() => {
+    const result = new Map<string, Record<string, unknown>>()
+    // Seed from REST (uses job_id as key)
+    ;(jobsApiData?.data ?? []).forEach((j) => {
+      const id = (j.job_id ?? j.id) as string
+      if (id) result.set(id, j)
+    })
+    // Socket jobs override REST for the same id
+    socketJobs.forEach((j, id) => result.set(id, j as unknown as Record<string, unknown>))
+    return Array.from(result.values())
+  }, [jobsApiData, socketJobs])
 
   return (
     <div className="space-y-6">
@@ -225,14 +248,14 @@ export default function AnalyticsPage() {
           title="Collection Efficiency"
           description="Planned vs actual job duration across recent collections"
         >
-          <CollectionEfficiencyChart jobs={jobsList} />
+          <CollectionEfficiencyChart jobs={jobsList as unknown as CollectionJob[]} />
         </ChartCard>
 
         <ChartCard
           title="Vehicle Utilisation"
           description="Job load per vehicle — grey under-utilised, emerald optimal, orange over-utilised"
         >
-          <VehicleUtilisationChart jobs={jobsList} />
+          <VehicleUtilisationChart jobs={jobsList as unknown as CollectionJob[]} />
         </ChartCard>
       </div>
 
