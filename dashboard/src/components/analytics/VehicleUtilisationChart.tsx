@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts'
 import { ChartSkeleton } from './ChartSkeleton'
-import type { CollectionJob, CollectionJobListItem } from '@/types'
+import type { CollectionJob } from '@/types'
 
 export interface ActiveVehicle {
   vehicle_id:             string
@@ -18,7 +18,8 @@ export interface ActiveVehicle {
 }
 
 interface VehicleUtilisationChartProps {
-  jobs?:      (CollectionJob | CollectionJobListItem)[]
+  jobs?:      CollectionJob[]
+  vehicles?:  ActiveVehicle[]
   isLoading?: boolean
 }
 
@@ -53,20 +54,20 @@ export function VehicleUtilisationChart({ jobs, vehicles, isLoading }: VehicleUt
     const byVehicle = new Map<string, { count: number; totalLoad: number }>()
 
     for (const job of jobs) {
-      // CollectionJobListItem has assigned_vehicle_id; CollectionJob has vehicle_id
-      const vid = (job as CollectionJobListItem).assigned_vehicle_id ?? (job as CollectionJob).vehicle_id
+      const vid = job.vehicle_id
       if (!vid) continue
       const existing = byVehicle.get(vid) ?? { count: 0, totalLoad: 0 }
+      const load = ((job as CollectionJob & { cargo_weight_kg?: number }).cargo_weight_kg ?? 0)
       byVehicle.set(vid, {
         count:     existing.count + 1,
-        totalLoad: existing.totalLoad,
+        totalLoad: existing.totalLoad + load,
       })
     }
 
     const maxJobs = Math.max(...Array.from(byVehicle.values()).map((v) => v.count), 1)
 
     return Array.from(byVehicle.entries())
-      .map(([id, { count }]) => ({
+      .map(([id, { count, totalLoad: _ }]) => ({
         vehicle_id:  id,
         utilisation: Math.round((count / maxJobs) * 100),
         job_count:   count,

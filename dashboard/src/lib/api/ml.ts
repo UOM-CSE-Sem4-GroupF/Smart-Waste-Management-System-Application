@@ -1,43 +1,43 @@
 import type { KyInstance } from 'ky'
 
-export interface WasteTrendPoint {
-  timestamp:    string
-  zone_id:      number
-  zone_name?:   string
-  avg_fill_pct: number
+export interface WasteGenerationSeries {
+  label:      string
+  food_waste: number
+  paper:      number
+  glass:      number
+  plastic:    number
+  general:    number
+  e_waste:    number
 }
 
-export interface WasteTrendsResponse {
-  series:       WasteTrendPoint[]
-  generated_at: string
+export interface WasteGenerationTrend {
+  zone_id:       number
+  period:        string
+  series:        WasteGenerationSeries[]
+  model_version: string
 }
 
-export interface ZoneForecastPoint {
-  date:      string
-  predicted: number
-  lower_ci:  number
-  upper_ci:  number
-}
-
-export interface ZoneForecastResponse {
-  zone_id:   number
-  zone_name: string
-  forecasts: ZoneForecastPoint[]
+export interface ZoneGenerationPrediction {
+  zone_id:              number
+  date_range:           string
+  predicted_kg_per_day: number
+  by_waste_category:    Record<string, number>
+  model_version:        string
 }
 
 export async function getWasteGenerationTrends(
   api: KyInstance,
-  params: { zone_id?: number; period?: 'week' | 'month' | 'quarter' },
-): Promise<WasteTrendsResponse> {
+  params: { zone_id: number; period?: 'week' | 'month' | 'quarter' },
+) {
   return api
     .get('api/v1/ml/trends/waste-generation', { searchParams: params })
-    .json<WasteTrendsResponse>()
+    .json<WasteGenerationTrend>()
 }
 
-export async function getFillTimePrediction(
+export async function getZoneGenerationPrediction(
   api: KyInstance,
-  binId: string,
-): Promise<{ bin_id: string; predicted_full_at: string; confidence: number; model_version: string }> {
+  zoneId: number,
+) {
   return api
     .get('api/v1/ml/predict/zone-generation', {
       searchParams: { zone_id: String(zoneId), date_range: 'next_7_days' },
@@ -62,13 +62,4 @@ export async function getFillTimePrediction(
       searchParams: { bin_id: binId, current_fill_level: currentFillLevel },
     })
     .json<FillTimePrediction>()
-}
-
-export async function getZoneForecast(
-  api: KyInstance,
-  params: { zone_id: number; date_range?: string },
-): Promise<ZoneForecastResponse> {
-  return api
-    .get('api/v1/ml/predict/zone-generation', { searchParams: params })
-    .json<ZoneForecastResponse>()
 }

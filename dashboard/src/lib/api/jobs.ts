@@ -11,10 +11,9 @@ export async function getJobs(
     limit?:    number
   },
 ) {
-  const raw = await api
+  return api
     .get('api/v1/collection-jobs', { searchParams: params ?? {} })
-    .json<{ data: Record<string, unknown>[]; total: number; page: number }>()
-  return { ...raw, data: raw.data.map(normalizeJob) }
+    .json<{ data: CollectionJobListItem[]; total: number; page: number }>()
 }
 
 export async function getJob(api: KyInstance, jobId: string) {
