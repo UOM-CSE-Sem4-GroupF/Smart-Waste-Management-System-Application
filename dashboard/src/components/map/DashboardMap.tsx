@@ -5,9 +5,12 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MAPBOX_TOKEN, DEFAULT_CENTER, DEFAULT_ZOOM, getMapboxStyle } from '@/lib/mapbox'
 import { useMapStore } from '@/store/mapStore'
+import { useJobStore } from '@/store/jobStore'
 import { useBinMarker } from './BinMarker'
 import { useVehicleMarker } from './VehicleMarker'
+import { useRoutePolyline } from './RoutePolyline'
 import { STATUS_COLORS } from '@/lib/colours'
+import type { JobState } from '@/types'
 
 /** Build a rectangular GeoJSON ring (closed) around a set of lat/lng points */
 function bboxRing(lats: number[], lngs: number[], buffer: number): number[][] {
@@ -224,6 +227,57 @@ function ZoneClusterOverlaysLayer({ map }: { map: mapboxgl.Map }) {
   return null
 }
 
+const ACTIVE_ROUTE_STATES: JobState[] = [
+  'DISPATCHING', 'DISPATCHED', 'DRIVER_NOTIFIED',
+  'IN_PROGRESS', 'SPLIT_JOB', 'COMPLETING',
+  'COLLECTION_DONE', 'RECORDING_AUDIT', 'AUDIT_RECORDED',
+]
+
+function RoutePolylineItem({
+  map, jobId, waypoints, index,
+}: {
+  map: mapboxgl.Map
+  jobId: string
+  waypoints: { lat: number; lng: number }[]
+  index: number
+}) {
+  useRoutePolyline({ map, jobId, waypoints, index })
+  return null
+}
+
+function RoutePolylinesLayer({
+  map,
+  filterJobId,
+}: {
+  map: mapboxgl.Map
+  filterJobId?: string
+}) {
+  const jobs = useJobStore((s) => s.jobs)
+
+  const routeJobs = useMemo(() => {
+    return Array.from(jobs.values()).filter((job) => {
+      if (filterJobId && job.job_id !== filterJobId) return false
+      if (!job.route?.length) return false
+      if (job.state && !ACTIVE_ROUTE_STATES.includes(job.state)) return false
+      return true
+    })
+  }, [jobs, filterJobId])
+
+  return (
+    <>
+      {routeJobs.map((job, i) => (
+        <RoutePolylineItem
+          key={job.job_id}
+          map={map}
+          jobId={job.job_id}
+          waypoints={job.route.map((wp) => ({ lat: wp.lat, lng: wp.lng }))}
+          index={i}
+        />
+      ))}
+    </>
+  )
+}
+
 export default function DashboardMap({
   compact = false,
   jobId,
@@ -339,6 +393,7 @@ export default function DashboardMap({
       {mapLoaded && mapRef.current && (
         <>
           <ZoneClusterOverlaysLayer map={mapRef.current} />
+          <RoutePolylinesLayer map={mapRef.current} filterJobId={jobId} />
           <BinMarkersLayer    map={mapRef.current} onSelect={handleBinSelect} />
           <VehicleMarkersLayer map={mapRef.current} onSelect={handleVehicleSelect} />
         </>
