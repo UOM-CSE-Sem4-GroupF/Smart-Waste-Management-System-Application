@@ -39,10 +39,15 @@ export function VehicleUtilisationChart({ jobs, vehicles, isLoading }: VehicleUt
   const chartData = useMemo<UtilisationPoint[]>(() => {
     // Prefer real cargo utilisation from the active-vehicles endpoint
     if (vehicles && vehicles.length > 0) {
+      const allZero = vehicles.every((v) => v.cargo_utilisation_pct === 0)
+      const maxBins = Math.max(...vehicles.map((v) => v.bins_total), 1)
       return vehicles
         .map((v) => ({
           vehicle_id:  v.vehicle_id,
-          utilisation: Math.round(v.cargo_utilisation_pct),
+          // When no cargo loaded yet, show bins-assigned ratio so bars are visible
+          utilisation: allZero
+            ? Math.round((v.bins_total / maxBins) * 100)
+            : Math.round(v.cargo_utilisation_pct),
           job_count:   v.bins_total,
         }))
         .sort((a, b) => b.utilisation - a.utilisation)

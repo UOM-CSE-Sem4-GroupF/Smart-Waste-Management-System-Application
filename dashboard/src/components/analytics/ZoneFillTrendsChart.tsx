@@ -47,6 +47,11 @@ function CustomTooltip({ active, payload, label, unit }: {
 }
 
 export function ZoneFillTrendsChart({ data, zoneNames, isLoading, unit = ' kg' }: ZoneFillTrendsChartProps) {
+  const zoneKeys = useMemo(() => {
+    if (!data?.[0]) return []
+    return Object.keys(data[0]).filter((k) => k !== 'date')
+  }, [data])
+
   if (isLoading) return <ChartSkeleton />
 
   if (!data || data.length === 0) {
@@ -56,11 +61,6 @@ export function ZoneFillTrendsChart({ data, zoneNames, isLoading, unit = ' kg' }
       </div>
     )
   }
-
-  const zoneKeys = useMemo(() => {
-    if (!data[0]) return []
-    return Object.keys(data[0]).filter((k) => k !== 'date')
-  }, [data])
 
   return (
     <ResponsiveContainer width="100%" height={256}>

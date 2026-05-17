@@ -32,6 +32,7 @@ import type { ActiveVehicle } from '@/components/analytics/VehicleUtilisationCha
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
 import { JobTypeBreakdownChart } from '@/components/analytics/JobTypeBreakdownChart'
 import { AnomalyDetectionTab } from '@/components/analytics/AnomalyDetectionTab'
+import { WastePatternPredictionTab } from '@/components/analytics/WastePatternPredictionTab'
 
 interface ApiZone {
   zone_id:                  string
@@ -333,6 +334,7 @@ export default function AnalyticsPage() {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="predictions">Waste Pattern Prediction</TabsTrigger>
           <TabsTrigger value="anomalies" className="gap-2">
             Anomaly Detection
             {anomalyCount > 0 && (
@@ -457,6 +459,18 @@ export default function AnalyticsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Waste Pattern Prediction tab ──────────────────────────────── */}
+        <TabsContent value="predictions" className="mt-6">
+          <WastePatternPredictionTab
+            zoneIds={zoneIds}
+            zoneNamesMap={zoneNamesMap}
+            fillPredictions={fillPredictions}
+            candidateBins={candidateBins}
+            allBinsData={allBinsData}
+            binsLoading={binsLoading}
+          />
         </TabsContent>
 
         {/* ── Anomaly Detection tab ─────────────────────────────────────── */}
