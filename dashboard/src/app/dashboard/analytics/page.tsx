@@ -63,12 +63,31 @@ export default function AnalyticsPage() {
   })
 
   const apiZones = zonesApiData?.data ?? []
-  // Prefer socket zone IDs; fall back to REST API zone IDs
+
+  // DB-backed fallback: core-api city-zones (always fetched; used when bin-status store is empty)
+  const { data: cityZonesData } = useQuery({
+    queryKey: ['city-zones', 'core-api'],
+    queryFn: () =>
+      createClientApiClient(session?.accessToken)
+        .get('data-analysis/api/v1/city-zones')
+        .json<{ data: Array<{ id: number; name: string; active: boolean }> }>(),
+    enabled:   !!session?.accessToken,
+    staleTime: 30 * 60_000,
+    retry:     false,
+  })
+  const cityZoneIds = useMemo(
+    () => (cityZonesData?.data ?? []).filter((z) => z.active !== false).map((z) => z.id),
+    [cityZonesData],
+  )
+
+  // Prefer socket zone IDs → bin-status REST → core-api DB-backed
   const zoneIds = useMemo(
     () => socketZoneIds.length > 0
       ? socketZoneIds
-      : apiZones.map((z) => Number(z.zone_id)),
-    [socketZoneIds, apiZones],
+      : apiZones.length > 0
+        ? apiZones.map((z) => Number(z.zone_id))
+        : cityZoneIds,
+    [socketZoneIds, apiZones, cityZoneIds],
   )
 
   // ── Waste generation trends per zone (parallel) ───────────────────────────
@@ -99,13 +118,14 @@ export default function AnalyticsPage() {
     retry:     false,
   })
 
-  // Zone names map — prefer socket store names, supplement with REST API
+  // Zone names map — core-api as base, overridden by REST, then socket (most authoritative)
   const zoneNamesMap = useMemo(() => {
     const m: Record<string, string> = {}
+    cityZonesData?.data.forEach((z) => { m[`zone_${z.id}`] = z.name })
     apiZones.forEach((z) => { m[`zone_${z.zone_id}`] = z.zone_name })
     zones.forEach((z, id) => { m[`zone_${id}`] = z.zone_name })
     return m
-  }, [apiZones, zones])
+  }, [apiZones, zones, cityZonesData])
 
   // Reshape per-zone trend responses into flat rows keyed by period label
   const trendsData = useMemo(() => {

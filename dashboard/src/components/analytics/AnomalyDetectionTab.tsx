@@ -91,11 +91,12 @@ function batteryColor(pct: number | null) {
 }
 
 interface AnomalyDetectionTabProps {
-  bins:      Bin[]
+  bins:       Bin[]
   isLoading?: boolean
+  binsTotal?: number  // total bins fetched (for distinguishing empty store vs healthy fleet)
 }
 
-export function AnomalyDetectionTab({ bins, isLoading }: AnomalyDetectionTabProps) {
+export function AnomalyDetectionTab({ bins, isLoading, binsTotal }: AnomalyDetectionTabProps) {
   const [filter, setFilter] = useState<AnomalyType | 'all'>('all')
 
   const anomalousBins = useMemo(() => computeAnomalies(bins), [bins])
