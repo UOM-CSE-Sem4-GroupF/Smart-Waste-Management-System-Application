@@ -29,7 +29,7 @@ export function ZoneForecastChart() {
 
   const [selectedZone, setSelectedZone] = useState<number | 'all'>(firstZoneId)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['ml', 'zone-forecast', selectedZone],
     queryFn: () => getZoneGenerationPrediction(
       createClientApiClient(session!.accessToken),
@@ -40,9 +40,9 @@ export function ZoneForecastChart() {
     retry: false,
   })
 
-  if (isLoading) return <ChartSkeleton />
+  if (isPending) return <ChartSkeleton />
 
-  if (isError || (!isLoading && !data)) {
+  if (isError) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
         <p className="text-sm font-medium text-muted-foreground">

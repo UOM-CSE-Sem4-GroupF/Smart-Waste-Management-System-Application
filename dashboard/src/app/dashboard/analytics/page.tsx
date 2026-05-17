@@ -51,7 +51,7 @@ export default function AnalyticsPage() {
   const zoneIds  = useMemo(() => apiZones.map((z) => Number(z.zone_id)), [apiZones])
 
   // ── Waste generation trends per zone (parallel) ───────────────────────────
-  const { data: allZoneTrends } = useQuery({
+  const { data: allZoneTrends, isPending: trendsPending } = useQuery({
     queryKey: ['ml', 'waste-trends', zoneIds],
     queryFn:  async () => {
       const api = createClientApiClient(session?.accessToken)
@@ -189,7 +189,7 @@ export default function AnalyticsPage() {
           <ZoneFillTrendsChart
             data={trendsData}
             zoneNames={zoneNamesMap}
-            isLoading={false}
+            isLoading={trendsPending}
             unit=" kg"
           />
         </ChartCard>
