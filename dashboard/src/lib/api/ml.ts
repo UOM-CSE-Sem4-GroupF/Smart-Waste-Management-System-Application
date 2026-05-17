@@ -45,8 +45,21 @@ export async function getZoneGenerationPrediction(
     .json<ZoneGenerationPrediction>()
 }
 
-export async function getFillTimePrediction(api: KyInstance, binId: string) {
+export interface FillTimePrediction {
+  bin_id:              string
+  predicted_full_at:   string
+  confidence_interval: { lower_hours: number; upper_hours: number }
+  model_version:       string
+}
+
+export async function getFillTimePrediction(
+  api: KyInstance,
+  binId: string,
+  currentFillLevel: number,
+) {
   return api
-    .get('api/v1/ml/predict/fill-time', { searchParams: { bin_id: binId } })
-    .json()
+    .get('api/v1/ml/predict/fill-time', {
+      searchParams: { bin_id: binId, current_fill_level: currentFillLevel },
+    })
+    .json<FillTimePrediction>()
 }

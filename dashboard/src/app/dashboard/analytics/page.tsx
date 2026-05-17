@@ -7,12 +7,15 @@ import { formatDistanceToNow } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
 import type { CollectionJob } from '@/types/job'
+import type { Bin } from '@/types'
 import { createClientApiClient } from '@/lib/api-client'
 import {
   getWasteGenerationTrends,
   getZoneGenerationPrediction,
+  getFillTimePrediction,
   type WasteGenerationTrend,
   type ZoneGenerationPrediction,
+  type FillTimePrediction,
 } from '@/lib/api/ml'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -165,10 +168,58 @@ export default function AnalyticsPage() {
     return []
   }, [zones, allZonePredictions])
 
-  // Bins predicted to hit urgent — derive from store
+  // Fetch all bins from REST (backend doesn't populate predicted_full_at on the bins endpoint)
+  const { data: binsApiData } = useQuery({
+    queryKey: ['bins', 'analytics'],
+    queryFn: () =>
+      createClientApiClient(session?.accessToken)
+        .get('api/v1/bins')
+        .json<{ data: Bin[] }>(),
+    enabled:   !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry:     false,
+  })
+
+  // For bins above 30% fill, fetch fill-time predictions in parallel
+  const candidateBins = useMemo(
+    () => (binsApiData?.data ?? []).filter((b) => b.fill_level_pct >= 30),
+    [binsApiData],
+  )
+
+  const { data: fillPredictions } = useQuery({
+    queryKey: ['ml', 'fill-time', candidateBins.map((b) => b.bin_id)],
+    queryFn: () => {
+      const api = createClientApiClient(session?.accessToken)
+      return Promise.allSettled(
+        candidateBins.map((b) =>
+          getFillTimePrediction(api, b.bin_id, b.fill_level_pct),
+        ),
+      )
+    },
+    enabled:   !!session?.accessToken && candidateBins.length > 0,
+    staleTime: 5 * 60_000,
+    retry:     false,
+  })
+
+  // Merge REST bins + fill-time predictions; fall back to socket store bins
   const urgentPredictions = useMemo(() => {
     const now = Date.now()
-    return Array.from(bins.values())
+
+    // Build prediction map from fill-time API results
+    const predMap = new Map<string, FillTimePrediction>()
+    fillPredictions?.forEach((result, i) => {
+      if (result.status === 'fulfilled') predMap.set(candidateBins[i].bin_id, result.value)
+    })
+
+    // Prefer REST bins (with ML predictions merged in); fall back to socket store
+    const binSource = binsApiData?.data?.length
+      ? binsApiData.data.map((b) => {
+          const pred = predMap.get(b.bin_id)
+          return pred ? { ...b, predicted_full_at: pred.predicted_full_at } : b
+        })
+      : Array.from(bins.values())
+
+    return binSource
       .filter((b) => b.predicted_full_at != null)
       .map((b) => ({
         ...b,
@@ -177,7 +228,7 @@ export default function AnalyticsPage() {
       .filter((b) => b.hoursRemaining > 0 && b.hoursRemaining < 48)
       .sort((a, b) => a.hoursRemaining - b.hoursRemaining)
       .slice(0, 25)
-  }, [bins])
+  }, [binsApiData, fillPredictions, candidateBins, bins])
 
   // Collection efficiency + vehicle utilisation — REST fetch so analytics works standalone
   const { data: jobsApiData } = useQuery({
