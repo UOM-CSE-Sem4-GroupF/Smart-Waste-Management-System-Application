@@ -36,6 +36,15 @@ export default async function BinDetailPage({ params }: Props) {
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">{bin.bin_id}</h2>
             <BinStatusBadge status={bin.status} />
+            {(() => {
+              const online = Date.now() - new Date(bin.last_reading_at).getTime() < 5 * 60 * 1000
+              return (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${online ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-green-500' : 'bg-slate-400'}`} />
+                  {online ? 'Online' : 'Offline'}
+                </span>
+              )
+            })()}
           </div>
           <p className="text-sm text-muted-foreground">
             {bin.zone_name} · {bin.cluster_name} · Last reading{' '}

@@ -148,6 +148,7 @@ function BinsContent() {
               <TableHead className="text-right">Urgency</TableHead>
               <TableHead className="text-right">Est. Weight</TableHead>
               <TableHead>Waste Type</TableHead>
+              <TableHead>Device Status</TableHead>
               <TableHead>Last Reading</TableHead>
             </TableRow>
           </TableHeader>
@@ -155,7 +156,7 @@ function BinsContent() {
             {isLoading
               ? Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -188,6 +189,17 @@ function BinsContent() {
                     </TableCell>
                     <TableCell className="capitalize">
                       {bin.waste_category.replace(/_/g, ' ')}
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const online = Date.now() - new Date(bin.last_reading_at).getTime() < 5 * 60 * 1000
+                        return (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${online ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-green-500' : 'bg-slate-400'}`} />
+                            {online ? 'Online' : 'Offline'}
+                          </span>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {formatDistanceToNow(new Date(bin.last_reading_at), { addSuffix: true })}
