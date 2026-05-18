@@ -22,7 +22,8 @@ export async function createApiClient() {
 /**
  * Client-side ky instance — takes the access token from useSession().
  * Use this inside TanStack Query queryFn callbacks in Client Components.
- * Uses relative URLs so requests go through the Next.js proxy rewrites (avoids CORS).
+ * Uses prefix '/' so requests go through Next.js rewrite proxy to Kong,
+ * avoiding browser CORS restrictions on direct cross-origin requests.
  */
 export function createClientApiClient(token?: string) {
   return ky.create({

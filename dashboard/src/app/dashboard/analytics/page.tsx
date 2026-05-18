@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
-import { useSession } from 'next-auth/react'
+import { useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSession } from 'next-auth/react'
 import { formatDistanceToNow } from 'date-fns'
 import { useMapStore } from '@/store/mapStore'
 import { useJobStore } from '@/store/jobStore'
@@ -28,7 +28,6 @@ import { WasteCategoryChart } from '@/components/analytics/WasteCategoryChart'
 import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
 import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEfficiencyChart'
 import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
-import type { ActiveVehicle } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
 import { JobTypeBreakdownChart } from '@/components/analytics/JobTypeBreakdownChart'
 import { AnomalyDetectionTab } from '@/components/analytics/AnomalyDetectionTab'
@@ -43,6 +42,7 @@ interface ApiZone {
 
 export default function AnalyticsPage() {
   const { data: session } = useSession()
+  const api = useMemo(() => createClientApiClient(session?.accessToken), [session?.accessToken])
 
   // ── Zone stats from Zustand (populated via zone:stats socket events) ──────
   const zones = useMapStore((s) => s.zoneStats)
@@ -53,26 +53,28 @@ export default function AnalyticsPage() {
 
   // REST API zones: always fetch when session available (socket fallback if it beats this)
   const { data: zonesApiData } = useQuery({
-    queryKey: ['zones'],
+    queryKey: ['zones', session?.accessToken],
     queryFn: () =>
-      createClientApiClient(session?.accessToken)
+      api
         .get('api/v1/zones')
-        .json<{ data: ApiZone[] }>(),
-    enabled:   !!session?.accessToken,
+        .json<{ data: ApiZone[] }>()
+        .catch((e) => { console.error('[Analytics] zones fetch failed', e); return { data: [] as ApiZone[] } }),
+    enabled:   true,
     staleTime: 5 * 60_000,
     retry:     false,
   })
 
   const apiZones = zonesApiData?.data ?? []
 
-  // DB-backed fallback: core-api city-zones (always fetched; used when bin-status store is empty)
+  // DB-backed fallback: core-api city-zones — routed through clean server proxy to avoid cookie forwarding
   const { data: cityZonesData } = useQuery({
-    queryKey: ['city-zones', 'core-api'],
+    queryKey: ['city-zones', 'core-api', session?.accessToken],
     queryFn: () =>
-      createClientApiClient(session?.accessToken)
-        .get('data-analysis/api/v1/city-zones')
-        .json<{ data: Array<{ id: number; name: string; active: boolean }> }>(),
-    enabled:   !!session?.accessToken,
+      api
+        .get('api/metadata/city-zones')
+        .json<{ data: Array<{ id: number; name: string; active: boolean }> }>()
+        .catch((e) => { console.error('[Analytics] city-zones fetch failed', e); return { data: [] as Array<{ id: number; name: string; active: boolean }> } }),
+    enabled:   true,
     staleTime: 30 * 60_000,
     retry:     false,
   })
@@ -93,28 +95,26 @@ export default function AnalyticsPage() {
 
   // ── Waste generation trends per zone (parallel) ───────────────────────────
   const { data: allZoneTrends, isFetching: trendsFetching } = useQuery({
-    queryKey: ['ml', 'waste-trends', zoneIds],
+    queryKey: ['ml', 'waste-trends', zoneIds, session?.accessToken],
     queryFn:  async () => {
-      const api = createClientApiClient(session?.accessToken)
       return Promise.all(
         zoneIds.map((id) => getWasteGenerationTrends(api, { zone_id: id, period: 'week' })),
-      )
+      ).catch((e) => { console.error('[Analytics] zone trends fetch failed', e); return [] })
     },
-    enabled:   !!session?.accessToken && zoneIds.length > 0,
+    enabled:   zoneIds.length > 0,
     staleTime: 5 * 60_000,
     retry:     false,
   })
 
   // ── Zone generation predictions per zone (for category chart fallback) ────
   const { data: allZonePredictions } = useQuery({
-    queryKey: ['ml', 'zone-predictions', zoneIds],
+    queryKey: ['ml', 'zone-predictions', zoneIds, session?.accessToken],
     queryFn:  async () => {
-      const api = createClientApiClient(session?.accessToken)
       return Promise.all(
         zoneIds.map((id) => getZoneGenerationPrediction(api, id)),
-      )
+      ).catch((e) => { console.error('[Analytics] zone predictions fetch failed', e); return [] })
     },
-    enabled:   !!session?.accessToken && zoneIds.length > 0,
+    enabled:   zoneIds.length > 0,
     staleTime: 15 * 60_000,
     retry:     false,
   })
@@ -195,12 +195,13 @@ export default function AnalyticsPage() {
 
   // Fetch all bins — limit=200 covers most deployments; used for fill predictions + anomaly detection
   const { data: binsApiData, isFetching: binsLoading } = useQuery({
-    queryKey: ['bins', 'analytics'],
+    queryKey: ['bins', 'analytics', session?.accessToken],
     queryFn: () =>
-      createClientApiClient(session?.accessToken)
+      api
         .get('api/v1/bins', { searchParams: { limit: '200' } })
-        .json<{ data: Bin[] }>(),
-    enabled:   !!session?.accessToken,
+        .json<{ data: Bin[] }>()
+        .catch((e) => { console.error('[Analytics] bins fetch failed', e); return { data: [] as Bin[] } }),
+    enabled:   true,
     staleTime: 2 * 60_000,
     retry:     false,
   })
@@ -212,16 +213,14 @@ export default function AnalyticsPage() {
   )
 
   const { data: fillPredictions } = useQuery({
-    queryKey: ['ml', 'fill-time', candidateBins.map((b) => b.bin_id)],
-    queryFn: () => {
-      const api = createClientApiClient(session?.accessToken)
-      return Promise.allSettled(
+    queryKey: ['ml', 'fill-time', candidateBins.map((b) => b.bin_id), session?.accessToken],
+    queryFn: () =>
+      Promise.allSettled(
         candidateBins.map((b) =>
           getFillTimePrediction(api, b.bin_id, b.fill_level_pct),
         ),
-      )
-    },
-    enabled:   !!session?.accessToken && candidateBins.length > 0,
+      ),
+    enabled:   candidateBins.length > 0,
     staleTime: 5 * 60_000,
     retry:     false,
   })
@@ -257,12 +256,13 @@ export default function AnalyticsPage() {
 
   // Collection efficiency + vehicle utilisation — REST fetch so analytics works standalone
   const { data: jobsApiData } = useQuery({
-    queryKey: ['collection-jobs', 'analytics'],
+    queryKey: ['collection-jobs', 'analytics', session?.accessToken],
     queryFn: () =>
-      createClientApiClient(session?.accessToken)
-        .get('api/v1/collection-jobs')
-        .json<{ data: Record<string, unknown>[] }>(),
-    enabled:   !!session?.accessToken,
+      api
+        .get('api/v1/collection-jobs', { searchParams: { limit: 100 } })
+        .json<{ data: Record<string, unknown>[] }>()
+        .catch(() => ({ data: [] })),
+    enabled:   true,
     staleTime: 2 * 60_000,
     retry:     false,
   })
@@ -291,19 +291,6 @@ export default function AnalyticsPage() {
     [allBinsData],
   )
 
-  // Active vehicles — real cargo utilisation from the fleet service
-  const { data: vehiclesApiData } = useQuery({
-    queryKey: ['vehicles', 'active', 'analytics'],
-    queryFn: () =>
-      createClientApiClient(session?.accessToken)
-        .get('api/v1/vehicles/active')
-        .json<{ vehicles: ActiveVehicle[] }>(),
-    enabled:   !!session?.accessToken,
-    staleTime: 2 * 60_000,
-    retry:     false,
-  })
-  const activeVehicles = vehiclesApiData?.vehicles ?? []
-
   // Fill-rate heatmap — use current zone fill % for the current hour
   const heatmapData = useMemo(() => {
     const currentHour = new Date().getHours()
@@ -323,6 +310,21 @@ export default function AnalyticsPage() {
       avg_fill:  z.avg_fill_pct,
     }))
   }, [zones, apiZones])
+
+  useEffect(() => {
+    console.log('[Analytics Debug]', {
+      socketZones:        zones.size,
+      apiZones:           apiZones.length,
+      cityZones:          cityZonesData?.data?.length ?? 'pending',
+      zoneIds,
+      bins:               binsApiData?.data?.length ?? 'pending',
+      jobs:               jobsApiData?.data?.length ?? 'pending',
+      socketJobs:         socketJobs.size,
+      allZoneTrends:      allZoneTrends?.length ?? 'pending',
+      allZonePredictions: allZonePredictions?.length ?? 'pending',
+      anomalyCount,
+    })
+  }, [zones, apiZones, cityZonesData, zoneIds, binsApiData, jobsApiData, socketJobs, allZoneTrends, allZonePredictions, anomalyCount])
 
   return (
     <div className="space-y-6">
@@ -391,7 +393,6 @@ export default function AnalyticsPage() {
               description="Cargo utilisation per active vehicle — grey under-utilised, emerald optimal, orange over-utilised"
             >
               <VehicleUtilisationChart
-                vehicles={activeVehicles}
                 jobs={jobsList as unknown as CollectionJob[]}
               />
             </ChartCard>
