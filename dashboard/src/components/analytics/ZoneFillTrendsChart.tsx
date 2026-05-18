@@ -5,19 +5,19 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts'
-import { format, parseISO } from 'date-fns'
 import { ZONE_COLOURS } from '@/lib/colours'
 import { ChartSkeleton } from './ChartSkeleton'
 
 interface TrendDataPoint {
-  date:   string         // ISO date string
-  [zoneKey: string]: number | string  // zone_id → avg fill %
+  date:   string
+  [zoneKey: string]: number | string
 }
 
 interface ZoneFillTrendsChartProps {
-  data?:      TrendDataPoint[]   // array of { date, zone_1: 42, zone_2: 67, ... }
-  zoneNames?: Record<string, string>  // zone key → display name
+  data?:      TrendDataPoint[]
+  zoneNames?: Record<string, string>
   isLoading?: boolean
+  unit?:      string   // e.g. ' kg' or '%'
 }
 
 interface TooltipPayload {
@@ -26,10 +26,11 @@ interface TooltipPayload {
   color: string
 }
 
-function CustomTooltip({ active, payload, label }: {
+function CustomTooltip({ active, payload, label, unit }: {
   active?:  boolean
   payload?: TooltipPayload[]
   label?:   string
+  unit?:    string
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -38,14 +39,19 @@ function CustomTooltip({ active, payload, label }: {
       {payload.map((p) => (
         <p key={p.name} className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: p.color }} />
-          {p.name}: <strong>{p.value}%</strong>
+          {p.name}: <strong>{p.value}{unit ?? ''}</strong>
         </p>
       ))}
     </div>
   )
 }
 
-export function ZoneFillTrendsChart({ data, zoneNames, isLoading }: ZoneFillTrendsChartProps) {
+export function ZoneFillTrendsChart({ data, zoneNames, isLoading, unit = ' kg' }: ZoneFillTrendsChartProps) {
+  const zoneKeys = useMemo(() => {
+    if (!data?.[0]) return []
+    return Object.keys(data[0]).filter((k) => k !== 'date')
+  }, [data])
+
   if (isLoading) return <ChartSkeleton />
 
   if (!data || data.length === 0) {
@@ -56,24 +62,13 @@ export function ZoneFillTrendsChart({ data, zoneNames, isLoading }: ZoneFillTren
     )
   }
 
-  // Derive zone keys from first record (exclude 'date')
-  const zoneKeys = useMemo(() => {
-    if (!data[0]) return []
-    return Object.keys(data[0]).filter((k) => k !== 'date')
-  }, [data])
-
-  const formattedData = data.map((d) => ({
-    ...d,
-    date: format(parseISO(d.date as string), 'MMM d'),
-  }))
-
   return (
     <ResponsiveContainer width="100%" height={256}>
-      <LineChart data={formattedData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+      <LineChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
         <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-        <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-        <Tooltip content={<CustomTooltip />} />
+        <YAxis tickFormatter={(v) => `${v}${unit}`} tick={{ fontSize: 11 }} />
+        <Tooltip content={<CustomTooltip unit={unit} />} />
         <Legend
           formatter={(value) => zoneNames?.[value] ?? value.replace('zone_', 'Zone ')}
           wrapperStyle={{ fontSize: 11 }}
