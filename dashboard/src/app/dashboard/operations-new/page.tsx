@@ -9,7 +9,7 @@ export default function OperationsNewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Operations (New)</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Operations</h2>
         <p className="text-sm text-muted-foreground mt-1">
           A fresh, clean slate for the management panel.
         </p>
