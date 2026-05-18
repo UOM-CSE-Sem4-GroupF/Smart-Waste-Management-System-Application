@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Settings2,
   DatabaseZap,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -33,8 +34,9 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Briefcase,     label: 'Emergency Jobs', href: '/dashboard/jobs' },
   { icon: CalendarClock, label: 'Routine Jobs',   href: '/dashboard/routine-jobs' },
   { icon: Settings2,     label: 'Operations',     href: '/dashboard/operations-new' },
-  { icon: BarChart3, label: 'Analytics', href: '/dashboard/analytics' },
-  { icon: DatabaseZap, label: 'System Mgmt', href: '/dashboard/system-management' },
+  { icon: BarChart3,    label: 'Analytics',        href: '/dashboard/analytics' },
+  { icon: Users,        label: 'Customer Portal',  href: '/dashboard/customer-portal' },
+  { icon: DatabaseZap,  label: 'System Mgmt',      href: '/dashboard/system-management' },
 ]
 
 export function Sidebar() {
