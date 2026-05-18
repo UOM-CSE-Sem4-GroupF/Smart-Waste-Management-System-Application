@@ -20,27 +20,26 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface NavItem {
-  icon:  React.ElementType
+  icon: React.ElementType
   label: string
-  href:  string
+  href: string
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Overview',           href: '/dashboard' },
-  { icon: Map,             label: 'Live Map',           href: '/dashboard/map' },
-  { icon: Trash2,          label: 'Bins',               href: '/dashboard/bins' },
-  { icon: Briefcase,       label: 'Jobs',               href: '/dashboard/jobs' },
-  { icon: Settings2,       label: 'Operations',         href: '/dashboard/operations' },
-  { icon: Settings2,       label: 'Operations (New)',   href: '/dashboard/operations-new' },
-  { icon: BarChart3,       label: 'Analytics',          href: '/dashboard/analytics' },
-  { icon: DatabaseZap,     label: 'System Mgmt',        href: '/dashboard/system-management' },
+  { icon: LayoutDashboard, label: 'Overview', href: '/dashboard' },
+  { icon: Map, label: 'Live Map', href: '/dashboard/map' },
+  { icon: Trash2, label: 'Bins', href: '/dashboard/bins' },
+  { icon: Briefcase, label: 'Emergency Jobs', href: '/dashboard/jobs' },
+  { icon: Settings2, label: 'Operations', href: '/dashboard/operations-new' },
+  { icon: BarChart3, label: 'Analytics', href: '/dashboard/analytics' },
+  { icon: DatabaseZap, label: 'System Mgmt', href: '/dashboard/system-management' },
 ]
 
 export function Sidebar() {
-  const pathname  = usePathname()
+  const pathname = usePathname()
   const { data: session } = useSession()
   // BYPASS: Default to admin role if no session is present (dev/demo mode)
-  const role      = session?.user?.role ?? 'admin'
+  const role = session?.user?.role ?? 'admin'
 
   const initials = session?.user?.name
     ? session.user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
