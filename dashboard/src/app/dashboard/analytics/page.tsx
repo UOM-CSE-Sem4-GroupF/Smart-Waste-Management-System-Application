@@ -27,7 +27,7 @@ import { ZoneFillTrendsChart } from '@/components/analytics/ZoneFillTrendsChart'
 import { WasteCategoryChart } from '@/components/analytics/WasteCategoryChart'
 import { FillRateHeatmap } from '@/components/analytics/FillRateHeatmap'
 import { CollectionEfficiencyChart } from '@/components/analytics/CollectionEfficiencyChart'
-import { VehicleUtilisationChart } from '@/components/analytics/VehicleUtilisationChart'
+import { VehicleUtilisationChart, type ActiveVehicle } from '@/components/analytics/VehicleUtilisationChart'
 import { ZoneForecastChart } from '@/components/analytics/ZoneForecastChart'
 import { JobTypeBreakdownChart } from '@/components/analytics/JobTypeBreakdownChart'
 import { AnomalyDetectionTab } from '@/components/analytics/AnomalyDetectionTab'
@@ -281,6 +281,19 @@ export default function AnalyticsPage() {
     return Array.from(result.values())
   }, [jobsApiData, socketJobs])
 
+  const { data: vehiclesApiData } = useQuery({
+    queryKey: ['vehicles', 'active', session?.accessToken],
+    queryFn: () =>
+      api
+        .get('api/v1/vehicles/active')
+        .json<{ vehicles: ActiveVehicle[] }>()
+        .catch(() => ({ vehicles: [] })),
+    enabled:   !!session?.accessToken,
+    staleTime: 2 * 60_000,
+    retry:     false,
+  })
+  const activeVehicles = vehiclesApiData?.vehicles ?? []
+
   // Anomaly count for tab badge — derived from the bins already fetched above
   const allBinsData = binsApiData?.data ?? []
   const anomalyCount = useMemo(
@@ -394,6 +407,7 @@ export default function AnalyticsPage() {
             >
               <VehicleUtilisationChart
                 jobs={jobsList as unknown as CollectionJob[]}
+                vehicles={activeVehicles}
               />
             </ChartCard>
           </div>
