@@ -62,6 +62,10 @@ services:
         paths:      ["/api/v1/bins"]
         methods:    ["GET", "OPTIONS"]
         strip_path: false
+      - name:       bins-anomalies
+        paths:      ["/api/v1/bins/anomalies"]
+        methods:    ["GET", "OPTIONS"]
+        strip_path: false
       - name:       bins-detail
         paths:      ["~/api/v1/bins/(?<id>[^/]+)$"]
         methods:    ["GET", "OPTIONS"]

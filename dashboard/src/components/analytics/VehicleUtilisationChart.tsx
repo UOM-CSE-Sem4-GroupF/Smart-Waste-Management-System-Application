@@ -6,10 +6,20 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts'
 import { ChartSkeleton } from './ChartSkeleton'
-import type { CollectionJob, CollectionJobListItem } from '@/types'
+import type { CollectionJob } from '@/types'
+
+export interface ActiveVehicle {
+  vehicle_id:             string
+  cargo_utilisation_pct:  number
+  cargo_weight_kg:        number
+  cargo_limit_kg:         string | number
+  bins_collected:         number
+  bins_total:             number
+}
 
 interface VehicleUtilisationChartProps {
-  jobs?:      (CollectionJob | CollectionJobListItem)[]
+  jobs?:      CollectionJob[]
+  vehicles?:  ActiveVehicle[]
   isLoading?: boolean
 }
 
@@ -25,34 +35,51 @@ function barColor(pct: number): string {
   return '#94a3b8'                  // gray — under-utilised
 }
 
-export function VehicleUtilisationChart({ jobs, isLoading }: VehicleUtilisationChartProps) {
+export function VehicleUtilisationChart({ jobs, vehicles, isLoading }: VehicleUtilisationChartProps) {
   const chartData = useMemo<UtilisationPoint[]>(() => {
+    // Prefer real cargo utilisation from the active-vehicles endpoint
+    if (vehicles && vehicles.length > 0) {
+      const allZero = vehicles.every((v) => v.cargo_utilisation_pct === 0)
+      const maxBins = Math.max(...vehicles.map((v) => v.bins_total), 1)
+      return vehicles
+        .map((v) => ({
+          vehicle_id:  v.vehicle_id,
+          // When no cargo loaded yet, show bins-assigned ratio so bars are visible
+          utilisation: allZero
+            ? Math.round((v.bins_total / maxBins) * 100)
+            : Math.round(v.cargo_utilisation_pct),
+          job_count:   v.bins_total,
+        }))
+        .sort((a, b) => b.utilisation - a.utilisation)
+        .slice(0, 10)
+    }
+
     if (!jobs || jobs.length === 0) return []
 
     const byVehicle = new Map<string, { count: number; totalLoad: number }>()
 
     for (const job of jobs) {
-      // CollectionJobListItem has assigned_vehicle_id; CollectionJob has vehicle_id
-      const vid = (job as CollectionJobListItem).assigned_vehicle_id ?? (job as CollectionJob).vehicle_id
+      const vid = job.vehicle_id
       if (!vid) continue
       const existing = byVehicle.get(vid) ?? { count: 0, totalLoad: 0 }
+      const load = ((job as CollectionJob & { cargo_weight_kg?: number }).cargo_weight_kg ?? 0)
       byVehicle.set(vid, {
         count:     existing.count + 1,
-        totalLoad: existing.totalLoad,
+        totalLoad: existing.totalLoad + load,
       })
     }
 
     const maxJobs = Math.max(...Array.from(byVehicle.values()).map((v) => v.count), 1)
 
     return Array.from(byVehicle.entries())
-      .map(([id, { count }]) => ({
+      .map(([id, { count, totalLoad: _ }]) => ({
         vehicle_id:  id,
         utilisation: Math.round((count / maxJobs) * 100),
         job_count:   count,
       }))
       .sort((a, b) => b.utilisation - a.utilisation)
-      .slice(0, 10)  // top 10 vehicles
-  }, [jobs])
+      .slice(0, 10)
+  }, [jobs, vehicles])
 
   if (isLoading) return <ChartSkeleton />
 
